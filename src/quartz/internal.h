@@ -15,10 +15,300 @@
 #include <span>
 
 
-
-
 namespace qtz {
   namespace {
+
+    template <typename T>
+    struct add_ref{
+      using type = T&;
+    };
+    template <typename V> requires(std::same_as<void, std::remove_cv_t<V>>)
+    struct add_ref<V>{
+      using type = void;
+    };
+
+    template <typename T>
+    struct type_size;
+    template <typename T>
+    struct type_align;
+
+    template <typename T> requires(requires{ alignof(std::remove_cv_t<T>); })
+    struct type_align<T>{
+      inline constexpr static size_t value = alignof(std::remove_cv_t<T>);
+    };
+    template <typename V> requires(std::same_as<void, std::remove_cv_t<V>>)
+    struct type_align<V>{
+      inline constexpr static size_t value = 1;
+    };
+    template <typename T> requires(requires{ sizeof(std::remove_cv_t<T>); })
+    struct type_size<T>{
+      inline constexpr static size_t value = sizeof(std::remove_cv_t<T>);
+    };
+    template <typename V> requires(std::same_as<void, std::remove_cv_t<V>>)
+    struct type_size<V>{
+      inline constexpr static size_t value = 1;
+    };
+
+    template <typename T>
+    concept incomplete_type = !requires{
+      sizeof(type_size<T>);
+      sizeof(type_align<T>);
+    };
+    template <typename T>
+    concept complete_type = !incomplete_type<T>;
+
+    template <typename T>
+    inline constexpr size_t default_alignment = type_align<T>::value;
+    template <incomplete_type T>
+    inline constexpr size_t default_alignment<T> = 1;
+
+
+
+
+
+    
+    template <typename To, typename From>
+    struct static_cast_maintains_address_tester{
+      
+      inline constexpr static size_t ToSize   = sizeof(To);
+      inline constexpr static size_t FromSize = sizeof(From);
+      inline constexpr static size_t BufferSize = 2 * std::max(ToSize, FromSize);
+      
+      union{
+        char raw_buffer[BufferSize]{};
+        From from[2];
+      };
+      
+      constexpr bool operator()() noexcept {
+        void* fromAddress = from + 1;
+        void* toAddress   = static_cast<To*>(from + 1);
+        return fromAddress == toAddress;
+      }
+    };
+    template <typename A, typename B>
+    struct static_cast_maintains_address{
+      using To = std::conditional_t<std::derived_from<A, B>, B, A>;
+      using From = std::conditional_t<std::derived_from<A, B>, A, B>;
+      inline constexpr static bool value = static_cast_maintains_address_tester<To, From>()();
+    };
+    
+    template <typename From, typename To>
+    concept pointer_castable_to = requires(From* from){
+      static_cast<To*>(from);
+    };
+    template <typename From, typename To>
+    concept pointer_convertible_to = std::convertible_to<From*, To*> && pointer_castable_to<From, To>;
+    template <typename From, typename To>
+    concept noop_pointer_castable_to = pointer_castable_to<From, To> && static_cast_maintains_address<To, From>::value;
+    template <typename From, typename To>
+    concept noop_pointer_convertible_to = pointer_convertible_to<From, To> && noop_pointer_castable_to<From, To>;
+
+//#define TEST_MAINTAINS_ADDRESS
+#if defined(TEST_MAINTAINS_ADDRESS)
+    struct A{ int a; };
+    struct B{ int b; };
+    struct C : A, B{};
+
+    static_assert(pointer_castable_to<C, A>);
+    static_assert(pointer_castable_to<C, B>);
+    static_assert(pointer_castable_to<A, C>);
+    static_assert(pointer_castable_to<B, C>);
+
+    static_assert(pointer_convertible_to<C, A>);
+    static_assert(pointer_convertible_to<C, B>);
+    static_assert(!pointer_convertible_to<A, C>);
+    static_assert(!pointer_convertible_to<B, C>);
+
+    static_assert(noop_pointer_castable_to<C, A>);
+    static_assert(!noop_pointer_castable_to<C, B>);
+    static_assert(noop_pointer_castable_to<A, C>);
+    static_assert(!noop_pointer_castable_to<B, C>);
+
+    static_assert(noop_pointer_convertible_to<C, A>);
+    static_assert(!noop_pointer_convertible_to<C, B>);
+    static_assert(!noop_pointer_convertible_to<A, C>);
+    static_assert(!noop_pointer_convertible_to<B, C>);
+#endif
+
+    struct offset_ptr_base{
+
+    protected:
+      using integer_type = jem_u64_t;
+      using pointer_type = const volatile void*;
+
+      offset_ptr_base() = default;
+      explicit offset_ptr_base(pointer_type addr) noexcept
+          : offset_(cast_to_offset(this, addr)){}
+
+      JEM_nodiscard JEM_forceinline static integer_type cast_to_offset(pointer_type offset_ptr, pointer_type address) noexcept {
+        const auto IsNull  = static_cast<integer_type>(address == nullptr);
+        const auto Address = reinterpret_cast<integer_type>(address);
+        const auto This    = reinterpret_cast<integer_type>(offset_ptr);
+        return ((Address - This) & (IsNull - 1ULL)) | IsNull;
+      }
+      JEM_nodiscard JEM_forceinline static void*        cast_to_pointer(pointer_type offset_ptr, integer_type offset) noexcept {
+        return reinterpret_cast<void*>((reinterpret_cast<integer_type>(offset_ptr) + offset) & (static_cast<integer_type>(offset == 1ULL) - 1ULL));
+      }
+      JEM_nodiscard JEM_forceinline static integer_type translate_offset(pointer_type to, pointer_type from, integer_type offset) noexcept {
+        const auto OtherIsNull = static_cast<integer_type>(offset == 1ULL);
+        return ((offset + reinterpret_cast<integer_type>(from) - reinterpret_cast<integer_type>(to)) & (OtherIsNull - 1ULL)) | OtherIsNull;
+      }
+
+      inline void ptr_to_offset(pointer_type address) noexcept {
+        offset_ = cast_to_offset(this, address);
+      }
+      inline void copy_from(const offset_ptr_base& other) noexcept {
+        offset_ = translate_offset(this, &other, other.offset_);
+      }
+      JEM_nodiscard inline void* integer_to_ptr() const noexcept {
+        return cast_to_pointer(this, offset_);
+      }
+      inline void swap_with(offset_ptr_base& other) noexcept {
+        integer_type tmp = translate_offset(&other, this, offset_);
+        offset_ = translate_offset(this, &other, other.offset_);
+        other.offset_ = tmp;
+      }
+
+      JEM_nodiscard JEM_forceinline bool is_null() const noexcept {
+        return offset_ == 1;
+      }
+
+      integer_type offset_ = 1;
+    };
+
+    template <typename T, size_t Alignment = default_alignment<T>>
+    class offset_ptr : public offset_ptr_base{
+      template <typename, size_t>
+      friend class offset_ptr;
+    public:
+
+      using element_type      = T;
+      using pointer           = T*;
+      using reference         = typename add_ref<T>::type;
+      using value_type        = std::remove_cv_t<T>;
+      using difference_type   = jem_i64_t;
+      using iterator_concept  = std::contiguous_iterator_tag;
+      using iterator_category = std::random_access_iterator_tag;
+      using offset_type       = jem_u64_t;
+      template <typename U>
+      using rebind            = offset_ptr<U>;
+
+
+      JEM_forceinline offset_ptr() = default;
+      JEM_forceinline offset_ptr(const offset_ptr& other) noexcept{
+        copy_from(other);
+      }
+      JEM_forceinline offset_ptr(offset_ptr&& other) noexcept {
+        copy_from(other);
+      }
+      JEM_forceinline offset_ptr(std::nullptr_t) noexcept { }
+
+      JEM_forceinline offset_ptr(T* ptr) noexcept
+          : offset_ptr_base(ptr){}
+
+      template <pointer_castable_to<T> U, size_t Al>
+      JEM_forceinline explicit(!pointer_convertible_to<U, T>) offset_ptr(const offset_ptr<U, Al>& other) noexcept
+          : offset_ptr_base(static_cast<pointer>(other.get())){}
+      template <noop_pointer_castable_to<T> U, size_t Al>
+      JEM_forceinline explicit(!noop_pointer_convertible_to<U, T>) offset_ptr(const offset_ptr<U, Al>& other) noexcept{
+        copy_from(other);
+      }
+
+
+
+      JEM_nodiscard JEM_forceinline pointer     get() const noexcept {
+        return std::assume_aligned<Alignment>(static_cast<pointer>(integer_to_ptr()));
+      }
+      JEM_nodiscard JEM_forceinline offset_type get_offset() const noexcept {
+        return offset_;
+      }
+
+      JEM_nodiscard JEM_forceinline pointer operator->() const noexcept {
+        return get();
+      }
+      JEM_nodiscard JEM_forceinline reference operator*() const noexcept requires(!std::same_as<void, reference>) {
+        return *get();
+      }
+      JEM_nodiscard JEM_forceinline reference operator[](difference_type index) const noexcept {
+        return get()[index];
+      }
+
+      JEM_forceinline offset_ptr & operator+=(difference_type index) noexcept requires complete_type<T>{
+        offset_ += (index * type_size<T>::value);
+        return *this;
+      }
+      JEM_forceinline offset_ptr & operator-=(difference_type index) noexcept requires complete_type<T> {
+        offset_ -= (index * type_size<T>::value);
+        return *this;
+      }
+      JEM_forceinline offset_ptr & operator++() noexcept requires complete_type<T> {
+        offset_ += type_size<T>::value;
+        return *this;
+      }
+      JEM_forceinline offset_ptr operator++(int) noexcept requires complete_type<T> {
+        pointer tmp = get();
+        offset_ += type_size<T>::value;
+        return {tmp};
+      }
+      JEM_forceinline offset_ptr & operator--() noexcept requires complete_type<T> {
+        offset_ -= type_size<T>::value;
+        return *this;
+      }
+      JEM_forceinline offset_ptr operator--(int) noexcept requires complete_type<T> {
+        pointer tmp = get();
+        offset_ -= type_size<T>::value;
+        return {tmp};
+      }
+
+
+
+      // public static functions
+      JEM_forceinline static offset_ptr pointer_to(reference ref) noexcept requires(!std::same_as<void, reference>) {
+        return {std::addressof(ref)};
+      }
+
+      // friend functions
+
+      JEM_forceinline friend offset_ptr      operator+(offset_ptr ptr, difference_type index) noexcept requires complete_type<T> {
+        pointer p = ptr.get() + index;
+        return {p};
+      }
+      JEM_forceinline friend offset_ptr      operator-(offset_ptr ptr, difference_type index) noexcept requires complete_type<T> {
+        pointer p = ptr.get() - index;
+        return {p};
+      }
+
+      template <size_t N>
+      JEM_forceinline difference_type operator-(const offset_ptr<T, N>& other) const noexcept requires complete_type<T> {
+        return get() - other.get();
+      }
+
+
+      JEM_forceinline explicit operator bool() const noexcept {
+        return !is_null();
+      }
+
+      JEM_forceinline friend bool operator==(const offset_ptr& ptr, std::nullptr_t) noexcept {
+        return ptr.is_null();
+      }
+
+      template <size_t N>
+      JEM_forceinline bool operator==(const offset_ptr<T, N>& other) const noexcept{
+        return get() == other.get();
+      }
+      template <size_t N>
+      JEM_forceinline std::strong_ordering operator<=>(const offset_ptr<T, N>& other) const noexcept{
+        return get() <=> other.get();
+      }
+    };
+
+    template <typename Word, size_t Bits = std::dynamic_extent>
+    struct bitmap{
+
+      inline constexpr static size_t Extent = Bits == std::dynamic_extent ? Bits : (Bits / (sizeof(Word) * 8));
+
+      std::span<Word, Extent> fields;
+    };
 
     struct small_alloc { };
     struct medium_alloc{ };
@@ -40,13 +330,7 @@ namespace qtz {
     struct page_64kb_desc { }; // 16
     struct page_4kb_desc  { }; // 16
 
-    template <typename Word, size_t Bits = std::dynamic_extent>
-    struct bitmap{
 
-      inline constexpr static size_t Extent = Bits == std::dynamic_extent ? Bits : (Bits / (sizeof(Word) * 8));
-
-      std::span<Word, Extent> fields;
-    };
 
 
     struct page_map{

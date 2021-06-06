@@ -89,15 +89,23 @@
 
 
 #if defined(__cplusplus)
-# if (__cplusplus >= 201103L) || (_MSC_VER > 1900)  // C++11
+# if JEM_compiler_msvc
+#  define JEM_cplusplus _MSVC_LANG
+# else
+#  define JEM_cplusplus __cplusplus
+# endif
+# if JEM_cplusplus >= 201103L  // C++11
 #  define JEM_noexcept   noexcept
 # else
 #  define JEM_noexcept   throw()
 # endif
-# if (__cplusplus >= 201703)
+# if (JEM_cplusplus >= 201703)
 #  define JEM_nodiscard [[nodiscard]]
+# else
+#  define JEM_nodiscard
 # endif
 #else
+# define JEM_cplusplus 0
 # define JEM_noexcept
 # if (__GNUC__ >= 4) || defined(__clang__)
 #  define JEM_nodiscard    __attribute__((warn_unused_result))
