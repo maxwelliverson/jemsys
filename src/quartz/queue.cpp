@@ -4,7 +4,7 @@
 
 #include "internal.h"
 
-namespace {
+/*namespace {
   using PFN_request_proc = qtz_message_action_t(qtz_mailbox::*)(qtz_request_t) noexcept;
 
   inline constexpr PFN_request_proc global_dispatch_table[] = {
@@ -28,7 +28,7 @@ namespace {
       &qtz_mailbox::proc_register_agent,
       &qtz_mailbox::proc_unregister_agent
   };
-}
+}*/
 
 
 
@@ -42,6 +42,30 @@ namespace {
 
 
 extern "C" JEM_stdcall qtz_exit_code_t qtz_mailbox_main_thread_proc(void*) {
+
+  using PFN_request_proc = qtz_message_action_t(qtz_mailbox::*)(qtz_request_t) noexcept;
+
+  constexpr static PFN_request_proc global_dispatch_table[] = {
+      &qtz_mailbox::proc_alloc_pages,
+      &qtz_mailbox::proc_free_pages,
+      &qtz_mailbox::proc_alloc_static_mailbox,
+      &qtz_mailbox::proc_free_static_mailbox,
+      &qtz_mailbox::proc_alloc_dynamic_mailbox,
+      &qtz_mailbox::proc_free_dynamic_mailbox,
+      &qtz_mailbox::proc_alloc_static_mailbox_shared,
+      &qtz_mailbox::proc_free_static_mailbox_shared,
+      &qtz_mailbox::proc_alloc_dynamic_mailbox_shared,
+      &qtz_mailbox::proc_free_dynamic_mailbox_shared,
+      &qtz_mailbox::proc_open_ipc_link,
+      &qtz_mailbox::proc_close_ipc_link,
+      &qtz_mailbox::proc_send_ipc_message,
+      &qtz_mailbox::proc_open_deputy,
+      &qtz_mailbox::proc_close_deputy,
+      &qtz_mailbox::proc_attach_thread,
+      &qtz_mailbox::proc_detach_thread,
+      &qtz_mailbox::proc_register_agent,
+      &qtz_mailbox::proc_unregister_agent
+  };
 
   qtz_request_t previousMsg = nullptr;
   const auto    mailbox = globalMailbox;

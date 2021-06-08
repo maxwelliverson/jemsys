@@ -54,6 +54,9 @@ JEM_api void         JEM_stdcall qtz_advance_epoch();
  * */
 JEM_api jem_status_t JEM_stdcall qtz_touch_memory_ranges(jem_u32_t ranges, void* const * pRangeAddresses, const jem_size_t* pRangeSizes, const jem_u32_t* pNEpochs);
 
+
+
+
 JEM_end_c_namespace
 
 #endif//JEMSYS_QUARTZ_EPOCH_H
