@@ -287,8 +287,10 @@ typedef unsigned long long jem_u64_t;
 typedef   signed long long jem_i64_t;
 
 
-typedef jem_u64_t          jem_address_t;
-typedef jem_u64_t          jem_size_t;
+
+typedef size_t             jem_size_t;
+typedef size_t             jem_address_t;
+typedef ptrdiff_t          jem_ptrdiff_t;
 
 
 typedef jem_u32_t          jem_flags32_t;

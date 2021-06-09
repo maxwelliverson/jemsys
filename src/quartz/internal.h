@@ -1,5 +1,5 @@
 //
-// Created by maxwe on 2021-06-01.
+// Created by maxwell on 2021-06-01.
 //
 
 #ifndef JEMSYS_QUARTZ_INTERNAL_H
@@ -15,12 +15,16 @@
 #include <span>
 #include <array>
 #include <ranges>
+#include <mutex>
+#include <shared_mutex>
+
+#include <intrin.h>
 
 
 namespace qtz {
   namespace ipc{
 
-    template <typename T, size_t Alignment>
+    template <typename T>
     class offset_ptr;
     template <typename T, size_t Extent = std::dynamic_extent>
     class span;
@@ -80,16 +84,18 @@ namespace qtz {
 
         inline constexpr static size_t ToSize   = sizeof(To);
         inline constexpr static size_t FromSize = sizeof(From);
-        inline constexpr static size_t BufferSize = 2 * std::max(ToSize, FromSize);
+        inline constexpr static size_t BufferSize = 4 * std::max(ToSize, FromSize);
 
         union{
-          char raw_buffer[BufferSize]{};
+          char raw_buffer[BufferSize]{ };
           From from[2];
-        };
+        } mem = {};
+
+        constexpr static_cast_maintains_address_tester() = default;
 
         constexpr bool operator()() noexcept {
-          void* fromAddress = from + 1;
-          void* toAddress   = static_cast<To*>(from + 1);
+          const void* fromAddress = mem.raw_buffer + sizeof(From);
+          const void* toAddress   = static_cast<To*>(mem.from + 1);
           return fromAddress == toAddress;
         }
       };
@@ -98,6 +104,10 @@ namespace qtz {
         using To = std::conditional_t<std::derived_from<A, B>, B, A>;
         using From = std::conditional_t<std::derived_from<A, B>, A, B>;
         inline constexpr static bool value = static_cast_maintains_address_tester<To, From>()();
+      };
+      template <typename A, typename B> requires(incomplete_type<A> || incomplete_type<B>)
+      struct static_cast_maintains_address<A, B>{
+        inline constexpr static bool value = false;
       };
 
       template <typename From, typename To>
@@ -119,7 +129,7 @@ namespace qtz {
 
         offset_ptr_base() = default;
         explicit offset_ptr_base(pointer_type addr) noexcept
-        : offset_(cast_to_offset(this, addr)){}
+            : offset_(cast_to_offset(this, addr)){}
 
         JEM_nodiscard JEM_forceinline static integer_type cast_to_offset(pointer_type offset_ptr, pointer_type address) noexcept {
           const auto IsNull  = static_cast<integer_type>(address == nullptr);
@@ -159,9 +169,9 @@ namespace qtz {
     }
 
 
-    template <typename T, size_t Alignment = impl::default_alignment<T>>
+    template <typename T>
     class offset_ptr : public impl::offset_ptr_base{
-      template <typename, size_t>
+      template <typename>
       friend class offset_ptr;
     public:
 
@@ -169,7 +179,7 @@ namespace qtz {
       using pointer           = T*;
       using reference         = typename impl::add_ref<T>::type;
       using value_type        = std::remove_cv_t<T>;
-      using difference_type   = jem_i64_t;
+      using difference_type   = jem_ptrdiff_t;
       using iterator_concept  = std::contiguous_iterator_tag;
       using iterator_category = std::random_access_iterator_tag;
       using offset_type       = jem_u64_t;
@@ -189,18 +199,36 @@ namespace qtz {
       JEM_forceinline offset_ptr(T* ptr) noexcept
           : impl::offset_ptr_base(ptr){}
 
-      template <impl::pointer_castable_to<T> U, size_t Al>
-      JEM_forceinline explicit(!impl::pointer_convertible_to<U, T>) offset_ptr(const offset_ptr<U, Al>& other) noexcept
+      template <impl::pointer_castable_to<T> U>
+      JEM_forceinline explicit(!impl::pointer_convertible_to<U, T>) offset_ptr(const offset_ptr<U>& other) noexcept
           : impl::offset_ptr_base(static_cast<pointer>(other.get())){}
-      template <impl::noop_pointer_castable_to<T> U, size_t Al>
-      JEM_forceinline explicit(!impl::noop_pointer_convertible_to<U, T>) offset_ptr(const offset_ptr<U, Al>& other) noexcept{
+      template <impl::noop_pointer_castable_to<T> U>
+      JEM_forceinline explicit(!impl::noop_pointer_convertible_to<U, T>) offset_ptr(const offset_ptr<U>& other) noexcept{
         copy_from(other);
+      }
+
+
+      JEM_forceinline offset_ptr& operator=(std::nullptr_t) noexcept {
+        offset_ = 1;
+        return *this;
+      }
+      JEM_forceinline offset_ptr& operator=(pointer ptr) noexcept {
+        offset_ = cast_to_offset(this, ptr);
+        return *this;
+      }
+      JEM_forceinline offset_ptr& operator=(const offset_ptr& other) noexcept {
+        copy_from(other);
+        return *this;
+      }
+      JEM_forceinline offset_ptr& operator=(offset_ptr&& other) noexcept {
+        copy_from(other);
+        return *this;
       }
 
 
 
       JEM_nodiscard JEM_forceinline pointer     get() const noexcept {
-        return std::assume_aligned<Alignment>(static_cast<pointer>(integer_to_ptr()));
+        return static_cast<pointer>(integer_to_ptr());
       }
       JEM_nodiscard JEM_forceinline offset_type get_offset() const noexcept {
         return offset_;
@@ -262,8 +290,8 @@ namespace qtz {
       }
 
       template <size_t N>
-      JEM_forceinline difference_type operator-(const offset_ptr<T, N>& other) const noexcept requires impl::complete_type<T> {
-        return get() - other.get();
+      JEM_forceinline friend difference_type operator-(const offset_ptr& a, const offset_ptr& b) noexcept requires impl::complete_type<T> {
+        return a.get() - b.get();
       }
 
 
@@ -276,16 +304,16 @@ namespace qtz {
       }
 
       template <size_t N>
-      JEM_forceinline bool operator==(const offset_ptr<T, N>& other) const noexcept{
-        return get() == other.get();
+      JEM_forceinline friend bool operator==(const offset_ptr& a, const offset_ptr& b) noexcept{
+        return a.get() == b.get();
       }
       template <size_t N>
-      JEM_forceinline std::strong_ordering operator<=>(const offset_ptr<T, N>& other) const noexcept{
-        return get() <=> other.get();
+      JEM_forceinline friend std::strong_ordering operator<=>(const offset_ptr& a, const offset_ptr& b) noexcept{
+        return a.get() <=> b.get();
       }
     };
 
-    template <typename T, typename VoidPtr = offset_ptr<void>>
+    /*template <typename T, typename VoidPtr = offset_ptr<void>>
     class intrusive_ptr{
       using void_traits = std::pointer_traits<VoidPtr>;
     public:
@@ -294,7 +322,7 @@ namespace qtz {
 
     private:
       pointer ptr_;
-    };
+    };*/
 
 
     namespace impl{
@@ -409,6 +437,13 @@ namespace qtz {
       concept qualified_convertible_to = is_qualified_convertible<T, U>::value;
     }
 
+    template <typename Rng, typename T>
+    concept span_of = std::ranges::contiguous_range<Rng> &&
+                      std::ranges::sized_range<Rng> &&
+                      (std::ranges::borrowed_range<Rng> || std::is_const_v<T>) &&
+                      impl::is_not_span_or_array<Rng>::value &&
+                      impl::qualified_convertible_to<std::ranges::range_value_t<Rng>, T>;
+
     template <typename T, size_t Extent>
     class span : public impl::span_base<T>, public impl::span_size_base<Extent>{
 
@@ -420,13 +455,6 @@ namespace qtz {
         return std::dynamic_extent;
       }
 
-      template <typename Rng>
-      inline constexpr static bool IsValidRange =
-          std::ranges::contiguous_range<Rng> &&
-          std::ranges::sized_range<Rng> &&
-          (std::ranges::borrowed_range<Rng> || std::is_const_v<T>) &&
-          impl::is_not_span_or_array<Rng>::value &&
-          impl::qualified_convertible_to<std::ranges::range_value_t<Rng>, T>;
 
     public:
       span() = default;
@@ -438,6 +466,12 @@ namespace qtz {
       span(const span<U, N>& other) noexcept
           : impl::span_base<T>(other.data()),
             impl::span_size_base<Extent>(other.size()){}
+
+
+      span(std::span<T, Extent> std_span) noexcept
+          : impl::span_base<T>(std_span.data()),
+            impl::span_size_base<Extent>(std_span.size())
+      {}
 
 
       explicit(Extent != std::dynamic_extent) span(T* address, size_t length) noexcept
@@ -468,7 +502,7 @@ namespace qtz {
           : impl::span_base<T>(array.data()),
             impl::span_size_base<Extent>(N){}
 
-      template <typename Rng> requires(IsValidRange<Rng>)
+      template <span_of<T> Rng>
       explicit(Extent != std::dynamic_extent) span(Rng&& range) noexcept
           : impl::span_base<T>(std::ranges::data(range)),
             impl::span_size_base<Extent>(std::ranges::size(range)){}
@@ -523,6 +557,609 @@ namespace qtz {
     };
 
 
+    class string{
+    public:
+
+      using element_type     = const char;
+      using value_type       = char;
+      using pointer          = const char*;
+      using size_type        = jem_size_t;
+      using difference_type  = jem_ptrdiff_t;
+
+      using iterator         = pointer;
+      using reverse_iterator = std::reverse_iterator<pointer>;
+
+      string() noexcept = default;
+      string(const char* str, jem_size_t length) noexcept{
+        if ( length == 0 ) {
+          mem.kind = EmptyString;
+        }
+        else if ( length <= MaxInlineLength ) {
+          memset(mem.inl.buffer, 0, InlineBufferLength);
+          mem.inl.buffer[0] = InlineString;
+          memcpy(mem.inl.buffer + 1, str, length);
+          mem.inl.buffer[MaxInlineLength + 1] = char(MaxInlineLength - length);
+        }
+        else {
+          mem.ref.kind = InternedString;
+          mem.ref.address = str;
+          mem.ref.length  = length;
+        }
+      }
+      string(std::string_view sv) noexcept : string(sv.data(), sv.length()){}
+
+      JEM_nodiscard pointer   data() const noexcept {
+        switch( mem.kind ) {
+          case EmptyString:
+            return nullptr;
+          case InlineString:
+            return mem.inl.buffer + 1;
+          case InternedString:
+            return mem.ref.address.get();
+          JEM_no_default;
+        }
+      }
+      JEM_nodiscard size_type size() const noexcept {
+        return length();
+      }
+      JEM_nodiscard size_type length() const noexcept {
+        switch( mem.kind ) {
+          case EmptyString:
+            return 0;
+          case InlineString:
+            return MaxInlineLength - mem.inl.buffer[MaxInlineLength - 1];
+          case InternedString:
+            return mem.ref.length;
+          JEM_no_default;
+        }
+      }
+
+      JEM_nodiscard iterator begin() const noexcept {
+        return data();
+      }
+      JEM_nodiscard iterator end()   const noexcept {
+        return begin() + length();
+      }
+
+      JEM_nodiscard reverse_iterator rbegin() const noexcept {
+        return reverse_iterator(end());
+      }
+      JEM_nodiscard reverse_iterator rend()   const noexcept {
+        return reverse_iterator(begin());
+      }
+
+
+      JEM_nodiscard std::string_view str() const noexcept {
+        return { data(), length() };
+      }
+
+
+
+    private:
+
+      inline static constexpr auto EmptyString    = 0x0;
+      inline static constexpr auto InlineString   = 0x1;
+      inline static constexpr auto InternedString = 0x2;
+
+      inline static constexpr auto KindBits = CHAR_BIT;
+      inline static constexpr auto LengthBits = (sizeof(void*) - 1) * KindBits;
+      inline static constexpr auto InlineBufferLength = (2*sizeof(void*));
+      inline static constexpr auto MaxInlineLength = InlineBufferLength - 2;
+
+      union{
+        jem_u8_t kind = EmptyString;
+        struct {
+          char buffer[InlineBufferLength];
+        } inl;
+        struct {
+          jem_size_t             kind   : KindBits;
+          jem_size_t             length : LengthBits;
+          offset_ptr<const char> address;
+        } ref;
+      } mem = {};
+    };
+
+
+
+
+    /*class multi_segment_services {
+    public:
+      virtual std::pair<void *, jem_size_t> create_new_segment(jem_size_t mem) = 0;
+      virtual bool                          update_segments   () = 0;
+      virtual ~multi_segment_services() = default;
+    };
+
+    namespace impl{
+
+      template <typename T>
+      class set{
+
+      };
+
+      template <typename From, typename To>
+      class flat_map{
+
+      };
+
+      consteval jem_size_t getPowSizeBits(jem_size_t MaxSegmentSizeBits) {
+        if ( MaxSegmentSizeBits == 0)
+          return 0;
+
+        jem_size_t result = MaxSegmentSizeBits;
+        do {
+          result |= (result - 1);
+          ++result;
+        } while ( result & (result - 1) );
+        jem_size_t count = 0;
+        while ( result != 1 ) {
+          result >>= 1;
+          count += 1;
+        }
+        return count;
+      }
+
+      JEM_forceinline static jem_size_t align_size(jem_size_t Size, jem_size_t Align) JEM_noexcept {
+        return ((Size-1)&(~(Align-1))) + Align;
+      }
+      JEM_forceinline static jem_size_t floor_log2(jem_size_t Value) JEM_noexcept {
+        assert( Value != 0 );
+        unsigned long result;
+        if constexpr ( sizeof(void*) == 4 )
+          _BitScanReverse(&result, Value);
+        else
+          _BitScanReverse64(&result, Value);
+        return result;
+      }
+
+      struct portable_ptr_base{
+
+        using self_t = portable_ptr_base;
+        static_assert(sizeof(jem_size_t) == sizeof(void*));
+        static_assert(sizeof(void*)*CHAR_BIT == 64);
+        inline static constexpr jem_size_t PlatformBits = sizeof(void*)*CHAR_BIT;
+        inline static constexpr jem_size_t CtrlBits     = 2;
+        inline static constexpr jem_size_t ExtraBits    = 2;
+        inline static constexpr jem_size_t AlignBits    = 12;
+        inline static constexpr jem_size_t Alignment    = (static_cast<jem_size_t>(1) << AlignBits);
+        inline static constexpr jem_size_t AlignMask    = ~(Alignment - static_cast<jem_size_t>(1));
+        inline static constexpr jem_size_t MaxSegmentSizeBits = PlatformBits - CtrlBits;
+        inline static constexpr jem_size_t MaxSegmentSize = (static_cast<jem_size_t>(1) << MaxSegmentSizeBits);
+
+        inline static constexpr jem_size_t BeginBits = MaxSegmentSizeBits - AlignBits;
+        inline static constexpr jem_size_t PowSizeBits = getPowSizeBits(MaxSegmentSizeBits);
+        inline static constexpr jem_size_t FrcSizeBits = PlatformBits - CtrlBits - BeginBits - PowSizeBits;
+
+        static_assert((PlatformBits - PowSizeBits - FrcSizeBits) >= CtrlBits);
+
+        inline static constexpr jem_size_t RelativeOffsetBits = PlatformBits - ExtraBits;
+        inline static constexpr jem_size_t RelativeSizeBits   = PlatformBits - MaxSegmentSizeBits - CtrlBits;
+
+        enum : jem_u8_t {
+          is_pointee_outside,
+          is_in_stack,
+          is_relative,
+          is_segmented,
+          is_max_mode
+        };
+
+        struct relative_addressing{
+          jem_size_t ctrl      : CtrlBits;
+          jem_size_t pow       : PowSizeBits;
+          jem_size_t frc       : FrcSizeBits;
+          jem_size_t beg       : BeginBits;
+          jem_ptrdiff_t offset : MaxSegmentSizeBits;
+          jem_ptrdiff_t bits   : ExtraBits;
+        };
+        struct segmented_addressing{
+          jem_size_t ctrl    : CtrlBits;
+          jem_size_t segment : MaxSegmentSizeBits;
+          jem_size_t offset  : MaxSegmentSizeBits;
+          jem_size_t bits    : ExtraBits;
+        };
+        struct direct_addressing{
+          jem_size_t ctrl    : CtrlBits;
+          jem_size_t dummy   : MaxSegmentSizeBits;
+          void*      address;
+        };
+
+        union members_t{
+          relative_addressing  relative;
+          segmented_addressing segmented;
+          direct_addressing    direct;
+        } members;
+
+        static_assert(sizeof(members_t) == (2 * sizeof(void*)));
+
+        JEM_nodiscard inline void* relative_calculate_begin_address() const JEM_noexcept {
+          const jem_size_t Begin      = this->members.relative.beg;
+          const jem_size_t MaskedThis = reinterpret_cast<jem_size_t>(this) & AlignMask;
+          return reinterpret_cast<void*>(MaskedThis - (Begin << AlignBits));
+        }
+        inline void relative_set_begin_from_base(void* address) {
+          assert( address < static_cast<void*>(this));
+          jem_size_t off = reinterpret_cast<char*>(this) - reinterpret_cast<char*>(address);
+          members.relative.beg = off >> AlignBits;
+        }
+        
+        //!Obtains the address pointed by the
+        //!object
+        JEM_nodiscard jem_size_t relative_size() const JEM_noexcept {
+          const jem_size_t pow  = members.relative.pow;
+          jem_size_t size = (jem_size_t(1u) << pow);
+          assert(pow >= FrcSizeBits);
+          size |= jem_size_t(members.relative.frc) << (pow - FrcSizeBits);
+          return size;
+        }
+
+        JEM_nodiscard static jem_size_t calculate_size(jem_size_t orig_size, jem_size_t &pow, jem_size_t &frc) JEM_noexcept {
+          if(orig_size < Alignment)
+            orig_size = Alignment;
+          orig_size = align_size(orig_size, Alignment);
+          pow = floor_log2(orig_size);
+          const jem_size_t low_size = (jem_size_t(1) << pow);
+          const jem_size_t diff = orig_size - low_size;
+          const jem_size_t frc_bits = pow - FrcSizeBits;
+          assert(pow >= FrcSizeBits);
+          jem_size_t rounded = align_size(diff, (jem_size_t)(jem_size_t(1) << frc_bits));
+          if(rounded == low_size){
+            ++pow;
+            frc = 0;
+            rounded = 0;
+          }
+          else{
+            frc = rounded >> frc_bits;
+          }
+          assert(((frc << frc_bits) & (Alignment - 1))==0);
+          return low_size + rounded;
+        }
+
+        JEM_nodiscard jem_size_t get_mode() const JEM_noexcept {
+          return members.direct.ctrl;
+        }
+
+        void set_mode(jem_size_t mode) JEM_noexcept {
+          assert(mode < is_max_mode);
+          members.direct.ctrl = mode;
+        }
+
+        //!Returns true if object represents
+        //!null pointer
+        JEM_nodiscard bool is_null() const JEM_noexcept {
+          return (this->get_mode() < is_relative) &&
+                 !members.direct.dummy &&
+                 !members.direct.address;
+        }
+
+        //!Sets the object to represent
+        //!the null pointer
+        void set_null() JEM_noexcept {
+          if(this->get_mode() >= is_relative) {
+            this->set_mode(is_pointee_outside);
+          }
+          members.direct.dummy   = 0;
+          members.direct.address = nullptr;
+        }
+
+        JEM_nodiscard static jem_size_t round_size(jem_size_t orig_size) JEM_noexcept {
+          jem_size_t pow, frc;
+          return calculate_size(orig_size, pow, frc);
+        }
+      };
+      
+      template <typename Mutex>
+      struct portable_ptr_flat_map : public portable_ptr_base {
+        using self_t = portable_ptr_flat_map;
+
+        void set_from_pointer(const volatile void *ptr) {
+          this->set_from_pointer(const_cast<const void *>(ptr));
+        }
+
+        JEM_nodiscard void* to_raw_pointer() const JEM_noexcept {
+          if(is_null()){
+            return nullptr;
+          }
+          switch(this->get_mode()){
+            case is_relative:
+              return const_cast<char*>(reinterpret_cast<const char*>(this)) + members.relative.offset;
+            case is_segmented: {
+                segment_info_t segment_info;
+                jem_size_t offset;
+                void *this_base;
+                get_segment_info_and_offset(this, segment_info, offset, this_base);
+                char *base  = static_cast<char*>(segment_info.group->address_of(members.segmented.segment));
+                return base + members.segmented.offset;
+              }
+            case is_in_stack:
+            case is_pointee_outside:
+              return members.direct.address;
+            default:
+              return nullptr;
+          }
+        }
+
+        JEM_nodiscard jem_ptrdiff_t diff(const self_t &other) const JEM_noexcept {
+          return static_cast<char*>(this->to_raw_pointer()) -
+                 static_cast<char*>(other.to_raw_pointer());
+        }
+
+        JEM_nodiscard bool equal(const self_t &y) const JEM_noexcept {
+          return this->to_raw_pointer() == y.to_raw_pointer();
+        }
+
+        JEM_nodiscard bool less(const self_t &y) const JEM_noexcept {
+          return this->to_raw_pointer() < y.to_raw_pointer();
+        }
+
+        void swap(self_t &other) JEM_noexcept {
+          void *ptr_this  = this->to_raw_pointer();
+          void *ptr_other = other.to_raw_pointer();
+          other.set_from_pointer(ptr_this);
+          this->set_from_pointer(ptr_other);
+        }
+
+        void set_from_pointer(const void *ptr) JEM_noexcept {
+          if(!ptr){
+            this->set_null();
+            return;
+          }
+
+          jem_size_t mode = this->get_mode();
+          if(mode == is_in_stack){
+            members.direct.address = const_cast<void*>(ptr);
+            return;
+          }
+          if(mode == is_relative){
+            char *beg_addr = static_cast<char*>(this->relative_calculate_begin_addr());
+            jem_size_t seg_size = this->relative_size();
+            if(ptr >= beg_addr && ptr < (beg_addr + seg_size)){
+              members.relative.offset = static_cast<const char*>(ptr) - reinterpret_cast<const char*>(this);
+              return;
+            }
+          }
+          jem_size_t ptr_offset;
+          jem_size_t this_offset;
+          segment_info_t ptr_info;
+          segment_info_t this_info;
+          void *ptr_base;
+          void *this_base;
+          get_segment_info_and_offset(this, this_info, this_offset, this_base);
+
+          if(!this_info.group){
+            this->set_mode(is_in_stack);
+            this->members.direct.addr = const_cast<void*>(ptr);
+          }
+          else{
+            get_segment_info_and_offset(ptr, ptr_info, ptr_offset, ptr_base);
+
+            if(ptr_info.group != this_info.group){
+              this->set_mode(is_pointee_outside);
+              this->members.direct.addr =  const_cast<void*>(ptr);
+            }
+            else if(ptr_info.id == this_info.id){
+              this->set_mode(is_relative);
+              members.relative.offset = (static_cast<const char*>(ptr) - reinterpret_cast<const char*>(this));
+              this->relative_set_begin_from_base(this_base);
+              jem_size_t pow, frc;
+              jem_size_t s = calculate_size(this_info.size, pow, frc);
+              (void)s;
+              assert(this_info.size == s);
+              this->members.relative.pow = pow;
+              this->members.relative.frc = frc;
+            }
+            else{
+              this->set_mode(is_segmented);
+              this->members.segmented.segment = ptr_info.id;
+              this->members.segmented.off     = ptr_offset;
+            }
+          }
+        }
+
+        void set_from_other(const self_t &other) JEM_noexcept
+        {
+          this->set_from_pointer(other.to_raw_pointer());
+        }
+
+        void inc_offset(jem_ptrdiff_t bytes) JEM_noexcept
+        {
+          this->set_from_pointer(static_cast<char*>(this->to_raw_pointer()) + bytes);
+        }
+        void dec_offset(jem_ptrdiff_t bytes) JEM_noexcept {
+          this->set_from_pointer(static_cast<char*>(this->to_raw_pointer()) - bytes);
+        }
+
+      private:
+
+        class segment_group_t {
+          struct segment_data{
+            void *     addr;
+            jem_size_t size;
+          };
+          std::vector<segment_data> m_segments;
+          multi_segment_services&   m_ms_services;
+
+        public:
+          segment_group_t(multi_segment_services &ms_services)
+              : m_ms_services(ms_services){ }
+
+          void push_back(void *addr, jem_size_t size) noexcept {
+            segment_data d = { addr, size };
+            m_segments.push_back(d);
+          }
+          void pop_back() noexcept {
+            assert(!m_segments.empty());
+            m_segments.erase(--m_segments.end());
+          }
+
+          void *address_of(jem_size_t segment_id) noexcept {
+            assert(segment_id < (jem_size_t)m_segments.size());
+            return m_segments[segment_id].addr;
+          }
+
+          void clear_segments() noexcept {
+            m_segments.clear();
+          }
+
+          JEM_nodiscard jem_size_t get_size() const noexcept {
+            return m_segments.size();
+          }
+
+          JEM_nodiscard multi_segment_services& get_multi_segment_services() const noexcept {
+            return m_ms_services;
+          }
+
+          friend bool operator< (const segment_group_t&l, const segment_group_t &r) noexcept {
+            return &l.m_ms_services < &r.m_ms_services;
+          }
+        };
+
+        struct segment_info_t {
+          jem_size_t size;
+          jem_size_t id;
+          segment_group_t *group;
+          segment_info_t() : size(0), id(0), group(0) {}
+        };
+
+        using segment_groups_t      = set<segment_group_t>;
+        using ptr_to_segment_info_t = flat_map<const void*, segment_info_t>;
+
+
+        struct mappings_t : Mutex {
+          //!Mutex to preserve integrity in multi-threaded
+          //!environments
+          using mutex_type = Mutex;
+
+
+          ptr_to_segment_info_t m_ptr_to_segment_info;
+
+          ~mappings_t() {
+            assert(m_ptr_to_segment_info.empty());
+          }
+        };
+
+        //Static members
+        static mappings_t       s_map;
+        static segment_groups_t s_groups;
+      public:
+
+        using segment_group_id = segment_group_t*;
+
+        //!Returns the segment and offset
+        //!of an address
+        static void get_segment_info_and_offset(const void *ptr, segment_info_t &segment, jem_size_t &offset, void *&base)
+        {
+          //------------------------------------------------------------------
+          boost::interprocess::scoped_lock<typename mappings_t::mutex_type> lock(s_map);
+          //------------------------------------------------------------------
+          base = 0;
+          if(s_map.m_ptr_to_segment_info.empty()){
+            segment = segment_info_t();
+            offset  = reinterpret_cast<const char*>(ptr) - static_cast<const char*>(0);
+            return;
+          }
+          //Find the first base address greater than ptr
+          typename ptr_to_segment_info_t::iterator it
+          = s_map.m_ptr_to_segment_info.upper_bound(ptr);
+          if(it == s_map.m_ptr_to_segment_info.begin()){
+            segment = segment_info_t();
+            offset  = reinterpret_cast<const char*>(ptr) - static_cast<const char *>(0);
+          }
+          //Go to the previous one
+          --it;
+          char *      segment_base = const_cast<char*>(reinterpret_cast<const char*>(it->first));
+          jem_size_t segment_size = it->second.size;
+
+          if(segment_base <= reinterpret_cast<const char*>(ptr) &&
+          (segment_base + segment_size) >= reinterpret_cast<const char*>(ptr)){
+            segment = it->second;
+            offset  = reinterpret_cast<const char*>(ptr) - segment_base;
+            base = segment_base;
+          }
+          else{
+            segment = segment_info_t();
+            offset  = reinterpret_cast<const char*>(ptr) - static_cast<const char*>(0);
+          }
+        }
+
+        //!Associates a segment defined by group/id with a base address and size.
+        //!Returns false if the group is not found or there is an error
+        static void insert_mapping(segment_group_id group_id, void *ptr, jem_size_t size) {
+          std::lock_guard lock(s_map);
+
+          typedef typename ptr_to_segment_info_t::value_type value_type;
+          typedef typename ptr_to_segment_info_t::iterator   iterator;
+          typedef std::pair<iterator, bool>                  it_b_t;
+
+          segment_info_t info;
+          info.group = group_id;
+          info.size  = size;
+          info.id    = group_id->get_size();
+
+          it_b_t ret = s_map.m_ptr_to_segment_info.insert(value_type(ptr, info));
+          assert(ret.second);
+
+          value_eraser<ptr_to_segment_info_t> v_eraser(s_map.m_ptr_to_segment_info, ret.first);
+          group_id->push_back(ptr, size);
+          v_eraser.release();
+        }
+
+        static bool erase_last_mapping(segment_group_id group_id) {
+          std::lock_guard lock(s_map);
+
+          if(!group_id->get_size()){
+            return false;
+          }
+          else{
+            void *addr = group_id->address_of(group_id->get_size()-1);
+            group_id->pop_back();
+            jem_size_t erased = s_map.m_ptr_to_segment_info.erase(addr);
+            (void)erased;
+            assert(erased);
+            return true;
+          }
+        }
+
+        static segment_group_id new_segment_group(multi_segment_services *services) {
+          std::lock_guard lock(s_map);
+
+          typedef typename segment_groups_t::iterator iterator;
+          std::pair<iterator, bool> ret = s_groups.insert(segment_group_t(*services));
+          assert(ret.second);
+          return & *ret.first;
+        }
+
+        static bool delete_group(segment_group_id id) {
+
+          std::lock_guard lock(s_map);
+
+          bool success = 1u == s_groups.erase(segment_group_t(*id));
+          if(success){
+            typedef typename ptr_to_segment_info_t::iterator ptr_to_segment_info_it;
+            ptr_to_segment_info_it it(s_map.m_ptr_to_segment_info.begin());
+            while(it != s_map.m_ptr_to_segment_info.end()){
+              if(it->second.group == id){
+                it = s_map.m_ptr_to_segment_info.erase(it);
+              }
+              else{
+                ++it;
+              }
+            }
+          }
+          return success;
+        }
+      };
+    }
+
+    class interprocess_mutex{};
+
+
+
+    template <typename T>
+    class portable_ptr : public impl::portable_ptr_flat_map<interprocess_mutex>{
+
+    };*/
+
+
+
     struct file_mapping{
       void*      handle;
       jem_size_t size;
@@ -536,6 +1173,319 @@ namespace qtz {
 
     };
 
+  }
+
+
+  namespace types{
+
+    struct descriptor;
+
+    enum flags_t : jem_u16_t {
+      default_flags        = 0x0000,
+      const_qualified      = 0x0001,
+      volatile_qualified   = 0x0002,
+      mutable_qualified    = 0x0004,
+      public_visibility    = 0x0008,
+      private_visibility   = 0x0010,
+      protected_visibility = 0x0020,
+      is_virtual           = 0x0040,
+      is_abstract          = 0x0080,
+      is_override          = 0x0100,
+      is_final             = 0x0200,
+      is_bitfield          = 0x0400,
+      is_noexcept          = 0x0800,
+      is_variadic          = 0x1000
+    };
+    enum kind_t  : jem_u8_t {
+      void_type,
+      boolean_type,
+      integral_type,
+      floating_point_type,
+      pointer_type,
+      array_type,
+      function_type,
+      member_pointer_type,
+      member_function_pointer_type,
+      aggregate_type,
+      enumerator_type
+    };
+
+    using  type_t = ipc::offset_ptr<const descriptor>;
+    using  type_id_t = const descriptor*;
+    struct type_id_ref_t{
+      type_id_t type;
+      flags_t flags;
+    };
+    struct aggregate_member_id_t{
+      type_id_t        type;
+      flags_t          flags;
+      jem_u8_t         bitfield_bits;
+      jem_u8_t         bitfield_offset;
+      jem_u32_t        offset;
+      std::string_view name;
+    };
+    struct aggregate_base_id_t {
+      type_id_t type;
+      flags_t   flags;
+      jem_u32_t offset;
+    };
+    struct enumeration_id_t{
+      std::string_view name;
+      jem_u64_t        value;
+    };
+
+
+    static std::string_view allocate_string(std::string_view name) noexcept;
+    template <typename T>
+    static std::span<ipc::offset_ptr<T>> allocate_pointer_span(std::span<T*> pointers) noexcept;
+
+
+    struct void_params_t{};
+    struct boolean_params_t{};
+    struct integral_params_t{
+      std::string_view name;
+      jem_u32_t        size;
+      jem_u32_t        alignment;
+      bool             is_signed;
+    };
+    struct floating_point_params_t{
+      std::string_view name;
+      jem_u32_t        size;
+      jem_u32_t        alignment;
+      bool             is_signed;
+      jem_u16_t        exponent_bits;
+      jem_u32_t        mantissa_bits;
+    };
+    struct pointer_params_t{
+      type_id_ref_t pointee_type;
+    };
+    struct reference_params_t{
+      type_id_ref_t pointee_type;
+    };
+    struct array_params_t{
+      type_id_ref_t elements;
+      jem_u32_t     count;
+    };
+    struct function_params_t{
+      type_id_ref_t                  ret;
+      std::span<const type_id_ref_t> args;
+      bool                           is_variadic;
+      bool                           is_noexcept;
+    };
+    struct member_pointer_params_t{
+      type_id_ref_t pointee;
+      type_id_t     aggregate_type;
+    };
+    struct member_function_pointer_params_t{
+      type_id_ref_t function;
+      type_id_t     aggregate_type;
+    };
+    struct aggregate_params_t{
+      std::string_view name;
+      jem_u32_t        size;
+      jem_u32_t        alignment;
+      std::span<const aggregate_base_id_t>   bases;
+      std::span<const aggregate_member_id_t> members;
+    };
+    struct enumerator_params_t{
+      std::string_view                  name;
+      type_id_t                         underlying_type;
+      std::span<const enumeration_id_t> entries;
+      bool                              is_bitflag;
+    };
+
+
+    struct descriptor{
+
+      using  type_t = ipc::offset_ptr<const descriptor>;
+      struct type_ref_t{
+        type_t  type  = nullptr;
+        flags_t flags = default_flags;
+      };
+      struct aggregate_member_t{
+        type_t           type;
+        flags_t          flags;
+        jem_u8_t         bitfield_bits;
+        jem_u8_t         bitfield_offset;
+        jem_u32_t        offset;
+        ipc::string      name;
+      };
+      struct aggregate_base_t {
+        type_t    type;
+        flags_t   flags;
+        jem_u32_t offset;
+      };
+      struct enumeration_t{
+        ipc::string name;
+        jem_u64_t   value;
+      };
+
+      kind_t    kind;
+      jem_u32_t size;
+      jem_u32_t alignment;
+
+
+
+      union{
+        char default_init = '\0';
+        struct {
+          ipc::string name;
+          bool        is_signed;
+        } integral;
+        struct {
+          ipc::string name;
+          bool        is_signed;
+          jem_u16_t   exponent_bits;
+          jem_u32_t   mantissa_bits;
+        } floating_point;
+        struct {
+          type_ref_t pointee;
+        } pointer;
+        struct {
+          struct {
+            type_t     type;
+            flags_t    flags;
+            bool       is_bounded;
+            jem_u32_t  count;
+          } element;
+        } array;
+        struct {
+          type_ref_t                  ret;
+          ipc::span<const type_ref_t> args;
+          bool                        is_variadic;
+          bool                        is_noexcept;
+        } function;
+        struct {
+          type_ref_t pointee;
+          type_t aggregate_type;
+        } member_pointer;
+        struct {
+          type_ref_t function;
+          type_t     aggregate_type;
+        } member_function_pointer;
+        struct {
+          ipc::string                         name;
+          ipc::span<const type_ref_t>         bases;
+          ipc::span<const aggregate_member_t> members;
+        } aggregate;
+        struct {
+          ipc::string                    name;
+          type_t                         underlying_type;
+          ipc::span<const enumeration_t> entries;
+          bool                           is_bitflag;
+        } enumerator;
+      } mem = {};
+
+
+      descriptor() = default;
+      explicit descriptor(void_params_t) noexcept
+          : kind(void_type), size(0), alignment(0){}
+      explicit descriptor(boolean_params_t) noexcept
+          : kind(boolean_type), size(1), alignment(1){}
+      explicit descriptor(const integral_params_t& params) noexcept
+          : kind(integral_type), size(params.size), alignment(params.alignment),
+            mem{
+              .integral = {
+                .name = allocate_string(params.name),
+                .is_signed = params.is_signed
+              }
+            }
+      {}
+      explicit descriptor(const floating_point_params_t& params) noexcept
+          : kind(floating_point_type), size(params.size), alignment(params.alignment),
+            mem{
+              .floating_point = {
+                  .name = allocate_string(params.name),
+                  .is_signed = params.is_signed,
+                  .exponent_bits = params.exponent_bits,
+                  .mantissa_bits = params.mantissa_bits
+              }
+            }
+      {}
+      explicit descriptor(const pointer_params_t& params) noexcept
+          : kind(pointer_type), size(sizeof(void*)), alignment(alignof(void*)),
+            mem{
+              .pointer = {
+                .pointee = {
+                  .type  = params.pointee_type.type,
+                  .flags = params.pointee_type.flags
+                }
+              }
+            }
+      {}
+      explicit descriptor(const array_params_t& params) noexcept
+          : kind(array_type), size(params.count == 0 ? 0 : (params.elements.type->size * params.count)), alignment(params.elements.type->alignment),
+            mem {
+              .array = {
+                .element = {
+                  .type       = params.elements.type,
+                  .flags      = params.elements.flags,
+                  .is_bounded = params.count != 0,
+                  .count      = params.count
+                }
+              }
+            }
+      {}
+      explicit descriptor(const function_params_t& params) noexcept
+          : kind(function_type), size(0), alignment(1),
+            mem {
+              .function = {
+                .ret = {
+                  .type  = params.ret.type,
+                  .flags = params.ret.flags
+                },
+                .args = allocate_pointer_span(params.args),
+                .is_variadic = params.is_variadic,
+                .is_noexcept = params.is_noexcept
+              }
+            }
+      {}
+      explicit descriptor(const member_pointer_params_t& params) noexcept
+          : kind(member_pointer_type), size(sizeof(type_t type_ref_t::*)), alignment(alignof(type_t type_ref_t::*)),
+            mem {
+              .member_pointer = {
+                .pointee = {
+                  .type  = params.pointee.type,
+                  .flags = params.pointee.flags
+                },
+                .aggregate_type = params.aggregate_type
+              }
+            }
+      {}
+      explicit descriptor(const member_function_pointer_params_t& params) noexcept
+          : kind(member_function_pointer_type), size(/*TODO: figure out how to get member function pointer size*/), alignment(std::min((jem_size_t)size, sizeof(void*))),
+            mem {
+              .member_function_pointer = {
+                .function = {
+                  .type  = params.function.type,
+                  .flags = params.function.flags
+                },
+                .aggregate_type = params.aggregate_type
+              }
+            }
+      {}
+      explicit descriptor(const aggregate_params_t& params) noexcept
+          : kind(aggregate_type), size(params.size), alignment(params.alignment),
+            mem{
+              .aggregate = {
+                .name = params.name,
+                .bases = {},
+                .members = {}
+              }
+            }
+      {}
+      explicit descriptor(const enumerator_params_t& params) noexcept
+          : kind(enumerator_type), size(params.underlying_type->size), alignment(params.underlying_type->alignment),
+            mem{
+              .enumerator = {
+                .name            = params.name,
+                .underlying_type = params.underlying_type,
+                .entries         = params.entries,
+                .is_bitflag      = params.is_bitflag
+              }
+            }
+      {}
+    };
   }
 
 
@@ -579,8 +1529,28 @@ namespace qtz {
 
     struct memory_manager{};
 
-    struct message_type{};
-    struct message_module{};
+
+
+
+
+    using message_type_id = jem_u16_t;
+
+    struct message_type{
+
+    };
+    struct message_type_registry{
+
+    };
+
+
+    struct message_module{
+      enum : jem_u8_t {
+        little_endian,
+        big_endian
+      } endianness;
+    };
+
+
 
 
 
