@@ -570,6 +570,16 @@ namespace qtz {
       using reverse_iterator = std::reverse_iterator<pointer>;
 
       string() noexcept = default;
+      string(const string& other) noexcept{
+        mem.kind = other.mem.kind;
+        if ( mem.kind == InternedString ) {
+          mem.ref.address = other.mem.ref.address;
+          mem.ref.length  = other.mem.ref.length;
+        }
+        else {
+          memcpy(&mem, &other.mem, sizeof(string));
+        }
+      }
       string(const char* str, jem_size_t length) noexcept{
         if ( length == 0 ) {
           mem.kind = EmptyString;
@@ -586,7 +596,17 @@ namespace qtz {
           mem.ref.length  = length;
         }
       }
-      string(std::string_view sv) noexcept : string(sv.data(), sv.length()){}
+      string(std::string_view sv) noexcept : string(sv.data(), sv.length()){ }
+
+
+      string& operator=(std::string_view other) noexcept {
+        new(this) string(other);
+        return *this;
+      }
+      string& operator=(const string& other) noexcept {
+        new(this) string(other);
+        return *this;
+      }
 
       JEM_nodiscard pointer   data() const noexcept {
         switch( mem.kind ) {
@@ -1181,20 +1201,20 @@ namespace qtz {
     struct descriptor;
 
     enum flags_t : jem_u16_t {
-      default_flags        = 0x0000,
-      const_qualified      = 0x0001,
-      volatile_qualified   = 0x0002,
-      mutable_qualified    = 0x0004,
-      public_visibility    = 0x0008,
-      private_visibility   = 0x0010,
-      protected_visibility = 0x0020,
-      is_virtual           = 0x0040,
-      is_abstract          = 0x0080,
-      is_override          = 0x0100,
-      is_final             = 0x0200,
-      is_bitfield          = 0x0400,
-      is_noexcept          = 0x0800,
-      is_variadic          = 0x1000
+      default_flags             = 0x0000,
+      const_qualified_flag      = 0x0001,
+      volatile_qualified_flag   = 0x0002,
+      mutable_qualified_flag    = 0x0004,
+      public_visibility_flag    = 0x0008,
+      private_visibility_flag   = 0x0010,
+      protected_visibility_flag = 0x0020,
+      is_virtual_flag           = 0x0040,
+      is_abstract_flag          = 0x0080,
+      is_override_flag          = 0x0100,
+      is_final_flag             = 0x0200,
+      is_bitfield_flag          = 0x0400,
+      is_noexcept_flag          = 0x0800,
+      is_variadic_flag          = 0x1000
     };
     enum kind_t  : jem_u8_t {
       void_type,
@@ -1220,14 +1240,8 @@ namespace qtz {
       type_id_t        type;
       flags_t          flags;
       jem_u8_t         bitfield_bits;
-      jem_u8_t         bitfield_offset;
-      jem_u32_t        offset;
+      jem_u32_t        alignment;
       std::string_view name;
-    };
-    struct aggregate_base_id_t {
-      type_id_t type;
-      flags_t   flags;
-      jem_u32_t offset;
     };
     struct enumeration_id_t{
       std::string_view name;
@@ -1236,8 +1250,20 @@ namespace qtz {
 
 
     static std::string_view allocate_string(std::string_view name) noexcept;
+    static void* allocate_array(jem_size_t objectSize, jem_size_t objectCount) noexcept;
+    template <typename T>
+    inline static T* allocate_array(jem_size_t count) noexcept {
+      return static_cast<T*>(allocate_array(sizeof(T), count));
+    }
     template <typename T>
     static std::span<ipc::offset_ptr<T>> allocate_pointer_span(std::span<T*> pointers) noexcept;
+
+    static void align_offset(jem_size_t& offset, jem_size_t alignment) noexcept {
+      const jem_size_t lower_mask = alignment - 1;
+      --offset;
+      offset |= lower_mask;
+      ++offset;
+    }
 
 
     struct void_params_t{};
@@ -1269,8 +1295,7 @@ namespace qtz {
     struct function_params_t{
       type_id_ref_t                  ret;
       std::span<const type_id_ref_t> args;
-      bool                           is_variadic;
-      bool                           is_noexcept;
+      flags_t                        flags;
     };
     struct member_pointer_params_t{
       type_id_ref_t pointee;
@@ -1281,10 +1306,10 @@ namespace qtz {
       type_id_t     aggregate_type;
     };
     struct aggregate_params_t{
-      std::string_view name;
-      jem_u32_t        size;
-      jem_u32_t        alignment;
-      std::span<const aggregate_base_id_t>   bases;
+      flags_t                                flags;
+      jem_u32_t                              alignment;
+      std::string_view                       name;
+      std::span<const type_id_ref_t>         bases;
       std::span<const aggregate_member_id_t> members;
     };
     struct enumerator_params_t{
@@ -1296,6 +1321,9 @@ namespace qtz {
 
 
     struct descriptor{
+
+      inline static constexpr jem_u16_t QualifierMask  = jem_u16_t(const_qualified_flag | volatile_qualified_flag);
+      inline static constexpr jem_u16_t VisibilityMask = jem_u16_t(public_visibility_flag | protected_visibility_flag | private_visibility_flag);
 
       using  type_t = ipc::offset_ptr<const descriptor>;
       struct type_ref_t{
@@ -1320,11 +1348,9 @@ namespace qtz {
         jem_u64_t   value;
       };
 
-      kind_t    kind;
-      jem_u32_t size;
-      jem_u32_t alignment;
-
-
+      kind_t     kind;
+      jem_size_t size;
+      jem_size_t alignment;
 
       union{
         char default_init = '\0';
@@ -1365,8 +1391,11 @@ namespace qtz {
         } member_function_pointer;
         struct {
           ipc::string                         name;
-          ipc::span<const type_ref_t>         bases;
+          ipc::span<const aggregate_base_t>   bases;
           ipc::span<const aggregate_member_t> members;
+          bool                                is_polymorphic;
+          bool                                is_abstract;
+          bool                                is_final;
         } aggregate;
         struct {
           ipc::string                    name;
@@ -1434,12 +1463,19 @@ namespace qtz {
                   .type  = params.ret.type,
                   .flags = params.ret.flags
                 },
-                .args = allocate_pointer_span(params.args),
-                .is_variadic = params.is_variadic,
-                .is_noexcept = params.is_noexcept
+                .is_variadic = bool(params.flags & is_variadic_flag),
+                .is_noexcept = bool(params.flags & is_noexcept_flag)
               }
             }
-      {}
+      {
+        const jem_size_t argCount = params.args.size();
+        auto* argsPtr = allocate_array<type_ref_t>(argCount);
+        for ( jem_size_t i = 0; i < argCount; ++i ) {
+          argsPtr[i].type  = params.args[i].type;
+          argsPtr[i].flags = params.args[i].flags;
+        }
+        mem.function.args = { argsPtr, argCount };
+      }
       explicit descriptor(const member_pointer_params_t& params) noexcept
           : kind(member_pointer_type), size(sizeof(type_t type_ref_t::*)), alignment(alignof(type_t type_ref_t::*)),
             mem {
@@ -1465,26 +1501,97 @@ namespace qtz {
             }
       {}
       explicit descriptor(const aggregate_params_t& params) noexcept
-          : kind(aggregate_type), size(params.size), alignment(params.alignment),
+          : kind(aggregate_type), size(0), alignment(params.alignment),
             mem{
               .aggregate = {
                 .name = params.name,
-                .bases = {},
-                .members = {}
+                .is_polymorphic = bool(params.flags & is_virtual_flag),
+                .is_abstract    = bool(params.flags & is_abstract_flag),
+                .is_final       = bool(params.flags & is_final_flag)
               }
             }
-      {}
+      {
+        jem_size_t align  = 1;
+        jem_size_t offset = 0;
+        jem_size_t bitfield_offset = 0;
+
+
+        const jem_size_t baseCount   = params.bases.size();
+        const jem_size_t memberCount = params.members.size();
+        auto* const      basePtr     = allocate_array<aggregate_base_t>(baseCount);
+        auto* const      memberPtr   = allocate_array<aggregate_member_t>(memberCount);
+
+        for ( jem_size_t i = 0; i < baseCount;   ++i ) {
+          basePtr[i].type   = params.bases[i].type;
+          basePtr[i].flags  = params.bases[i].flags;
+
+          align_offset(offset, params.bases[i].type->alignment);
+
+          basePtr[i].offset = offset;
+          offset += params.bases[i].type->size;
+          align = std::max(align, params.bases[i].type->alignment);
+        }
+
+        if ( mem.aggregate.is_polymorphic && offset == 0 ) {
+          offset += sizeof(void*); // vptr
+        }
+
+        for ( jem_size_t i = 0; i < memberCount; ++i ) {
+          const jem_size_t member_alignment = params.members[i].alignment ?: params.members[i].type->alignment;
+          const jem_size_t type_bits        = params.members[i].type->size * CHAR_BIT;
+
+          memberPtr[i].name            = allocate_string(params.members[i].name);
+          memberPtr[i].type            = params.members[i].type;
+          memberPtr[i].flags           = params.members[i].flags;
+
+          if ( params.members[i].flags & is_bitfield_flag ) {
+            memberPtr[i].bitfield_bits   = params.members[i].bitfield_bits;
+            if ( bitfield_offset + memberPtr[i].bitfield_bits > type_bits ) {
+              bitfield_offset = 0;
+              align_offset(offset, member_alignment);
+              memberPtr[i].offset = offset;
+              offset += memberPtr[i].bitfield_bits / 8;
+            }
+
+            memberPtr[i].bitfield_offset = bitfield_offset;
+            bitfield_offset += memberPtr[i].bitfield_bits;
+          }
+          else {
+            align_offset(offset, member_alignment);
+            memberPtr[i].offset = offset;
+            offset += memberPtr[i].type->size;
+            memberPtr[i].bitfield_bits = 0;
+            memberPtr[i].bitfield_offset = 0;
+            bitfield_offset = 0;
+          }
+
+        }
+
+        mem.aggregate.bases   = { basePtr, baseCount };
+        mem.aggregate.members = { memberPtr, memberCount };
+
+      }
       explicit descriptor(const enumerator_params_t& params) noexcept
           : kind(enumerator_type), size(params.underlying_type->size), alignment(params.underlying_type->alignment),
             mem{
               .enumerator = {
                 .name            = params.name,
                 .underlying_type = params.underlying_type,
-                .entries         = params.entries,
+                .entries         = {},
                 .is_bitflag      = params.is_bitflag
               }
             }
-      {}
+      {
+        const jem_size_t entryCount = params.entries.size();
+        auto* entryPtr = allocate_array<enumeration_t>(entryCount);
+
+        for ( jem_size_t i = 0; i < entryCount; ++i ) {
+          entryPtr[i].value = params.entries[i].value;
+          entryPtr[i].name  = allocate_string(params.entries[i].name);
+        }
+
+        mem.enumerator.entries = { entryPtr, entryCount };
+      }
     };
   }
 

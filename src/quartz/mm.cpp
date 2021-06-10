@@ -5,6 +5,7 @@
 #include "internal.h"
 
 #include "quartz/mm.h"
+#include "mm.hpp"
 
 
 JEM_stdcall qtz_request_t   qtz_alloc_static_mailbox(void **pResultAddr, jem_u32_t messageSlots, jem_u32_t messageSize, const qtz_shared_mailbox_params_t *pSharedParams);
