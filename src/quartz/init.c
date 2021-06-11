@@ -3,3 +3,5 @@
 //
 
 #include "internal.h"
+
+#include <quartz/init.h>

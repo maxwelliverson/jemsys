@@ -10,7 +10,7 @@
 JEM_begin_c_namespace
 
 typedef struct {
-
+  jem_u64_t messageSlotCount;
 } qtz_init_params_t;
 
 JEM_api jem_status_t  JEM_stdcall qtz_init(const qtz_init_params_t* params);

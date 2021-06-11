@@ -80,6 +80,7 @@ namespace qtz{
 
   class file_mapping{
     friend class virtual_placeholder;
+    friend class process;
   public:
 
   private:
@@ -166,6 +167,9 @@ namespace qtz{
     using const_sentinel = sentinel;
 
 
+    ~environment() {
+      free(buffer.words);
+    }
 
 
 
@@ -185,7 +189,29 @@ namespace qtz{
       output[offset] = ZeroChar;
       if ( offset == 0 )
         output[1] = ZeroChar;
-      return { output };
+      return std::unique_ptr<char_type[]>(output);
+    }
+
+
+
+    JEM_nodiscard iterator        begin()       noexcept {
+      return iterator(this, buffer.head->nextOffset);
+    }
+    JEM_nodiscard const_iterator  begin() const noexcept {
+      return const_iterator(this, buffer.head->nextOffset);
+    }
+    JEM_nodiscard const_iterator cbegin() const noexcept {
+      return this->begin();
+    }
+
+    JEM_nodiscard sentinel        end()       noexcept {
+      return {};
+    }
+    JEM_nodiscard const_sentinel  end() const noexcept {
+      return {};
+    }
+    JEM_nodiscard const_sentinel cend() const noexcept {
+      return {};
     }
 
   private:
@@ -279,6 +305,54 @@ namespace qtz{
     }
 
 
+    JEM_nodiscard std::pair<jem_u32_t, bool> find_variable_index_from(jem_u32_t index, string_view entry) const noexcept {
+      const var_t& initialVar = lookup_var(index);
+      const auto initialResult = entry <=> string_view(get_entry(initialVar), initialVar.entryStrLen);
+      if ( initialResult == std::strong_ordering::less ) {
+        index = initialVar.nextOffset;
+        while ( index != 0 ) {
+          const var_t& var = lookup_var(index);
+          const auto result = entry <=> string_view(get_entry(var), var.entryStrLen);
+          if ( result == std::strong_ordering::equal )
+            return { index, true };
+          else if ( result == std::strong_ordering::greater )
+            return { var.prevOffset, false };
+          index = var.nextOffset;
+        }
+        return { buffer.head->prevOffset, false };
+      }
+      else if ( initialResult == std::strong_ordering::greater ) {
+        index = initialVar.prevOffset;
+        while ( index != 0 ) {
+          const var_t& var = lookup_var(index);
+          const auto result = entry <=> string_view(get_entry(var), var.entryStrLen);
+          if ( result == std::strong_ordering::equal )
+            return { index, true };
+          else if ( result == std::strong_ordering::less )
+            return { var.nextOffset, false };
+          index = var.prevOffset;
+        }
+        return { buffer.head->nextOffset, false };
+      }
+      else {
+        return { index, true };
+      }
+    }
+    JEM_nodiscard std::pair<jem_u32_t, bool> find_variable_index(string_view entry) const noexcept {
+      jem_u32_t index = buffer.head->nextOffset;
+
+      while ( index != 0 ) {
+        const var_t& var = lookup_var(index);
+        const auto result = entry <=> string_view(get_entry(var), var.entryStrLen);
+        if ( result == std::strong_ordering::equal )
+          return { index, true };
+        else if ( result == std::strong_ordering::greater )
+          return { var.prevOffset, false };
+        index = var.nextOffset;
+      }
+      return { buffer.head->prevOffset, false };
+    }
+
     JEM_nodiscard bool check_valid_index(jem_u32_t index) const noexcept {
       return index < (bufferLength / alignof(word_type));
     }
@@ -312,6 +386,12 @@ namespace qtz{
       lookup_var(next.prevOffset).nextOffset = index;
       next.prevOffset  = index;
     }
+
+    void move_variable_after(jem_u32_t position, jem_u32_t index) noexcept {
+      remove_variable(index);
+      insert_variable_after(position, index);
+    }
+    void move_variable_before(jem_u32_t position, jem_u32_t index) noexcept {}
 
 
     void swap_out_variable(jem_u32_t oldIndex, jem_u32_t newIndex) noexcept {
@@ -373,7 +453,7 @@ namespace qtz{
       swap_out_variable(index, newIndex);
       return newIndex;
     }
-    jem_u32_t modify_variable_entry(jem_u32_t index, string_view newEntry) noexcept {
+    jem_u32_t modify_variable_entry(jem_u32_t index, string_view newEntry, jem_u32_t newPosition) noexcept {
       var_t& var = lookup_var(index);
       char_type* const oldValueStr = get_value(var);
 
@@ -382,7 +462,7 @@ namespace qtz{
         var.buffer[newEntry.size()] = EqualsChar;
         var.entryStrLen = jem_u16_t(newEntry.size());
         memmove(get_value(var), oldValueStr, var.valueStrLen);
-        resort_variables();
+        move_variable_after(newPosition, index);
         return index;
       }
 
@@ -393,8 +473,8 @@ namespace qtz{
       memcpy(get_entry(newVar), newEntry.data(), newEntry.size() * sizeof(char_type));
       newVar.buffer[newEntry.size()] = EqualsChar;
       memcpy(get_value(newVar), get_value(var), newVar.valueStrLen * sizeof(char_type));
-      swap_out_variable(index, newIndex);
-      resort_variables();
+      remove_variable(var);
+      insert_variable_after(newPosition, newVar);
       return newIndex;
     }
     jem_u32_t append_variable_value(jem_u32_t index, string_view newValue) noexcept {
@@ -411,7 +491,7 @@ namespace qtz{
       swap_out_variable(index, newIndex);
       return newIndex;
     }
-    jem_u32_t insert_new_variable(jem_u32_t afterIndex, string_view entry, std::span<string_view> values) noexcept {
+    jem_u32_t insert_new_variable(jem_u32_t afterIndex, string_view entry, std::span<const string_view> values) noexcept {
       assert( !values.empty() );
 
       // Sum total required size for the combined value string
@@ -471,27 +551,35 @@ namespace qtz{
     };
 
 
-    static std::optional<process> create() noexcept;
+    static std::optional<process> create(const char* applicationName, std::string_view commandLineOpts, void* procSecurityDesc, void* threadSecurityDesc, bool inherit, const environment<char>& env) noexcept;
+    static std::optional<process> create(const char* applicationName, std::string_view commandLineOpts, const environment<wchar_t>& env) noexcept;
     static std::optional<process> open(id processId, process_permissions_t permissions) noexcept;
 
 
-    void* reserve_memory(jem_size_t size, jem_size_t alignment = JEM_DONT_CARE) noexcept;
-    bool  release_memory(void* placeholder) noexcept;
+    JEM_nodiscard void* reserve_memory(jem_size_t size, jem_size_t alignment = JEM_DONT_CARE) const noexcept;
+    bool  release_memory(void* placeholder) const noexcept;
 
-    void* local_alloc(void* address, jem_size_t size, memory_access_t access = readwrite_access, numa_node_t numaNode = JEM_CURRENT_NUMA_NODE) noexcept;
-    bool  local_free(void* allocation, jem_size_t size) noexcept;
+    JEM_nodiscard void* local_alloc(void* address, jem_size_t size, memory_access_t access = readwrite_access, numa_node_t numaNode = JEM_CURRENT_NUMA_NODE) const noexcept;
+    bool  local_free(void* allocation, jem_size_t size) const noexcept;
 
-    void* map(void* address, const file_mapping& fileMapping, memory_access_t = readwrite_access, numa_node_t numaNode = JEM_CURRENT_NUMA_NODE) noexcept;
-    bool  unmap(void* address) noexcept;
+    JEM_nodiscard void* map(void* address, const file_mapping& fileMapping, memory_access_t = readwrite_access, numa_node_t numaNode = JEM_CURRENT_NUMA_NODE) const noexcept;
+    bool  unmap(void* address) const noexcept;
 
-    bool  split(void* placeholder, jem_size_t firstSize) noexcept;
-    bool  coalesce(void* placeholder, jem_size_t totalSize) noexcept;
+    bool  split(void* placeholder, jem_size_t firstSize) const  noexcept;
+    bool  coalesce(void* placeholder, jem_size_t totalSize) const  noexcept;
+
+    JEM_nodiscard bool is_valid() const noexcept {
+      return handle_;
+    }
 
   private:
     native_handle_t       handle_;
     id                    id_;
     process_permissions_t permissions_;
   };
+
+
+  extern process& this_process;
 
 
 
