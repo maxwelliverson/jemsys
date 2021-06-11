@@ -63,6 +63,20 @@ typedef JEM_transparent_union_2(agt_mailbox_t, agt_dynamic_mailbox_t) agt_any_ma
 typedef void(JEM_stdcall* PFN_agt_mailbox_destructor)(void* user_data, agt_any_mailbox_t mailbox);
 
 typedef struct {
+  const char* name;
+
+} agt_mailbox_interprocess_params_t;
+typedef struct {
+  jem_u32_t type;
+  union{
+    void*     pointer;
+    jem_u32_t u32;
+    jem_u64_t u64;
+    float     f32;
+    double    f64;
+  };
+} agt_mailbox_optional_params_t;
+typedef struct {
   agt_mailbox_flags_t        flags;
   jem_u32_t                  max_senders;
   jem_u32_t                  max_receivers;

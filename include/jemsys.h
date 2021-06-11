@@ -96,6 +96,7 @@
 # endif
 # if JEM_cplusplus >= 201103L  // C++11
 #  define JEM_noexcept   noexcept
+#  define JEM_noreturn [[noreturn]]
 # else
 #  define JEM_noexcept   throw()
 # endif
@@ -157,6 +158,10 @@
 # define JEM_assert(expr) assert(expr)
 # define JEM_unreachable JEM_assert(false); JEM_assume(false)
 #
+# if !defined(JEM_noreturn)
+#  define JEM_noreturn __declspec(noreturn)
+# endif
+#
 #elif defined(__GNUC__)                 // includes clang and icc
 #
 # if defined(__cplusplus)
@@ -189,6 +194,11 @@
 #  define JEM_alloc_size(...)       __attribute__((alloc_size(__VA_ARGS__)))
 #  define JEM_alloc_align(p)      __attribute__((alloc_align(p)))
 # endif
+#
+# if !defined(JEM_noreturn)
+#  define JEM_noreturn __attribute__((noreturn))
+# endif
+#
 #else
 # define JEM_restrict
 # define JEM_cdecl

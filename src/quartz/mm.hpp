@@ -607,6 +607,14 @@ namespace qtz{
   };
 
 
+  template <typename A>
+  concept ipc_allocator_c = requires(A& a, void* p, const void* cp, jem_size_t size, jem_size_t align){
+    { a.allocate(size) }                   noexcept -> std::convertible_to<void*>;
+    { a.allocate(size, align) }            noexcept -> std::convertible_to<void*>;
+    { a.reallocate(p, size, size) }        noexcept -> std::convertible_to<void*>;
+    { a.reallocate(p, size, size, align) } noexcept -> std::convertible_to<void*>;
+  };
+
 
 
   class extensible_segment {
@@ -618,6 +626,27 @@ namespace qtz{
     extensible_segment(jem_address_t address);
 
   private:
+
+    void* grow_by(jem_size_t size) noexcept {
+      void* pos = reinterpret_cast<char*>(header) + header->cursorPos;
+      const uintptr_t subheaderMask = ~(header->alignment - 1ULL);
+      auto* subheader = reinterpret_cast<subheader_t*>(reinterpret_cast<uintptr_t>(pos) & subheaderMask);
+
+      if ( pos == static_cast<void*>(subheader)) {
+
+      }
+
+      if ( header->cursorPos + size > header->currentCapacity ) {
+
+      }
+    }
+
+
+    inline constexpr static jem_size_t MaxChunkCount         = 128;
+    inline constexpr static jem_size_t GrowthRateNumerator   = 7;
+    inline constexpr static jem_size_t GrowthRateDenominator = 4;
+
+
     struct header_t{
       jem_u64_t              magic;
       anonymous_file_mapping nextMapping;
@@ -631,8 +660,11 @@ namespace qtz{
       jem_u8_t               buffer[];
     };
     struct subheader_t{
-      anonymous_file_mapping nextMapping;
-      jem_u8_t               buffer[];
+      jem_u64_t       magic;
+      jem_u32_t       waymarker;
+      native_handle_t nextFileHandle;
+      jem_size_t      nextFileSize;
+      jem_u8_t        buffer[];
     };
 
     header_t*  header;    // Address is aligned to alignment

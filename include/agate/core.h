@@ -7,6 +7,15 @@
 
 #include "jemsys.h"
 
+JEM_begin_c_namespace
 
+typedef struct agt_mailbox* agt_mailbox_t;
+typedef struct agt_deputy*  agt_deputy_t;
+typedef struct agt_signal*  agt_signal_t;
+
+
+
+
+JEM_end_c_namespace
 
 #endif//JEMSYS_AGATE_CORE_H

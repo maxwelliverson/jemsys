@@ -17,7 +17,22 @@ typedef struct qtz_request*        qtz_request_t;
 typedef struct qtz_deputy*         qtz_deputy_t;
 typedef struct qtz_process*        qtz_process_t;
 typedef struct qtz_shared_mailbox* qtz_shared_mailbox_t;
+
 typedef struct qtz_module*         qtz_module_t;
+typedef struct qtz_module_entry*   qtz_module_entry_t;
+typedef struct qtz_module_builder* qtz_module_builder_t;
+
+typedef struct qtz_error*          qtz_error_t;
+
+
+typedef enum {
+  QTZ_SCOPE_SYSTEM,
+  QTZ_SCOPE_PROCESS,
+  QTZ_SCOPE_DEPUTY
+} qtz_scope_t;
+
+
+
 
 
 
