@@ -17,7 +17,8 @@ JEM_begin_c_namespace
 
 typedef enum {
   AGT_DISCARD_MESSAGE,
-  AGT_REENQUEUE_MESSAGE
+  AGT_RETURN_MESSAGE,
+  AGT_PRESERVE_MESSAGE
 } agt_receive_action_t;
 
 enum agt_mailbox_create_flag_bits_e{
@@ -64,7 +65,6 @@ typedef void(JEM_stdcall* PFN_agt_mailbox_destructor)(void* user_data, agt_any_m
 
 typedef struct {
   const char* name;
-
 } agt_mailbox_interprocess_params_t;
 typedef struct {
   jem_u32_t type;
