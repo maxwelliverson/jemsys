@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 add_library(jemsys.quartz src/quartz/mm.cpp src/quartz/init.c src/quartz/queue.cpp src/quartz/epoch.cpp src/quartz/deputy.cpp src/quartz/module.cpp)
 target_include_directories(jemsys.quartz PUBLIC include)
-add_library(jemsys.agate src/agate/mailbox.cpp)
+add_library(jemsys.agate src/agate/mailbox.cpp src/agate/deputy.cpp)
 target_include_directories(jemsys.agate PUBLIC include)
 add_library(jemsys.opal src/opal/agent.cpp)
 target_include_directories(jemsys.opal PUBLIC include)
