@@ -7,7 +7,7 @@
 
 #include "offset_ptr.hpp"
 
-namespace qtz::ipc{
+namespace ipc{
 
   template <typename T, size_t Extent = std::dynamic_extent>
   class span;

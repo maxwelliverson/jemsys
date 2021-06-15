@@ -48,7 +48,7 @@
 JEM_begin_c_namespace
 
 #define AGT_NULL_DEPUTY ((agt_deputy_t)0)
-
+#define AGT_DISCARD_MESSAGE ((jem_u32_t)-1)
 
 
 
@@ -63,8 +63,8 @@ typedef enum {
 } agt_deputy_kind_t;
 
 
-typedef void(JEM_stdcall* agt_thread_deputy_proc_t)(agt_deputy_t deputy, void* userData);
-typedef void(JEM_stdcall* agt_message_proc_t)(agt_deputy_t deputy, void* message, void* userData);
+typedef void(JEM_stdcall*      agt_thread_deputy_proc_t)(agt_deputy_t deputy, void* userData);
+typedef void(JEM_stdcall*      agt_message_proc_t)(agt_deputy_t deputy, void* message, void* userData);
 typedef jem_u32_t(JEM_stdcall* agt_message_filter_t)(agt_deputy_t deputy, jem_u32_t messageId, void* userData);
 
 typedef struct {
@@ -87,22 +87,25 @@ typedef struct {
 
 
 typedef struct {
-  /*agt_module_t      module;
-  const jem_u32_t*  pMessageTypeIds;
-  const agt_deputy_message_proc_t* pMessageProcs;
-  jem_size_t         messageTypeCount;*/
   const char*        name;
+  agt_module_t       module;
   agt_deputy_kind_t  kind;
   const void*        pKindParams;
   agt_message_proc_t pfnMessageProc;
   void*              pUserData;
 } agt_deputy_params_t;
 
-JEM_api agt_request_t JEM_stdcall agt_open_deputy(agt_deputy_t* pDeputy, const agt_deputy_params_t* pParams);
-JEM_api void          JEM_stdcall agt_close_deputy(agt_deputy_t deputy);
-JEM_api agt_request_t JEM_stdcall agt_send_to_deputy(agt_deputy_t deputy, const void* buffer, jem_size_t bytes);
+JEM_api agt_request_t  JEM_stdcall agt_open_deputy(agt_deputy_t* pDeputy, const agt_deputy_params_t* pParams);
+JEM_api void           JEM_stdcall agt_close_deputy(agt_deputy_t deputy);
+
+
+
+JEM_api agt_progress_t JEM_stdcall agt_send_to_deputy(agt_deputy_t deputy, jem_u32_t msgId, const void* buffer);
 
 JEM_api JEM_noreturn void JEM_stdcall agt_convert_thread_to_deputy(const agt_deputy_params_t* pParams);
+
+
+// JEM_api agt_deputy_t JEM_stdcall agt_current_deputy();
 
 
 

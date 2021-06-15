@@ -5,14 +5,14 @@
 #ifndef JEMSYS_QUARTZ_IPC_OFFSET_PTR_INTERNAL_HPP
 #define JEMSYS_QUARTZ_IPC_OFFSET_PTR_INTERNAL_HPP
 
-#define JEM_SHARED_LIB_EXPORT
+//#define JEM_SHARED_LIB_EXPORT
 
-#include <quartz/core.h>
+#include <jemsys.h>
 
 #include <type_traits>
 #include <ranges>
 
-namespace qtz::ipc{
+namespace ipc{
   template <typename T>
   class offset_ptr;
 
@@ -183,11 +183,11 @@ namespace qtz::ipc{
     JEM_forceinline offset_ptr(std::nullptr_t) noexcept { }
 
     JEM_forceinline offset_ptr(T* ptr) noexcept
-    : impl::offset_ptr_base(ptr){}
+        : impl::offset_ptr_base(ptr){}
 
     template <impl::pointer_castable_to<T> U>
     JEM_forceinline explicit(!impl::pointer_convertible_to<U, T>) offset_ptr(const offset_ptr<U>& other) noexcept
-    : impl::offset_ptr_base(static_cast<pointer>(other.get())){}
+        : impl::offset_ptr_base(static_cast<pointer>(other.get())){}
     template <impl::noop_pointer_castable_to<T> U>
     JEM_forceinline explicit(!impl::noop_pointer_convertible_to<U, T>) offset_ptr(const offset_ptr<U>& other) noexcept{
       copy_from(other);

@@ -5,10 +5,10 @@
 #ifndef JEMSYS_QUARTZ_IPC_STRING_INTERNAL_HPP
 #define JEMSYS_QUARTZ_IPC_STRING_INTERNAL_HPP
 
+#include "../quartz/mm.hpp"
 #include "offset_ptr.hpp"
-#include "../mm.hpp"
 
-namespace qtz::ipc{
+namespace ipc{
   class string{
   public:
 

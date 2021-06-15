@@ -22,8 +22,7 @@ namespace qtz::types{
     error_inherit_from_opaque,
     error_opaque_instance,
     error_abstract_instance,
-    error_member_name_clash,
-
+    error_member_name_clash
   };
 
   class status{
@@ -123,7 +122,7 @@ namespace qtz::types{
 
 
   static std::string_view allocate_string(std::string_view name) noexcept;
-  static void* allocate_array(jem_size_t objectSize, jem_size_t objectCount) noexcept;
+  static void*            allocate_array(jem_size_t objectSize, jem_size_t objectCount) noexcept;
   template <typename T>
   inline static T* allocate_array(jem_size_t count) noexcept {
     return static_cast<T*>(allocate_array(sizeof(T), count));
