@@ -46,7 +46,10 @@ namespace ipc{
   class process {
   public:
 
-    struct id{
+
+    using id = jem_u32_t;
+
+    /*struct id{
       friend bool operator==(id a, id b) noexcept = default;
       friend std::strong_ordering operator<=>(id a, id b) noexcept = default;
     private:
@@ -55,7 +58,7 @@ namespace ipc{
       explicit id(jem_u32_t value) noexcept : id_(value){}
 
       jem_u32_t id_;
-    };
+    };*/
 
 
     static std::optional<process> create(const char* applicationName, std::string_view commandLineOpts, void* procSecurityDesc, void* threadSecurityDesc, bool inherit, const environment<char>& env) noexcept;

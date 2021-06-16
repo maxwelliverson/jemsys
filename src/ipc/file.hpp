@@ -19,7 +19,7 @@ namespace ipc{
 #define JEM_CURRENT_NUMA_NODE ((numa_node_t)-1)
 
 
-  class file{
+  /*class file{
     inline constexpr static jem_size_t StorageSize  = 2 * sizeof(void*);
     inline constexpr static jem_size_t StorageAlign = alignof(void*);
   public:
@@ -42,15 +42,14 @@ namespace ipc{
 
   private:
     alignas(StorageAlign) char storage[StorageSize] = {};
+  };*/
+
+  struct file{
+    native_handle_t handle;
   };
 
-  class file_mapping{
-    friend class virtual_placeholder;
-    friend class process;
-  public:
-
-  private:
-    file            mapped_file;
+  struct file_mapping{
+    file            mappedFile;
     native_handle_t handle;
     jem_size_t      size;
   };

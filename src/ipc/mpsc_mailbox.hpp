@@ -33,6 +33,7 @@ namespace ipc{
       std::atomic_flag isDiscarded;
     };
 
+
     struct mailbox_base{
       // Cacheline 0 - Semaphore for claiming slots [writer]
       JEM_cache_aligned
@@ -173,7 +174,8 @@ namespace ipc{
       offset_ptr<jem_u8_t>    mailboxData;
 
       std::atomic<jem_size_t> nextWriteOffset;
-      //std::atomic<jem_size_t>
+      std::atomic<jem_size_t> lastWriteOffset;
+      jem_size_t              nestReadOffset;
     };
 
     template <typename Msg>
@@ -181,6 +183,13 @@ namespace ipc{
     public:
       template <typename ...Args>
       slot(Args&& ...args) noexcept : Msg(std::forward<Args>(args)...){}
+    };
+
+    struct dynamic_slot{
+      jem_size_t       messageSize;
+      std::atomic_flag isReady;
+      std::atomic_flag isDiscarded;
+      std::byte        payload[];
     };
   }
 
@@ -193,16 +202,22 @@ namespace ipc{
 
     using slot_type = impl::slot<Msg>;
 
-    mpsc_mailbox(jem_size_t slotCount) noexcept
+    explicit mpsc_mailbox(jem_size_t slotCount) noexcept
         : mailbox{
-            .slotSemaphore        = std::counting_semaphore<>(slotCount),
+            .slotSemaphore        = std::counting_semaphore<>(static_cast<jem_ptrdiff_t>(slotCount)),
             .nextFreeSlot         = 0,
             .lastQueuedSlot       = 0,
             .queuedSinceLastCheck = 0,
             .minQueuedMessages    = 0,
             .messageSlotSize      = sizeof(slot_type),
             .messageSlots         = nullptr
-          } { }
+          } {
+
+    }
+
+
+
+
 
   private:
     impl::mailbox_base mailbox;
@@ -212,12 +227,14 @@ namespace ipc{
   class mpsc_mailbox<any_message>{
   public:
 
-    mpsc_mailbox(jem_size_t size) noexcept
+    using slot_type = impl::dynamic_slot;
+
+    explicit mpsc_mailbox(jem_size_t size) noexcept
         : mailbox {
             .mailboxSize = size,
             .mailboxData = nullptr,
             .nextWriteOffset = 0
-          }{}
+          }{ }
 
 
 
