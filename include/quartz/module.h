@@ -28,6 +28,8 @@ JEM_api qtz_request_t JEM_stdcall qtz_build_module(qtz_module_t* pModule, qtz_mo
 
 
 
+
+
 JEM_end_c_namespace
 
 #endif//JEMSYS_QUARTZ_MODULE_H

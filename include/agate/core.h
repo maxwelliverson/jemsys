@@ -11,6 +11,7 @@ JEM_begin_c_namespace
 
 typedef struct agt_mailbox*  agt_mailbox_t;
 typedef struct agt_deputy*   agt_deputy_t;
+typedef struct agt_promise*  agt_promise_t;
 typedef struct agt_progress* agt_progress_t;
 typedef struct agt_signal*   agt_signal_t;
 

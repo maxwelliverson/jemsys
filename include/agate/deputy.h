@@ -100,10 +100,11 @@ JEM_api void           JEM_stdcall agt_close_deputy(agt_deputy_t deputy);
 
 
 
-JEM_api agt_progress_t JEM_stdcall agt_send_to_deputy(agt_deputy_t deputy, jem_u32_t msgId, const void* buffer);
+JEM_api agt_promise_t JEM_stdcall agt_send_to_deputy(agt_deputy_t deputy, jem_u32_t msgId, const void* buffer);
 
 JEM_api JEM_noreturn void JEM_stdcall agt_convert_thread_to_deputy(const agt_deputy_params_t* pParams);
 
+JEM_api agt_deputy_t JEM_stdcall agt_current_deputy();
 
 // JEM_api agt_deputy_t JEM_stdcall agt_current_deputy();
 
