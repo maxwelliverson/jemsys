@@ -39,14 +39,14 @@ namespace ipc{
 
 
     enum segment_flags_t{
-      null_segment         = 0x01,
-      solo_segment         = 0x02,
-      branch_segment       = 0x04,
-      trunk_segment        = 0x08,
-      can_relocate         = 0x10,
-      linear_allocation    = 0x20,
-      first_fit_allocation = 0x40,
-      best_fit_allocation  = 0x80,
+      null_segment         = 0x001,
+      solo_segment         = 0x002,
+      branch_segment       = 0x004,
+      trunk_segment        = 0x008,
+      can_relocate         = 0x010,
+      linear_allocation    = 0x020,
+      first_fit_allocation = 0x040,
+      best_fit_allocation  = 0x080,
       stack_allocation     = 0x100,
       pool_allocation      = 0x200
     };
@@ -93,7 +93,7 @@ namespace ipc{
     };
     struct trunk_segment_header_t{
       jem_u32_t            magic;
-      segment_flags_t      flags
+      segment_flags_t      flags;
       std::atomic_uint32_t refCount;
       file_mapping         mapping;
       jem_u32_t            branchCount;

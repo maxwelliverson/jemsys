@@ -15,6 +15,17 @@ using atomic_u64_t = std::atomic_uint64_t;
 using atomic_flag_t = std::atomic_flag;
 
 
+namespace agt::impl{
+  namespace {
+    using PFN_start_send_message  = agt_status_t(JEM_stdcall*)(agt_mailbox_t mailbox, jem_size_t messageSize, void** pMessagePayload, jem_u64_t timeout_us);
+    using PFN_finish_send_message = agt_message_t(JEM_stdcall*)(agt_mailbox_t mailbox, jem_size_t messageSize, void* messagePayload);
+    using PFN_receive_message     = agt_status_t(JEM_stdcall*)(agt_mailbox_t mailbox, agt_message_t* pMessage, jem_u64_t timeout_us);
+    using PFN_discard_message     = void(JEM_stdcall*)(agt_mailbox_t mailbox, agt_message_t message);
+    using PFN_cancel_message      = agt_status_t(JEM_stdcall*)(agt_mailbox_t mailbox, agt_message_t message);
+  }
+}
+
+
 typedef jem_status_t (JEM_stdcall* PFN_init_mailbox)(agt_mailbox_t mailbox);
 typedef jem_status_t (JEM_stdcall* PFN_attach_sender)(agt_mailbox_t mailbox, agt_sender_t* pSender, agt_deadline_t deadline);
 typedef jem_status_t (JEM_stdcall* PFN_begin_send)(agt_mailbox_t mailbox, void** address, agt_deadline_t deadline);
@@ -148,73 +159,26 @@ struct JEM_cache_aligned mailbox_receiver_info{
   atomic_u64_t read_offset;
 };
 
-struct JEM_cache_aligned agt_any_mailbox_common{
-  const void* const            vtable;
-  const agt_mailbox_flags_t    flags;
-  const jem_u16_t              max_senders;
-  const jem_u16_t              max_receivers;
-  const jem_size_t             name_length;
-  const PFN_mailbox_dtor       pfn_dtor;
-  void* const                  dtor_user_data;
-  void* const                  address;
-  struct mailbox_private_info  info;
-  struct mailbox_sender_info   senders;
-  struct mailbox_receiver_info receivers;
-  const jem_char_t             name[];
-};
 struct JEM_cache_aligned agt_mailbox{
   const agt_mailbox_vptr_t     vtable;
-  const agt_mailbox_flags_t    flags;
-  const jem_u16_t              max_senders;
-  const jem_u16_t              max_receivers;
-  const jem_size_t             name_length;
-  const PFN_mailbox_dtor       pfn_dtor;
-  void* const                  dtor_user_data;
-  void* const                  address;
+  agt_mailbox_flags_t    flags;
+  jem_u32_t              max_senders;
+  jem_u32_t              max_receivers;
+  jem_size_t             name_length;
+  PFN_mailbox_dtor       pfn_dtor;
+  void*                  dtor_user_data;
+
   const jem_size_t             message_size;
   const jem_size_t             message_slots;
   struct mailbox_private_info  info;
   struct mailbox_sender_info   sender_info;
   struct mailbox_receiver_info receiver_info;
-  const jem_char_t             name[];
-};
-struct JEM_cache_aligned agt_dynamic_mailbox{
-  const agt_dynamic_mailbox_vptr_t vtable;
-  const agt_mailbox_flags_t        flags;
-  const jem_u16_t                  max_senders;
-  const jem_u16_t                  max_receivers;
-  const jem_size_t                 name_length;
-  const PFN_mailbox_dtor           pfn_dtor;
-  void* const                      dtor_user_data;
-  void* const                      address;
-  const jem_size_t                 mailbox_size;
-  const jem_size_t                 max_message_size;
-  struct mailbox_private_info      info;
-  struct mailbox_sender_info       sender_info;
-  struct mailbox_receiver_info     receiver_info;
-  const jem_char_t                 name[];
 };
 
 
-#if JEM_has_attribute(transparent_union)
-#define any_mailbox_cast(type, mailbox) (mailbox.m_##type)
-#define mailbox_common_base(mailbox) ((struct agt_any_mailbox_common*)mailbox.m_agt_mailbox_t)
-#else
-#define any_mailbox_cast(type, mailbox) ((type)mailbox)
-#define mailbox_common_base(mailbox) ((struct agt_any_mailbox_common*)mailbox)
-#endif
 
-
-
-static_assert(sizeof(struct agt_any_mailbox_common)   == AGT_MAILBOX_SIZE);
-static_assert(_Alignof(struct agt_any_mailbox_common) == AGT_MAILBOX_ALIGN);
-
-static_assert(sizeof(struct agt_mailbox)   == AGT_MAILBOX_SIZE);
-static_assert(_Alignof(struct agt_mailbox) == AGT_MAILBOX_ALIGN);
-
-static_assert(sizeof(struct agt_dynamic_mailbox)   == AGT_MAILBOX_SIZE);
-static_assert(_Alignof(struct agt_dynamic_mailbox) == AGT_MAILBOX_ALIGN);
-
+static_assert(sizeof(struct agt_mailbox)  == AGT_MAILBOX_SIZE);
+static_assert(alignof(struct agt_mailbox) == AGT_MAILBOX_ALIGN);
 
 
 

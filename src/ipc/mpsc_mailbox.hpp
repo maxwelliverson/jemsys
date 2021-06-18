@@ -129,7 +129,7 @@ namespace ipc{
       // Cacheline 0 - Semaphore for claiming slots [writer]
       JEM_cache_aligned
 
-      std::counting_semaphore<> slotSemaphore{};
+      std::counting_semaphore<> slotSemaphore{0};
 
 
       // Cacheline 1 - Index of a free slot [writer]
@@ -163,7 +163,8 @@ namespace ipc{
 
 
       void init(jem_size_t slotCount, memory_desc memoryDesc) noexcept {
-        new (&slotSemaphore) std::counting_semaphore<>{static_cast<jem_ptrdiff_t>(slotCount)};
+        slotSemaphore.release(static_cast<jem_ptrdiff_t>(slotCount));
+        // new (&slotSemaphore) std::counting_semaphore<>{static_cast<jem_ptrdiff_t>(slotCount)};
         minQueuedMessages = 0;
         messageSlot = memoryDesc;
         totalSlotCount = slotCount;
@@ -362,13 +363,14 @@ namespace ipc{
   };
 
 
+  inline static void align_size(memory_desc& mem) noexcept {
+    mem.size = ((mem.size - 1) | (mem.alignment - 1)) + 1;
+  }
 
   template <typename Msg>
   class mpsc_mailbox{
 
-    inline static void align_size(memory_desc& mem) noexcept {
-      mem.size = ((mem.size - 1) | (mem.alignment - 1)) + 1;
-    }
+
     inline static void get_aligned_mailbox_size(memory_desc& mem) noexcept {
       mem.size = sizeof(impl::mailbox_base);
       mem.alignment = std::max(mem.alignment, alignof(impl::mailbox_base));
