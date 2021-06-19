@@ -41,7 +41,7 @@ JEM_api bool                  JEM_stdcall agt_get_type_info(agt_type_descriptor_
 JEM_api agt_status_t  JEM_stdcall agt_message_get_status(agt_message_t message);
 JEM_api void          JEM_stdcall agt_message_set_status(agt_message_t message, agt_status_t status);
 JEM_api agt_status_t  JEM_stdcall agt_message_wait(agt_message_t message, jem_u64_t timeout_us);
-JEM_api void*         JEM_stdcall agt_message_get_payload(agt_message_t message, jem_size_t* payloadSize);
+JEM_api void*         JEM_stdcall agt_message_get_payload(agt_message_t message);
 
 // JEM_api void         JEM_stdcall agt_mailbox_discard_message(agt_mailbox_t mailbox, agt_message_t message);
 // JEM_api agt_status_t JEM_stdcall agt_mailbox_cancel_message(agt_mailbox_t mailbox, agt_message_t message);

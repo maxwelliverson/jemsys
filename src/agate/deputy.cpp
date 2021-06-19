@@ -131,6 +131,7 @@ namespace agt::impl{
 
 
 
+
         return This->exitCode;
       }
     public:
@@ -151,7 +152,8 @@ namespace agt::impl{
 
       agt_promise_t do_send(jem_u32_t msgId, const void *message) noexcept override {
         slot_t* slot = inbox.begin_write();
-        send_user_message(slot, msgId, );
+        send_user_message(slot, msgId, msgSize, message);
+        inbox.end_write(slot);
         return slot;
       }
       void do_destroy() noexcept override {
@@ -280,7 +282,9 @@ JEM_api void          JEM_stdcall agt_close_deputy(agt_deputy_t deputy) {
 
 
 
-JEM_api agt_promise_t JEM_stdcall agt_send_to_deputy(agt_deputy_t deputy, jem_u32_t msgId, const void* buffer) {}
+JEM_api agt_promise_t JEM_stdcall agt_send_to_deputy(agt_deputy_t deputy, jem_u32_t msgId, const void* buffer) {
+  return deputy->do_send(msgId, buffer);
+}
 
 JEM_api JEM_noreturn void JEM_stdcall agt_convert_thread_to_deputy(const agt_deputy_params_t* pParams) {}
 

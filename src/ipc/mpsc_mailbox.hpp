@@ -5,10 +5,13 @@
 #ifndef JEMSYS_IPC_MPSC_MAILBOX_INTERNAL_HPP
 #define JEMSYS_IPC_MPSC_MAILBOX_INTERNAL_HPP
 
+#include <jemsys.h>
+
+#include <atomicutils.hpp>
+#include <memutils.hpp>
+
 #include "offset_ptr.hpp"
 #include "segment.hpp"
-
-#include <jemsys.h>
 
 #include <semaphore>
 #include <atomic>
@@ -30,100 +33,14 @@ namespace ipc{
     message_needs_cleanup       = 0x10
   };
 
-  class atomic_bitflags{
-  public:
-
-    using flag_type = jem_u32_t;
-
-    JEM_nodiscard bool test(flag_type flags) const noexcept {
-      return test_any(flags);
-    }
-
-    JEM_nodiscard bool test_any(flag_type flags) const noexcept {
-      return bits.load() & flags;
-    }
-    JEM_nodiscard bool test_all(flag_type flags) const noexcept {
-      return (bits.load() & flags) == flags;
-    }
-    JEM_nodiscard bool test_any() const noexcept {
-      return bits.load();
-    }
-
-    JEM_nodiscard bool test_and_set(flag_type flags) noexcept {
-      return test_any_and_set(flags);
-    }
-    JEM_nodiscard bool test_any_and_set(flag_type flags) noexcept {
-      return std::atomic_fetch_or(&bits, flags) & flags;
-    }
-    JEM_nodiscard bool test_all_and_set(flag_type flags) noexcept {
-      return (std::atomic_fetch_or(&bits, flags) & flags) == flags;
-    }
-
-    JEM_nodiscard bool test_and_reset(flag_type flags) noexcept {
-      return test_any_and_reset(flags);
-    }
-    JEM_nodiscard bool test_any_and_reset(flag_type flags) noexcept {
-      return std::atomic_fetch_and(&bits, ~flags) & flags;
-    }
-    JEM_nodiscard bool test_all_and_reset(flag_type flags) noexcept {
-      return (std::atomic_fetch_and(&bits, ~flags) & flags) == flags;
-    }
-
-    JEM_nodiscard bool test_and_flip(flag_type flags) noexcept {
-      return test_any_and_flip(flags);
-    }
-    JEM_nodiscard bool test_any_and_flip(flag_type flags) noexcept {
-      return std::atomic_fetch_xor(&bits, flags) & flags;
-    }
-    JEM_nodiscard bool test_all_and_flip(flag_type flags) noexcept {
-      return (std::atomic_fetch_xor(&bits, flags) & flags) == flags;
-    }
-
-
-    JEM_nodiscard flag_type fetch_and_set(flag_type flags) noexcept {
-      return std::atomic_fetch_or(&bits, flags);
-    }
-    JEM_nodiscard flag_type fetch_and_reset(flag_type flags) noexcept {
-      return std::atomic_fetch_and(&bits, ~flags);
-    }
-    JEM_nodiscard flag_type fetch_and_flip(flag_type flags) noexcept {
-      return std::atomic_fetch_xor(&bits, flags);
-    }
-
-    void set(flag_type flags) noexcept {
-      std::atomic_fetch_or(&bits, flags);
-    }
-    void reset(flag_type flags) noexcept {
-      std::atomic_fetch_and(&bits, ~flags);
-    }
-    void flip(flag_type flags) noexcept {
-      std::atomic_fetch_xor(&bits, flags);
-    }
-    void reset() noexcept {
-      bits.store(0);
-    }
-
-  private:
-    std::atomic<flag_type> bits = 0;
-  };
-
-  struct memory_desc{
-    jem_size_t size;
-    jem_size_t alignment;
-  };
-
-  template <typename T>
-  inline constexpr static memory_desc default_memory_requirements = { sizeof(T), alignof(T) };
-
 
 
   namespace impl{
     struct message_base{
-      jem_size_t      nextSlot;
-      jem_size_t      thisSlot;
-      atomic_bitflags flags;
+      jem_size_t       nextSlot;
+      jem_size_t       thisSlot;
+      atomic_flags32_t flags;
     };
-
 
     struct mailbox_base{
       // Cacheline 0 - Semaphore for claiming slots [writer]
@@ -188,7 +105,6 @@ namespace ipc{
         return const_cast<message_base*>(reinterpret_cast<const message_base*>(reinterpret_cast<const jem_u8_t*>(this + 1)));
       }
       JEM_forceinline message_base* get_message(const jem_size_t slot) const noexcept {
-        assert( slot != IPC_INVALID_MESSAGE );
         return const_cast<message_base*>(reinterpret_cast<const message_base*>(reinterpret_cast<const jem_u8_t*>(this + 1) + (slot * messageSlot.size)));
       }
       template <typename Msg>
@@ -317,43 +233,12 @@ namespace ipc{
       }
     };
 
-
-
-    /*struct dynamic_mailbox_base{
-      jem_size_t              mailboxSize;
-      offset_ptr<jem_u8_t>    mailboxDataOffset;
-      jem_u8_t*               mailboxDataAddress;
-
-      std::atomic<jem_size_t> nextWriteOffset;
-      std::atomic<jem_size_t> lastWriteOffset;
-      jem_size_t              nextReadOffset;
-    };*/
-
-
-
-    /*struct any_slot {
-      jem_size_t       nextSlot;
-      std::atomic_flag isReady;
-      std::atomic_flag isDiscarded;
-      std::byte        payload[];
-    };
-
-    struct dynamic_slot{
-      jem_size_t       messageSize;
-      std::atomic_flag isReady;
-      std::atomic_flag isDiscarded;
-      std::byte        payload[];
-    };*/
-
-
     template <typename Msg>
     struct slot_offset{
       message_base base;
       Msg          message;
     };
   }
-
-
 
   template <typename Msg>
   class slot : public impl::message_base, public Msg{
@@ -362,10 +247,6 @@ namespace ipc{
     slot(Args&& ...args) noexcept : Msg(std::forward<Args>(args)...){}
   };
 
-
-  inline static void align_size(memory_desc& mem) noexcept {
-    mem.size = ((mem.size - 1) | (mem.alignment - 1)) + 1;
-  }
 
   template <typename Msg>
   class mpsc_mailbox{
@@ -444,8 +325,6 @@ namespace ipc{
 
     impl::mailbox_base mailbox;
   };
-
-
 
   /*template <>
   class mpsc_mailbox<any_message_sized>{
