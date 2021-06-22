@@ -43,6 +43,13 @@ namespace ipc{
     can_synchronize_with_process   = 0x00100000
   };
 
+
+  struct address_range{
+    void*      address;
+    jem_size_t size;
+  };
+
+
   class process {
   public:
 
@@ -61,22 +68,39 @@ namespace ipc{
     };*/
 
 
-    static std::optional<process> create(const char* applicationName, std::string_view commandLineOpts, void* procSecurityDesc, void* threadSecurityDesc, bool inherit, const environment<char>& env) noexcept;
-    static std::optional<process> create(const char* applicationName, std::string_view commandLineOpts, const environment<wchar_t>& env) noexcept;
-    static std::optional<process> open(id processId, process_permissions_t permissions) noexcept;
+    // static std::optional<process> create(const char* applicationName, std::string_view commandLineOpts, void* procSecurityDesc, void* threadSecurityDesc, bool inherit, const environment<char>& env) noexcept;
+    // static std::optional<process> create(const char* applicationName, std::string_view commandLineOpts, const environment<wchar_t>& env) noexcept;
+    static process open(id processId, process_permissions_t permissions) noexcept;
 
 
     JEM_nodiscard void* reserve_memory(jem_size_t size, jem_size_t alignment = JEM_DONT_CARE) const noexcept;
     bool                release_memory(void* placeholder) const noexcept;
 
     JEM_nodiscard void* local_alloc(void* address, jem_size_t size, memory_access_t access = readwrite_access, numa_node_t numaNode = JEM_CURRENT_NUMA_NODE) const noexcept;
-    bool                local_free(void* allocation, jem_size_t size) const noexcept;
+    bool                local_free(void* allocation) const noexcept;
 
     JEM_nodiscard void* map(void* address, const file_mapping& fileMapping, memory_access_t = readwrite_access, numa_node_t numaNode = JEM_CURRENT_NUMA_NODE) const noexcept;
     bool                unmap(void* address) const noexcept;
 
     bool                split(void* placeholder, jem_size_t firstSize) const  noexcept;
     bool                coalesce(void* placeholder, jem_size_t totalSize) const  noexcept;
+
+
+    bool                prefetch(void* address, jem_size_t size) const noexcept;
+    bool                prefetch(std::span<const address_range> addressRanges) const noexcept;
+
+    jem_size_t write(void* dstAddr, const void* srcAddr, jem_size_t bytesToWrite) const noexcept;
+    jem_size_t read(const void* srcAddr, void* dstAddr, jem_size_t bytesToRead) const noexcept;
+
+
+
+    JEM_nodiscard bool can_read_from_memory() const noexcept {
+      return permissions_ & can_read_from_process_memory;
+    }
+    JEM_nodiscard bool can_write_to_memory() const noexcept {
+      constexpr static auto requirements = can_write_to_process_memory | can_operate_on_process_memory;
+      return (permissions_ & requirements) == requirements;
+    }
 
     JEM_nodiscard bool  is_valid() const noexcept {
       return handle_;

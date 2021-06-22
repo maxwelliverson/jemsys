@@ -158,23 +158,17 @@ namespace ipc{
 
 
 
-    JEM_nodiscard bool can_read() const noexcept {
+    JEM_nodiscard bool can_read() const noexcept;
+    JEM_nodiscard bool can_write() const noexcept;
 
-    }
-    JEM_nodiscard bool can_write() const noexcept {
-
-    }
-
-    JEM_nodiscard jem_size_t size() const noexcept {
-
-    }
+    JEM_nodiscard jem_size_t size() const noexcept;
 
 
-    JEM_nodiscard void* alloc(jem_size_t size) noexcept { }
-    JEM_nodiscard void* alloc(jem_size_t size, jem_size_t align) noexcept { }
-    JEM_nodiscard void* realloc(void* address, jem_size_t size) noexcept { }
-    JEM_nodiscard void* realloc(void* address, jem_size_t size, jem_size_t align) noexcept { }
-    void                free(void* address, jem_size_t size) noexcept { }
+    JEM_nodiscard void* alloc(jem_size_t size) noexcept;
+    JEM_nodiscard void* alloc(jem_size_t size, jem_size_t align) noexcept;
+    JEM_nodiscard void* realloc(void* address, jem_size_t size) noexcept;
+    JEM_nodiscard void* realloc(void* address, jem_size_t size, jem_size_t align) noexcept;
+    void                free(void* address, jem_size_t size) noexcept;
 
 
   private:

@@ -31,6 +31,11 @@ enum agt_mailbox_flag_bits_e {
   AGT_MAILBOX_IS_DYNAMIC                 = 0x04,
   AGT_MAILBOX_INTERPROCESS_CAPABLE       = 0x08
 };
+enum agt_send_message_flag_bits_e{
+  AGT_SEND_MESSAGE_DISCARD_RESULT    = 0x4,
+  AGT_SEND_MESSAGE_MUST_CHECK_RESULT = 0x8,
+  AGT_SEND_MESSAGE_CANCEL            = 0x10
+};
 #define AGT_MAILBOX_KIND_BITMASK (AGT_MAILBOX_SINGLE_PRODUCER | AGT_MAILBOX_SINGLE_CONSUMER | AGT_MAILBOX_IS_DYNAMIC)
 
 
@@ -47,6 +52,7 @@ enum agt_mailbox_flag_bits_e {
 
 typedef jem_flags32_t agt_mailbox_create_flags_t;
 typedef jem_flags32_t agt_mailbox_flags_t;
+typedef jem_flags32_t agt_send_message_flags_t;
 
 typedef struct agt_mailbox* agt_mailbox_t;
 
@@ -57,14 +63,6 @@ typedef struct agt_mailbox* agt_mailbox_t;
 typedef void(JEM_stdcall* agt_mailbox_cleanup_callback_t)(agt_mailbox_t mailbox, void* user_data);
 
 typedef struct {
-  const char* name;
-  jem_size_t  name_length;
-} agt_mailbox_interprocess_params_t;
-typedef struct {
-  agt_mailbox_cleanup_callback_t callback;
-  void*                          data;
-} agt_mailbox_cleanup_params_t;
-typedef struct {
   jem_u32_t type;
   union{
     void*     pointer;
@@ -73,17 +71,37 @@ typedef struct {
     float     f32;
     double    f64;
   };
-} agt_mailbox_optional_params_t;
+} agt_ext_param_t;
 
 typedef struct {
-  agt_mailbox_create_flags_t           flags;
-  jem_u32_t                            max_producers;
-  jem_u32_t                            max_consumers;
-  jem_size_t                           slot_count;
-  jem_size_t                           message_size;
-  jem_size_t                           optional_param_count;
-  const agt_mailbox_optional_params_t* optional_params;
+  const char* name;
+  jem_size_t  name_length;
+} agt_mailbox_interprocess_params_t;
+typedef struct {
+  agt_mailbox_cleanup_callback_t callback;
+  void*                          data;
+} agt_mailbox_cleanup_params_t;
+
+
+typedef struct {
+  agt_mailbox_create_flags_t flags;
+  jem_u32_t                  max_producers;
+  jem_u32_t                  max_consumers;
+  jem_size_t                 slot_count;
+  jem_size_t                 message_size;
+  jem_size_t                 extra_param_count;
+  const agt_ext_param_t*     extra_params;
 } agt_mailbox_create_info_t;
+
+
+typedef struct {
+  jem_size_t             message_size;
+  jem_size_t             message_count;
+  void**                 payloads;
+  jem_u64_t              timeout_us;
+  jem_size_t             extra_param_count;
+  const agt_ext_param_t* extra_params;
+} agt_send_params_t;
 
 
 
@@ -107,8 +125,17 @@ JEM_api jem_size_t          JEM_stdcall agt_mailbox_get_max_producers(agt_mailbo
 JEM_api jem_size_t          JEM_stdcall agt_mailbox_get_max_consumers(agt_mailbox_t mailbox);
 
 
+
+
+JEM_api void*               JEM_stdcall agt_acquire_slot(agt_handle_t handle, jem_size_t messageSize);
+JEM_api agt_status_t        JEM_stdcall agt_try_acquire_slot(agt_mailbox_t mailbox, jem_size_t messageSize, void** pMessagePayload, jem_u64_t timeout_us);
+JEM_api agt_status_t        JEM_stdcall agt_acquire_slot_ex(agt_handle_t handle, const agt_send_params_t* sendParams);
+
+
+
+
 JEM_api agt_status_t        JEM_stdcall agt_start_send_message(agt_mailbox_t mailbox, jem_size_t messageSize, void** pMessagePayload, jem_u64_t timeout_us);
-JEM_api agt_message_t       JEM_stdcall agt_finish_send_message(agt_mailbox_t mailbox, jem_size_t messageSize, void* messagePayload);
+JEM_api agt_status_t        JEM_stdcall agt_finish_send_message(agt_mailbox_t mailbox, agt_message_t* pMessage, void* messagePayload, agt_send_message_flags_t flags);
 JEM_api agt_status_t        JEM_stdcall agt_receive_message(agt_mailbox_t mailbox, agt_message_t* pMessage, jem_u64_t timeout_us);
 JEM_api void                JEM_stdcall agt_discard_message(agt_mailbox_t mailbox, agt_message_t message);
 JEM_api agt_status_t        JEM_stdcall agt_cancel_message(agt_mailbox_t mailbox, agt_message_t message);

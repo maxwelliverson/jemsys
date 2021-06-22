@@ -73,19 +73,19 @@ extern "C" {
   JEM_api agt_status_t        JEM_stdcall agt_mailbox_attach_consumer(agt_mailbox_t mailbox, jem_u64_t timeout_us) {
     switch (mailbox->flags & (AGT_MAILBOX_SINGLE_PRODUCER | AGT_MAILBOX_SINGLE_CONSUMER)) {
       case 0:
-        if ( static_cast<agt::mpmc_mailbox*>(mailbox)->consumerSemaphore.try_acquire_for(std::chrono::microseconds(timeout_us)) )
+        if ( static_cast<agt::mpmc_mailbox*>(mailbox)->consumerSemaphore.try_acquire_for(timeout_us) )
           return AGT_SUCCESS;
         return AGT_ERROR_TOO_MANY_CONSUMERS;
       case 1:
-        if ( static_cast<agt::mpsc_mailbox*>(mailbox)->consumerSemaphore.try_acquire_for(std::chrono::microseconds(timeout_us)) )
+        if ( static_cast<agt::mpsc_mailbox*>(mailbox)->consumerSemaphore.try_acquire_for(timeout_us) )
           return AGT_SUCCESS;
         return AGT_ERROR_TOO_MANY_CONSUMERS;
       case 2:
-        if ( static_cast<agt::spmc_mailbox*>(mailbox)->consumerSemaphore.try_acquire_for(std::chrono::microseconds(timeout_us)) )
+        if ( static_cast<agt::spmc_mailbox*>(mailbox)->consumerSemaphore.try_acquire_for(timeout_us) )
           return AGT_SUCCESS;
         return AGT_ERROR_TOO_MANY_CONSUMERS;
       case 3:
-        if ( static_cast<agt::spsc_mailbox*>(mailbox)->consumerSemaphore.try_acquire_for(std::chrono::microseconds(timeout_us)) )
+        if ( static_cast<agt::spsc_mailbox*>(mailbox)->consumerSemaphore.try_acquire_for(timeout_us) )
           return AGT_SUCCESS;
         return AGT_ERROR_TOO_MANY_CONSUMERS;
       JEM_no_default;
@@ -123,8 +123,8 @@ extern "C" {
   JEM_api agt_status_t        JEM_stdcall agt_start_send_message(agt_mailbox_t mailbox, jem_size_t messageSize, void** pMessagePayload, jem_u64_t timeout_us) {
     return (agt::impl::start_send_message_table[mailbox->kind])(mailbox, messageSize, pMessagePayload, timeout_us);
   }
-  JEM_api agt_message_t       JEM_stdcall agt_finish_send_message(agt_mailbox_t mailbox, jem_size_t messageSize, void* messagePayload) {
-    return (agt::impl::finish_send_message_table[mailbox->kind])(mailbox, messageSize, messagePayload);
+  JEM_api agt_status_t        JEM_stdcall agt_finish_send_message(agt_mailbox_t mailbox, agt_message_t* pMessage, void* messagePayload, agt_send_message_flags_t flags) {
+    return (agt::impl::finish_send_message_table[mailbox->kind])(mailbox, pMessage, messagePayload, flags);
   }
   JEM_api agt_status_t        JEM_stdcall agt_receive_message(agt_mailbox_t mailbox, agt_message_t* pMessage, jem_u64_t timeout_us) {
     return (agt::impl::receive_message_table[mailbox->kind])(mailbox, pMessage, timeout_us);

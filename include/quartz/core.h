@@ -15,6 +15,7 @@ typedef jem_u64_t qtz_global_id_t;
 typedef struct qtz_mailbox*        qtz_mailbox_t;
 typedef struct qtz_request*        qtz_request_t;
 typedef struct qtz_deputy*         qtz_deputy_t;
+typedef struct qtz_agent*          qtz_agent_t;
 typedef struct qtz_process*        qtz_process_t;
 typedef struct qtz_shared_mailbox* qtz_shared_mailbox_t;
 

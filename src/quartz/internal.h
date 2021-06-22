@@ -1731,8 +1731,8 @@ typedef enum {
   GLOBAL_MESSAGE_KIND_OPEN_IPC_LINK,
   GLOBAL_MESSAGE_KIND_CLOSE_IPC_LINK,
   GLOBAL_MESSAGE_KIND_SEND_IPC_MESSAGE,
-  GLOBAL_MESSAGE_KIND_OPEN_THREAD,
-  GLOBAL_MESSAGE_KIND_CLOSE_THREAD,
+  GLOBAL_MESSAGE_KIND_OPEN_DEPUTY,
+  GLOBAL_MESSAGE_KIND_CLOSE_DEPUTY,
   GLOBAL_MESSAGE_KIND_ATTACH_THREAD,
   GLOBAL_MESSAGE_KIND_DETACH_THREAD,
   GLOBAL_MESSAGE_KIND_REGISTER_AGENT,
@@ -1966,15 +1966,7 @@ struct qtz_mailbox {
   qtz_message_action_t proc_unregister_agent(qtz_request_t request) noexcept;
 };
 
-
-static atomic_flag_t isInitialized{};
-
-
-
-static void*         globalMailboxThreadHandle;
-static int           globalMailboxThreadId;
-
-static qtz_mailbox_t globalMailbox;
+qtz_mailbox_t globalMailbox;
 
 #define JEM_GLOBAL_MESSAGE_SIZE  64
 #define JEM_GLOBAL_MESSAGE_SLOTS ((JEM_VIRTUAL_PAGE_SIZE - sizeof(struct qtz_mailbox)) / JEM_GLOBAL_MESSAGE_SIZE)
