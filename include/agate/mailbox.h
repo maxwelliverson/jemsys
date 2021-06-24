@@ -20,6 +20,13 @@ typedef enum {
   AGT_RETURN_MESSAGE,
   AGT_PRESERVE_MESSAGE
 } agt_receive_action_t;
+typedef enum {
+  AGT_HANDLE_ATTRIBUTE_MAX_MESSAGE_SIZE,
+  AGT_HANDLE_ATTRIBUTE_DEFAULT_MESSAGE_SIZE,
+  AGT_HANDLE_ATTRIBUTE_MAX_CONSUMERS,
+  AGT_HANDLE_ATTRIBUTE_MAX_PRODUCERS,
+  AGT_HANDLE_ATTRIBUTE_IS_INTERPROCESS_CAPABLE
+} agt_handle_attribute_kind_t;
 
 enum agt_mailbox_create_flag_bits_e {
   AGT_MAILBOX_CREATE_REQUIRES_CLEANUP = 0x01,
@@ -65,13 +72,22 @@ typedef void(JEM_stdcall* agt_mailbox_cleanup_callback_t)(agt_mailbox_t mailbox,
 typedef struct {
   jem_u32_t type;
   union{
-    void*     pointer;
-    jem_u32_t u32;
-    jem_u64_t u64;
-    float     f32;
-    double    f64;
+    void*      pointer;
+    jem_size_t size;
+    jem_u32_t  u32;
+    jem_u64_t  u64;
+    float      f32;
+    double     f64;
   };
 } agt_ext_param_t;
+typedef union {
+  void*      pointer;
+  jem_size_t size;
+  jem_u32_t  u32;
+  jem_u64_t  u64;
+  float      f32;
+  double     f64;
+} agt_handle_attribute_t;
 
 typedef struct {
   const char* name;
@@ -101,7 +117,22 @@ typedef struct {
   jem_u64_t              timeout_us;
   jem_size_t             extra_param_count;
   const agt_ext_param_t* extra_params;
-} agt_send_params_t;
+} agt_acquire_slot_ex_params_t;
+typedef struct {
+  agt_send_message_flags_t flags;
+  jem_size_t               message_count;
+  void**                   payloads;
+  agt_message_t*           messages;
+  jem_size_t               extra_param_count;
+  const agt_ext_param_t*   extra_params;
+} agt_send_ex_params_t;
+typedef struct {
+  jem_size_t             messageCount;
+  agt_message_t*         messages;
+  jem_u64_t              timeout_us;
+  jem_size_t             extra_param_count;
+  const agt_ext_param_t* extra_params;
+} agt_receive_ex_params_t;
 
 
 
@@ -127,9 +158,39 @@ JEM_api jem_size_t          JEM_stdcall agt_mailbox_get_max_consumers(agt_mailbo
 
 
 
+
+
+
+
 JEM_api void*               JEM_stdcall agt_acquire_slot(agt_handle_t handle, jem_size_t messageSize);
-JEM_api agt_status_t        JEM_stdcall agt_try_acquire_slot(agt_mailbox_t mailbox, jem_size_t messageSize, void** pMessagePayload, jem_u64_t timeout_us);
-JEM_api agt_status_t        JEM_stdcall agt_acquire_slot_ex(agt_handle_t handle, const agt_send_params_t* sendParams);
+JEM_api agt_status_t        JEM_stdcall agt_try_acquire_slot(agt_handle_t handle, jem_size_t messageSize, void** pMessagePayload, jem_u64_t timeout_us);
+JEM_api agt_status_t        JEM_stdcall agt_acquire_slot_ex(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params);
+
+
+JEM_api agt_message_t       JEM_stdcall agt_send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags);
+JEM_api agt_status_t        JEM_stdcall agt_send_ex(agt_handle_t handle, const agt_send_ex_params_t* params);
+
+JEM_api agt_message_t       JEM_stdcall agt_receive(agt_handle_t handle);
+JEM_api agt_status_t        JEM_stdcall agt_try_receive(agt_handle_t handle, agt_message_t* pMessage, jem_u64_t timeout_us);
+JEM_api agt_status_t        JEM_stdcall agt_receive_ex(agt_handle_t handle, const agt_receive_ex_params_t* params);
+
+
+
+JEM_api bool                JEM_stdcall agt_discard(agt_message_t message);
+JEM_api agt_status_t        JEM_stdcall agt_cancel(agt_message_t message);
+
+
+JEM_api agt_status_t        JEM_stdcall agt_get_status(agt_message_t message);
+JEM_api void                JEM_stdcall agt_set_status(agt_message_t message, agt_status_t status);
+JEM_api agt_status_t        JEM_stdcall agt_notify_sender(agt_message_t message);
+JEM_api agt_status_t        JEM_stdcall agt_wait(agt_message_t message, jem_u64_t timeout_us);
+JEM_api void*               JEM_stdcall agt_get_payload(agt_message_t message, jem_size_t* pMessageSize);
+
+JEM_api void                JEM_stdcall agt_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes);
+
+
+
+
 
 
 

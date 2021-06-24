@@ -95,6 +95,7 @@ typedef struct {
   void*              pUserData;
 } agt_deputy_params_t;
 
+
 JEM_api agt_request_t  JEM_stdcall agt_open_deputy(agt_deputy_t* pDeputy, const agt_deputy_params_t* pParams);
 JEM_api void           JEM_stdcall agt_close_deputy(agt_deputy_t deputy);
 
