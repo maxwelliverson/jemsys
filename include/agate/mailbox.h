@@ -111,23 +111,30 @@ typedef struct {
 
 
 typedef struct {
-  jem_size_t             message_size;
-  jem_size_t             message_count;
-  void**                 payloads;
+  jem_size_t             slot_size;
+  jem_size_t             count;
+  void**                 slots;
   jem_u64_t              timeout_us;
   jem_size_t             extra_param_count;
   const agt_ext_param_t* extra_params;
 } agt_acquire_slot_ex_params_t;
 typedef struct {
+  jem_size_t             count;
+  void**                 slots;
+  jem_u64_t              timeout_us;
+  jem_size_t             extra_param_count;
+  const agt_ext_param_t* extra_params;
+} agt_release_slot_ex_params_t;
+typedef struct {
   agt_send_message_flags_t flags;
-  jem_size_t               message_count;
-  void**                   payloads;
+  jem_size_t               count;
+  void**                   slots;
   agt_message_t*           messages;
   jem_size_t               extra_param_count;
   const agt_ext_param_t*   extra_params;
 } agt_send_ex_params_t;
 typedef struct {
-  jem_size_t             messageCount;
+  jem_size_t             count;
   agt_message_t*         messages;
   jem_u64_t              timeout_us;
   jem_size_t             extra_param_count;
@@ -162,17 +169,32 @@ JEM_api jem_size_t          JEM_stdcall agt_mailbox_get_max_consumers(agt_mailbo
 
 
 
-JEM_api void*               JEM_stdcall agt_acquire_slot(agt_handle_t handle, jem_size_t messageSize);
-JEM_api agt_status_t        JEM_stdcall agt_try_acquire_slot(agt_handle_t handle, jem_size_t messageSize, void** pMessagePayload, jem_u64_t timeout_us);
-JEM_api agt_status_t        JEM_stdcall agt_acquire_slot_ex(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params);
 
-
+JEM_api void*               JEM_stdcall agt_acquire_slot(agt_handle_t handle, jem_size_t slotSize);
+JEM_api void                JEM_stdcall agt_release_slot(agt_handle_t handle, void* slot);
 JEM_api agt_message_t       JEM_stdcall agt_send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags);
-JEM_api agt_status_t        JEM_stdcall agt_send_ex(agt_handle_t handle, const agt_send_ex_params_t* params);
-
 JEM_api agt_message_t       JEM_stdcall agt_receive(agt_handle_t handle);
+
+JEM_api agt_status_t        JEM_stdcall agt_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots);
+JEM_api void                JEM_stdcall agt_release_many_slots(agt_handle_t handle, jem_size_t slotCount, void** slots);
+JEM_api void                JEM_stdcall agt_send_many(agt_handle_t handle, jem_size_t messageCount, void** messageSlots, agt_message_t* messages, agt_send_message_flags_t flags);
+JEM_api agt_status_t        JEM_stdcall agt_receive_many(agt_handle_t handle, jem_size_t count, agt_message_t* messages);
+
+
+JEM_api agt_status_t        JEM_stdcall agt_try_acquire_slot(agt_handle_t handle, jem_size_t slotSize, void** pSlot, jem_u64_t timeout_us);
 JEM_api agt_status_t        JEM_stdcall agt_try_receive(agt_handle_t handle, agt_message_t* pMessage, jem_u64_t timeout_us);
+
+JEM_api agt_status_t        JEM_stdcall agt_try_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots, jem_u64_t timeout_us);
+JEM_api agt_status_t        JEM_stdcall agt_try_receive_many(agt_handle_t handle, jem_size_t slotCount, agt_message_t* message, jem_u64_t timeout_us);
+
+
+JEM_api agt_status_t        JEM_stdcall agt_acquire_slot_ex(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params);
+JEM_api agt_status_t        JEM_stdcall agt_release_slot_ex(agt_handle_t handle, const agt_release_slot_ex_params_t* params);
+JEM_api agt_status_t        JEM_stdcall agt_send_ex(agt_handle_t handle, const agt_send_ex_params_t* params);
 JEM_api agt_status_t        JEM_stdcall agt_receive_ex(agt_handle_t handle, const agt_receive_ex_params_t* params);
+
+
+
 
 
 

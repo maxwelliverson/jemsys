@@ -10,18 +10,38 @@
 #include <agate/mpmc_mailbox.h>
 
 namespace {
-  using PFN_acquire_slot          = void*(JEM_stdcall*)(agt_handle_t handle, jem_size_t messageSize) noexcept;
-  using PFN_try_acquire_slot      = agt_status_t(JEM_stdcall*)(agt_handle_t handle, jem_size_t messageSize, void** pSlot, jem_u64_t timeout_us) noexcept;
-  using PFN_acquire_slot_ex       = agt_status_t(JEM_stdcall*)(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params) noexcept;
-  using PFN_send                  = agt_message_t(JEM_stdcall*)(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags) noexcept;
-  using PFN_send_and_discard      = void(JEM_stdcall*)(agt_handle_t handle, void* messageSlot);
-  using PFN_do_not_send           = void(JEM_stdcall*)(agt_handle_t handle, void* messageSlot);
-  using PFN_send_many             = void(JEM_stdcall*)(agt_handle_t handle, void** messageSlots, jem_size_t messageCount, agt_message_t* messages, agt_send_message_flags_t flags) noexcept;
-  using PFN_send_and_discard_many = void(JEM_stdcall*)(agt_handle_t handle, void** messageSlots, jem_size_t messageCount);
-  using PFN_do_not_send_many      = void(JEM_stdcall*)(agt_handle_t handle, void** messageSlots, jem_size_t messageCount);
-  using PFN_receive               = agt_message_t(JEM_stdcall*)(agt_handle_t handle) noexcept;
-  using PFN_try_receive           = agt_status_t(JEM_stdcall*)(agt_handle_t handle, agt_message_t* pMessage, jem_u64_t timeout_us) noexcept;
-  using PFN_receive_ex            = agt_status_t(JEM_stdcall*)(agt_handle_t handle, const agt_receive_ex_params_t* params) noexcept;
+
+  template <auto PFN>
+  struct pfn;
+  template <typename Ret, typename ...Args, Ret(*PFN)(Args...)>
+  struct pfn<PFN>{
+    using type = Ret(JEM_stdcall*)(Args...) noexcept;
+  };
+
+#define JEM_define_pfn(fn) using PFN_##fn = typename pfn<(&agt_##fn)>::type
+#define JEM_member_pfn(fn) typename pfn<(&agt_##fn)>::type fn
+
+
+  JEM_define_pfn(acquire_slot);
+  JEM_define_pfn(acquire_many_slots);
+  JEM_define_pfn(try_acquire_slot);
+  JEM_define_pfn(try_acquire_many_slots);
+  JEM_define_pfn(acquire_slot_ex);
+
+  JEM_define_pfn(release_slot);
+  JEM_define_pfn(release_many_slots);
+  JEM_define_pfn(release_slot_ex);
+
+  JEM_define_pfn(send);
+  JEM_define_pfn(send_many);
+  JEM_define_pfn(send_ex);
+
+  JEM_define_pfn(receive);
+  JEM_define_pfn(receive_many);
+  JEM_define_pfn(try_receive);
+  JEM_define_pfn(try_receive_many);
+  JEM_define_pfn(receive_ex);
+
 
   using PFN_discard               = bool(JEM_stdcall*)(agt_handle_t handle, agt_message_t message) noexcept;
   using PFN_cancel                = agt_status_t(JEM_stdcall*)(agt_handle_t handle, agt_message_t message) noexcept;
@@ -29,63 +49,88 @@ namespace {
 
 
   struct object_vtable_t{
-    PFN_acquire_slot          acquire_slot;
-    PFN_try_acquire_slot      try_acquire_slot;
-    PFN_acquire_slot_ex       acquire_slot_ex;
-    PFN_send                  send;
-    PFN_do_not_send           do_not_send;
-    PFN_send_and_discard      send_and_discard;
-    PFN_send_many             send_many;
-    PFN_do_not_send_many      do_not_send_many;
-    PFN_send_and_discard_many send_and_discard_many;
-    PFN_receive               receive;
-    PFN_try_receive           try_receive;
-    PFN_receive_ex            receive_ex;
+    JEM_member_pfn(acquire_slot);
+    JEM_member_pfn(acquire_many_slots);
+    JEM_member_pfn(try_acquire_slot);
+    JEM_member_pfn(try_acquire_many_slots);
+    JEM_member_pfn(acquire_slot_ex);
+
+    JEM_member_pfn(release_slot);
+    JEM_member_pfn(release_many_slots);
+    JEM_member_pfn(release_slot_ex);
+
+    JEM_member_pfn(send);
+    JEM_member_pfn(send_many);
+    JEM_member_pfn(send_ex);
+
+    JEM_member_pfn(receive);
+    JEM_member_pfn(receive_many);
+    JEM_member_pfn(try_receive);
+    JEM_member_pfn(try_receive_many);
+    JEM_member_pfn(receive_ex);
+
+
+
     PFN_discard               discard;
     PFN_cancel                cancel;
     PFN_query_attributes      query_attributes;
   };
 
   template <typename T>
-  struct object_ops{
+  struct common_ops {
+    using object_t       = T*;
+    using const_object_t = const T*;
+    using message_t      = typename agt::handle_traits<T>::message_type;
 
-    using message_type = typename T::message_type;
+    static bool valid_message_size(const_object_t object, jem_size_t messageSize) noexcept;
+    static bool valid_message_size(const_object_t object, jem_size_t messageSize, jem_size_t messageCount) noexcept;
 
-    static bool valid_message_size(const T*, jem_size_t) noexcept;
+    static message_t     acquire_queued_message(object_t object) noexcept;
+    static message_t try_acquire_queued_message(object_t object) noexcept;
+    static message_t try_acquire_queued_message_for(object_t object, jem_u64_t timeout_us) noexcept;
 
-    static message_type* acquire_free_slot(T*) noexcept;
-    static message_type* try_acquire_free_slot(T*) noexcept;
-    static message_type* try_acquire_free_slot_for(T*, jem_u64_t) noexcept;
+    static bool             acquire_many_queued_messages(object_t object, jem_size_t messageCount, message_t* messages) noexcept;
+    static agt_status_t try_acquire_many_queued_messages(object_t object, jem_size_t messageCount, message_t* messages) noexcept;
+    static agt_status_t try_acquire_many_queued_messages_for(object_t object, jem_size_t messageCount, message_t* messages, jem_u64_t timeout_us) noexcept;
 
-    static message_type* acquire_queued_message(T*) noexcept;
-    static message_type* try_acquire_queued_message(T*) noexcept;
-    static message_type* try_acquire_queued_message_for(T*, jem_u64_t) noexcept;
-
-    static void enqueue_message(T*, message_type*) noexcept;
-    static void release_message(T*, message_type*) noexcept;
-    static void enqueue_messages(T*, message_type*, jem_size_t count) noexcept;
-    static void release_messages(T*, message_type*, jem_size_t count) noexcept;
+    static void enqueue_message(object_t object, message_t message) noexcept;
+    static void release_message(object_t object, message_t message) noexcept;
+    static void enqueue_messages(object_t object, const message_t* messages, jem_size_t count) noexcept;
+    static void release_messages(object_t object, const message_t* messages, jem_size_t count) noexcept;
   };
   template <typename T>
-  struct dynamic_object_ops{
+  struct object_ops : common_ops<T> {
 
-    using message_type = typename T::message_type;
+    using object_t       = T*;
+    using const_object_t = const T*;
+    using message_t      = typename agt::handle_traits<T>::message_type;
 
-    static bool       valid_message_size(const T*, jem_size_t) noexcept;
-    static jem_size_t translate_message_size(const T* object, jem_size_t messageSize) noexcept;
+    static message_t     acquire_free_slot(object_t object) noexcept;
+    static message_t try_acquire_free_slot(object_t object) noexcept;
+    static message_t try_acquire_free_slot_for(object_t object, jem_u64_t timeout_us) noexcept;
 
-    static message_type* acquire_free_slot(T* object, jem_size_t messageSize) noexcept;
-    static message_type* try_acquire_free_slot(T* object, jem_size_t messageSize) noexcept;
-    static message_type* try_acquire_free_slot_for(T* object, jem_size_t messageSize, jem_u64_t timeout_us) noexcept;
+    static bool             acquire_many_free_slots(object_t object, jem_size_t messageCount, void** slots) noexcept;
+    static agt_status_t try_acquire_many_free_slots(object_t object, jem_size_t messageCount, void** slots) noexcept;
+    static agt_status_t try_acquire_many_free_slots_for(object_t object, jem_size_t messageCount, void** slots, jem_u64_t timeout_us) noexcept;
 
-    static message_type* acquire_queued_message(T* object) noexcept;
-    static message_type* try_acquire_queued_message(T* object) noexcept;
-    static message_type* try_acquire_queued_message_for(T* object, jem_u64_t timeout_us) noexcept;
 
-    static void enqueue_message(T* object, message_type* message) noexcept;
-    static void release_message(T* object, message_type* message) noexcept;
-    static void enqueue_messages(T*, message_type*, jem_size_t count) noexcept;
-    static void release_messages(T*, message_type*, jem_size_t count) noexcept;
+  };
+  template <typename T>
+  struct dynamic_object_ops : common_ops<T> {
+
+    using object_t       = T*;
+    using const_object_t = const T*;
+    using message_t      = typename agt::handle_traits<T>::message_type;
+
+    static jem_size_t translate_message_size(const_object_t object, jem_size_t messageSize) noexcept;
+
+    static message_t acquire_free_slot(object_t object, jem_size_t messageSize) noexcept;
+    static message_t try_acquire_free_slot(object_t object, jem_size_t messageSize) noexcept;
+    static message_t try_acquire_free_slot_for(object_t object, jem_size_t messageSize, jem_u64_t timeout_us) noexcept;
+
+    static bool             acquire_many_free_slots(object_t object, jem_size_t messageSize, jem_size_t messageCount, void** slots) noexcept;
+    static agt_status_t try_acquire_many_free_slots(object_t object, jem_size_t messageSize, jem_size_t messageCount, void** slots) noexcept;
+    static agt_status_t try_acquire_many_free_slots_for(object_t object, jem_size_t messageSize, jem_size_t messageCount, void** slots, jem_u64_t timeout_us) noexcept;
   };
 
 
@@ -101,6 +146,7 @@ namespace {
 
     using ops = std::conditional_t<IsDynamic, dynamic_object_ops<T>, object_ops<T>>;
 
+
     static void*         JEM_stdcall acquire_slot(agt_handle_t handle, jem_size_t messageSize) noexcept {
       const auto object = cast<object_t>(handle);
       message_t message;
@@ -115,12 +161,28 @@ namespace {
         return ops::acquire_free_slot(object);
       }
     }
+    static agt_status_t  JEM_stdcall acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots) noexcept {
+      const auto object = cast<object_t>(handle);
+      if ( !ops::valid_message_size(object, slotSize, slotCount) ) [[unlikely]]
+        return AGT_ERROR_BAD_SIZE;
+
+      if constexpr ( IsDynamic ) {
+        jem_size_t actualSize = ops::translate_message_size(object, slotSize);
+        if ( !ops::acquire_many_free_slots(object, actualSize, slotCount, slots) )
+          return AGT_ERROR_INSUFFICIENT_SLOTS;
+      }
+      else {
+        if ( !ops::acquire_many_free_slots(object, slotCount, slots) )
+          return AGT_ERROR_INSUFFICIENT_SLOTS;
+      }
+      return AGT_SUCCESS;
+    }
     static agt_status_t  JEM_stdcall try_acquire_slot(agt_handle_t handle, jem_size_t messageSize, void** pPayload, jem_u64_t timeout_us) noexcept {
       const auto object = cast<object_t>(handle);
       message_t message;
 
       if ( !ops::valid_message_size(object, messageSize) ) [[unlikely]]
-        return AGT_ERROR_MESSAGE_TOO_LARGE;
+        return AGT_ERROR_BAD_SIZE;
 
       if constexpr ( IsDynamic ) {
         jem_size_t actualSize = ops::translate_message_size(object, messageSize);
@@ -148,86 +210,130 @@ namespace {
       *pPayload = message_to_payload(message);
       return AGT_SUCCESS;
     }
+    static agt_status_t  JEM_stdcall try_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots, jem_u64_t timeout_us) noexcept {
+      const auto object = cast<object_t>(handle);
+
+      if ( timeout_us == JEM_WAIT ) [[unlikely]]
+        return acquire_many_slots(handle, slotSize, slotCount, slots);
+
+      if ( !ops::valid_message_size(object, slotSize, slotCount) ) [[unlikely]]
+        return AGT_ERROR_BAD_SIZE;
+
+      if constexpr ( IsDynamic ) {
+        jem_size_t actualSize = ops::translate_message_size(object, slotSize);
+        if ( timeout_us == JEM_DO_NOT_WAIT )
+          return ops::try_acquire_many_free_slots(object, actualSize, slotCount, slots);
+        return ops::try_acquire_many_free_slots_for(object, actualSize, slotCount, slots, timeout_us);
+      }
+      else {
+        if ( timeout_us == JEM_DO_NOT_WAIT )
+          return ops::try_acquire_many_free_slots(object, slotCount, slots);
+        return ops::try_acquire_many_free_slots_for(object, slotCount, slots, timeout_us);
+      }
+    }
     static agt_status_t  JEM_stdcall acquire_slot_ex(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params) noexcept {
       return AGT_ERROR_NOT_YET_IMPLEMENTED;
     }
 
+
+    static void          JEM_stdcall release_slot(agt_handle_t handle, void* slot) noexcept {
+      ops::release_message(cast<object_t>(handle), static_cast<message_t>(payload_to_message(slot)));
+    }
+    static void          JEM_stdcall release_many_slots(agt_handle_t handle, jem_size_t slotCount, void** slots) noexcept {
+      const auto messages = reinterpret_cast<message_t*>(slots);
+      for ( jem_size_t i = 0; i != slotCount; ++i )
+        messages[i] = static_cast<message_t>(payload_to_message(slots[i]));
+      ops::release_messages(cast<object_t>(handle), messages, slotCount);
+    }
+    static agt_status_t  JEM_stdcall release_slot_ex(agt_handle_t handle, const agt_release_slot_ex_params_t* params) noexcept {
+      return AGT_ERROR_NOT_YET_IMPLEMENTED;
+    }
+
+
     static agt_message_t JEM_stdcall send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags) noexcept {
+
+      constexpr static agt_send_message_flags_t InvalidFlagMask   = ~(AGT_SEND_MESSAGE_DISCARD_RESULT | AGT_SEND_MESSAGE_MUST_CHECK_RESULT);
+      constexpr static agt_send_message_flags_t InvalidFlagCombo0 = AGT_SEND_MESSAGE_DISCARD_RESULT | AGT_SEND_MESSAGE_MUST_CHECK_RESULT;
+
+      assert(!(flags & InvalidFlagMask));
+      assert( (flags & InvalidFlagCombo0 ) != InvalidFlagCombo0 );
+
       const auto object  = cast<object_t>(handle);
       const auto message = static_cast<message_t>(payload_to_message(messageSlot));
 
       message->flags.set(flags | agt::message_in_use);
       ops::enqueue_message(object, message);
+      if ( flags & AGT_SEND_MESSAGE_DISCARD_RESULT )
+        return nullptr;
       return message;
     }
-    static void          JEM_stdcall do_not_send(agt_handle_t handle, void* messageSlot) noexcept {
-      ops::release_message(cast<object_t>(handle), static_cast<message_t>(payload_to_message(messageSlot)));
-    }
-    static void          JEM_stdcall send_and_discard(agt_handle_t handle, void* messageSlot) noexcept {
-      const auto object  = cast<object_t>(handle);
-      const auto message = static_cast<message_t>(payload_to_message(messageSlot));
+    static void          JEM_stdcall send_many(agt_handle_t handle, jem_size_t messageCount, void** slots, agt_message_t* messages, agt_send_message_flags_t flags) noexcept {
 
-      message->flags.set(agt::message_in_use | agt::message_result_is_discarded);
-      ops::enqueue_message(object, message);
-    }
+      assert((flags & AGT_SEND_MESSAGE_DISCARD_RESULT) || messages != nullptr);
 
-    static void          JEM_stdcall send_many(agt_handle_t handle, void** messageSlots, jem_size_t messageCount, agt_message_t* messages, agt_send_message_flags_t flags) noexcept {
       const auto object  = cast<object_t>(handle);
+      message_t* const messageList = flags & AGT_SEND_MESSAGE_DISCARD_RESULT ? reinterpret_cast<message_t*>(slots) : reinterpret_cast<message_t*>(messages);
 
       for ( jem_size_t i = 0; i != messageCount; ++i ) {
-        const auto message = static_cast<message_t>(payload_to_message(messageSlots[i]));
+        const auto message = static_cast<message_t>(payload_to_message(slots[i]));
         message->flags.set(flags | agt::message_in_use);
-        messages[i] = message;
+        messageList[i] = message;
       }
 
-      ops::enqueue_messages(object, messages, messageCount);
+      ops::enqueue_messages(object, messageList, messageCount);
     }
-    static void          JEM_stdcall do_not_send_many(agt_handle_t handle, void** messageSlots, jem_size_t messageCount) noexcept {
-      const auto object  = cast<object_t>(handle);
-      const auto messages = reinterpret_cast<message_t*>(alloca(messageCount * sizeof(void*)));
-      for ( jem_size_t i = 0; i != messageCount; ++i ) {
-        messages[i] = static_cast<message_t>(payload_to_message(messageSlots[i]));
-      }
-      ops::release_messages(object, messages, messageCount);
+    static agt_status_t  JEM_stdcall send_ex(agt_handle_t handle, const agt_send_ex_params_t* params) noexcept {
+      return AGT_ERROR_NOT_YET_IMPLEMENTED;
     }
-    static void          JEM_stdcall send_and_discard_many(agt_handle_t handle, void** messageSlots, jem_size_t messageCount) noexcept {
-      const auto object  = cast<object_t>(handle);
-      const auto messages = reinterpret_cast<message_t*>(alloca(messageCount * sizeof(void*)));
-      for ( jem_size_t i = 0; i != messageCount; ++i ) {
-        const auto message = static_cast<message_t>(payload_to_message(messageSlots[i]));
-        message->flags.set(agt::message_in_use);
-        messages[i] = message;
-      }
 
-      ops::enqueue_messages(object, messages, messageCount);
-    }
 
     static agt_message_t JEM_stdcall receive(agt_handle_t handle) noexcept {
       return ops::acquire_queued_message(cast<object_t>(handle));
     }
+    static agt_status_t  JEM_stdcall receive_many(agt_handle_t handle, jem_size_t count, agt_message_t* messages) noexcept {
+      const auto object = cast<object_t>(handle);
+      const auto messageList = reinterpret_cast<message_t*>(messages);
+
+      if ( !ops::acquire_many_queued_messages(object, count, messageList))
+        return AGT_ERROR_INSUFFICIENT_SLOTS;
+      return AGT_SUCCESS;
+    }
     static agt_status_t  JEM_stdcall try_receive(agt_handle_t handle, agt_message_t* pMessage, jem_u64_t timeout_us) noexcept {
+
+      if ( timeout_us == JEM_WAIT ) [[unlikely]] {
+        *pMessage = receive(handle);
+        return AGT_SUCCESS;
+      }
       const auto object = cast<object_t>(handle);
       message_t message;
 
-      if ( timeout_us == JEM_WAIT ) [[likely]] {
-        message = ops::acquire_queued_message(object);
+      if ( timeout_us == JEM_DO_NOT_WAIT ) {
+        message = ops::try_acquire_queued_message(object);
       }
       else {
-        if ( timeout_us == JEM_DO_NOT_WAIT ) {
-          message = ops::try_acquire_queued_message(object);
-        }
-        else {
-          message = ops::try_acquire_queued_message_for(object, timeout_us);
-        }
-        if ( !message )
-          return AGT_ERROR_MAILBOX_IS_EMPTY;
+        message = ops::try_acquire_queued_message_for(object, timeout_us);
       }
+      if ( !message )
+        return AGT_ERROR_MAILBOX_IS_EMPTY;
+
       *pMessage = message;
       return AGT_SUCCESS;
+    }
+    static agt_status_t  JEM_stdcall try_receive_many(agt_handle_t handle, jem_size_t count, agt_message_t* messages, jem_u64_t timeout_us) noexcept {
+
+      if ( timeout_us == JEM_WAIT ) [[unlikely]]
+        return receive_many(handle, count, messages);
+
+      const auto object = cast<object_t>(handle);
+
+      if ( timeout_us == JEM_DO_NOT_WAIT )
+        return ops::try_acquire_many_queued_messages(object, count, reinterpret_cast<message_t*>(messages));
+      return ops::try_acquire_many_queued_messages_for(object, count, reinterpret_cast<message_t*>(messages), timeout_us);
     }
     static agt_status_t  JEM_stdcall receive_ex(agt_handle_t handle, const agt_receive_ex_params_t* params) noexcept {
       return AGT_ERROR_NOT_YET_IMPLEMENTED;
     }
+
 
     static bool          JEM_stdcall discard(agt_handle_t handle, agt_message_t message) noexcept {
 
@@ -235,23 +341,35 @@ namespace {
     static agt_status_t  JEM_stdcall cancel(agt_handle_t handle, agt_message_t message) noexcept {
 
     }
-    static void          JEM_stdcall query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes) noexcept {}
+    static void          JEM_stdcall query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes) noexcept {
+
+    }
   };
+
+
+#define JEM_init_pfn(fn) .fn = (&object_vtable_impl<T>::fn)
 
   template <typename T>
   inline constexpr object_vtable_t object_vtable = {
-    .acquire_slot     = &object_vtable_impl<T>::acquire_slot,
-    .try_acquire_slot = &object_vtable_impl<T>::try_acquire_slot,
-    .acquire_slot_ex  = &object_vtable_impl<T>::acquire_slot_ex,
-    .send             = &object_vtable_impl<T>::send,
-    .do_not_send      = &object_vtable_impl<T>::do_not_send,
-    .send_and_discard = &object_vtable_impl<T>::send_and_discard,
-    .receive          = &object_vtable_impl<T>::receive,
-    .try_receive      = &object_vtable_impl<T>::try_receive,
-    .receive_ex       = &object_vtable_impl<T>::receive_ex,
-    .discard          = &object_vtable_impl<T>::discard,
-    .cancel           = &object_vtable_impl<T>::cancel,
-    .query_attributes = &object_vtable_impl<T>::query_attributes
+    JEM_init_pfn(acquire_slot),
+    JEM_init_pfn(acquire_many_slots),
+    JEM_init_pfn(try_acquire_slot),
+    JEM_init_pfn(try_acquire_many_slots),
+    JEM_init_pfn(acquire_slot_ex),
+    JEM_init_pfn(release_slot),
+    JEM_init_pfn(release_many_slots),
+    JEM_init_pfn(release_slot_ex),
+    JEM_init_pfn(send),
+    JEM_init_pfn(send_many),
+    JEM_init_pfn(send_ex),
+    JEM_init_pfn(receive),
+    JEM_init_pfn(receive_many),
+    JEM_init_pfn(try_receive),
+    JEM_init_pfn(try_receive_many),
+    JEM_init_pfn(receive_ex),
+    JEM_init_pfn(discard),
+    JEM_init_pfn(cancel),
+    JEM_init_pfn(query_attributes)
   };
 
   JEM_forceinline const object_vtable_t& lookup_vtable(agt_handle_t handle) noexcept {
@@ -306,25 +424,16 @@ namespace {
       object_vtable<agt::local_collective_deputy>,
       object_vtable<agt::dynamic_local_collective_deputy>,
       object_vtable<agt::ipc_collective_deputy>,
-      object_vtable<agt::dynamic_ipc_collective_deputy>
+      object_vtable<agt::dynamic_ipc_collective_deputy>,
+
+      object_vtable<agt::private_mailbox>,
+      object_vtable<agt::dynamic_private_mailbox>
     };
 
     return object_vtable_table[agt_internal_get_object_flags(handle)];
   }
 
-  // Variable Length Messages = 0x1
-  // Interprocess             = 0x2
 
-  // MPSC = 0
-  // SPSC = 1
-  // MPMC = 2
-  // SPMC = 3
-  // Thread Deputy = 4
-  // Thread Pool Deputy = 5
-  // Lazy Deputy = 6
-  // Proxy Deputy = 7
-  // Virtual Deputy = 8
-  // Collective Deputy = 9
 }
 
 
@@ -456,97 +565,33 @@ extern "C" {
   }
 
 
-  JEM_api void*               JEM_stdcall agt_acquire_slot(agt_handle_t handle, jem_size_t messageSize) {
-    return lookup_vtable(handle).acquire_slot(handle, messageSize);
+
+
+  JEM_api void*               JEM_stdcall agt_acquire_slot(agt_handle_t handle, jem_size_t slotSize) {
+    return lookup_vtable(handle).acquire_slot(handle, slotSize);
   }
-  JEM_api agt_status_t        JEM_stdcall agt_try_acquire_slot(agt_handle_t handle, jem_size_t messageSize, void** pMessagePayload, jem_u64_t timeout_us) {
-    return lookup_vtable(handle).try_acquire_slot(handle, messageSize, pMessagePayload, timeout_us);
+  JEM_api void                JEM_stdcall agt_release_slot(agt_handle_t handle, void* slot) {
+
   }
-  JEM_api agt_status_t        JEM_stdcall agt_acquire_slot_ex(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params) {
-    return lookup_vtable(handle).acquire_slot_ex(handle, params);
-  }
+  JEM_api agt_message_t       JEM_stdcall agt_send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags);
+  JEM_api agt_message_t       JEM_stdcall agt_receive(agt_handle_t handle);
+
+  JEM_api agt_status_t        JEM_stdcall agt_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots);
+  JEM_api void                JEM_stdcall agt_release_many_slots(agt_handle_t handle, jem_size_t slotCount, void** slots);
+  JEM_api void                JEM_stdcall agt_send_many(agt_handle_t handle, jem_size_t messageCount, void** messageSlots, agt_message_t* messages, agt_send_message_flags_t flags);
+  JEM_api agt_status_t        JEM_stdcall agt_receive_many(agt_handle_t handle, jem_size_t count, agt_message_t* messages);
 
 
-  JEM_api agt_message_t       JEM_stdcall agt_send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags) {
+  JEM_api agt_status_t        JEM_stdcall agt_try_acquire_slot(agt_handle_t handle, jem_size_t slotSize, void** pSlot, jem_u64_t timeout_us);
+  JEM_api agt_status_t        JEM_stdcall agt_try_receive(agt_handle_t handle, agt_message_t* pMessage, jem_u64_t timeout_us);
 
-    constexpr static agt_send_message_flags_t InvalidFlagMask   = ~(AGT_SEND_MESSAGE_CANCEL | AGT_SEND_MESSAGE_DISCARD_RESULT | AGT_SEND_MESSAGE_MUST_CHECK_RESULT);
-    constexpr static agt_send_message_flags_t InvalidFlagCombo0 = AGT_SEND_MESSAGE_DISCARD_RESULT | AGT_SEND_MESSAGE_MUST_CHECK_RESULT;
-
-    assert(!(flags & InvalidFlagMask));
-    assert( (flags & InvalidFlagCombo0 ) != InvalidFlagCombo0 );
-
-    const auto& vtable = lookup_vtable(handle);
-
-    if ( flags & AGT_SEND_MESSAGE_CANCEL ) {
-      vtable.do_not_send(handle, messageSlot);
-      return nullptr;
-    }
-
-    if ( flags & AGT_SEND_MESSAGE_DISCARD_RESULT ) {
-      vtable.send_and_discard(handle, messageSlot);
-      return nullptr;
-    }
-
-    return vtable.send(handle, messageSlot, flags);
-  }
-  JEM_api agt_status_t        JEM_stdcall agt_send_ex(agt_handle_t handle, const agt_send_ex_params_t* params) {
-
-    constexpr static agt_send_message_flags_t InvalidFlagMask   = ~(AGT_SEND_MESSAGE_CANCEL | AGT_SEND_MESSAGE_DISCARD_RESULT | AGT_SEND_MESSAGE_MUST_CHECK_RESULT);
-    constexpr static agt_send_message_flags_t InvalidFlagCombo0 = AGT_SEND_MESSAGE_DISCARD_RESULT | AGT_SEND_MESSAGE_MUST_CHECK_RESULT;
-
-    assert( params != nullptr );
-    assert(!(params->flags & InvalidFlagMask));
-    assert( (params->flags & InvalidFlagCombo0 ) != InvalidFlagCombo0 );
-    assert( params->message_count == 0 || params->payloads != nullptr );
-    // assert( params->message_count == 0 || params->messages != nullptr );
+  JEM_api agt_status_t        JEM_stdcall agt_try_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots, jem_u64_t timeout_us);
+  JEM_api agt_status_t        JEM_stdcall agt_try_receive_many(agt_handle_t handle, jem_size_t slotCount, agt_message_t* message, jem_u64_t timeout_us);
 
 
-    if ( params->flags & InvalidFlagMask ) [[unlikely]]
-      return AGT_ERROR_INVALID_FLAGS;
-    if ( (params->flags & InvalidFlagCombo0 ) == InvalidFlagCombo0 ) [[unlikely]]
-      return AGT_ERROR_INVALID_FLAGS;
-
-    if ( params->extra_param_count != 0 || params->extra_params != nullptr ) [[unlikely]]
-      return AGT_ERROR_INVALID_ARGUMENT;
-
-    const auto& vtable = lookup_vtable(handle);
-
-    if ( params->flags & AGT_SEND_MESSAGE_CANCEL ) [[unlikely]] {
-      vtable.do_not_send_many(handle, params->payloads, params->message_count);
-      return AGT_CANCELLED;
-    }
-
-    if ( params->flags & AGT_SEND_MESSAGE_DISCARD_RESULT ) {
-      vtable.send_and_discard_many(handle, params->payloads, params->message_count);
-      return AGT_SUCCESS;
-    }
-
-    if ( params->messages == nullptr ) [[unlikely]]
-      return AGT_ERROR_INVALID_ARGUMENT;
-
-    vtable.send_many(handle, params->payloads, params->message_count, params->messages, params->flags);
-    return AGT_SUCCESS;
-  }
-
-  JEM_api agt_message_t       JEM_stdcall agt_receive(agt_handle_t handle) {
-    return lookup_vtable(handle).receive(handle);
-  }
-  JEM_api agt_status_t        JEM_stdcall agt_try_receive(agt_handle_t handle, agt_message_t* pMessage, jem_u64_t timeout_us) {
-    return lookup_vtable(handle).try_receive(handle, pMessage, timeout_us);
-  }
-  JEM_api agt_status_t        JEM_stdcall agt_receive_ex(agt_handle_t handle, const agt_receive_ex_params_t* params) {
-    return lookup_vtable(handle).receive_ex(handle, params);
-  }
-
-
-  JEM_api bool                JEM_stdcall agt_discard(agt_message_t message) {
-    return lookup_vtable(message->parent).discard(message->parent, message);
-  }
-  JEM_api agt_status_t        JEM_stdcall agt_cancel(agt_message_t message) {
-    return lookup_vtable(message->parent).cancel(message->parent, message);
-  }
-  JEM_api void                JEM_stdcall agt_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes) {
-    lookup_vtable(handle).query_attributes(handle, attributeCount, attributeKinds, attributes);
-  }
+  JEM_api agt_status_t        JEM_stdcall agt_acquire_slot_ex(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params);
+  JEM_api agt_status_t        JEM_stdcall agt_release_slot_ex(agt_handle_t handle, const agt_release_slot_ex_params_t* params);
+  JEM_api agt_status_t        JEM_stdcall agt_send_ex(agt_handle_t handle, const agt_send_ex_params_t* params);
+  JEM_api agt_status_t        JEM_stdcall agt_receive_ex(agt_handle_t handle, const agt_receive_ex_params_t* params);
 
 }
