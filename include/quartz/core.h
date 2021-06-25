@@ -9,8 +9,8 @@
 
 JEM_begin_c_namespace
 
-typedef jem_u32_t qtz_local_id_t;
-typedef jem_u64_t qtz_global_id_t;
+typedef jem_u32_t                  qtz_local_id_t;
+typedef jem_u64_t                  qtz_global_id_t;
 
 typedef struct qtz_mailbox*        qtz_mailbox_t;
 typedef struct qtz_request*        qtz_request_t;

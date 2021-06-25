@@ -495,7 +495,7 @@ namespace agt::impl{
 
 extern "C" {
 
-  JEM_api agt_request_t       JEM_stdcall agt_mailbox_create(agt_mailbox_t* mailbox, const agt_mailbox_create_info_t* createInfo);
+  /*JEM_api agt_request_t       JEM_stdcall agt_mailbox_create(agt_mailbox_t* mailbox, const agt_mailbox_create_info_t* createInfo);
   JEM_api void                JEM_stdcall agt_mailbox_destroy(agt_mailbox_t mailbox);
 
   JEM_api agt_status_t        JEM_stdcall agt_mailbox_attach_consumer(agt_mailbox_t mailbox, jem_u64_t timeout_us) {
@@ -562,7 +562,7 @@ extern "C" {
   }
   JEM_api agt_status_t        JEM_stdcall agt_cancel_message(agt_mailbox_t mailbox, agt_message_t message) {
     return (agt::impl::cancel_message_table[mailbox->kind])(mailbox, message);
-  }
+  }*/
 
 
 
@@ -571,27 +571,68 @@ extern "C" {
     return lookup_vtable(handle).acquire_slot(handle, slotSize);
   }
   JEM_api void                JEM_stdcall agt_release_slot(agt_handle_t handle, void* slot) {
-
+    lookup_vtable(handle).release_slot(handle, slot);
   }
-  JEM_api agt_message_t       JEM_stdcall agt_send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags);
-  JEM_api agt_message_t       JEM_stdcall agt_receive(agt_handle_t handle);
+  JEM_api agt_message_t       JEM_stdcall agt_send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags) {
+    return lookup_vtable(handle).send(handle, messageSlot, flags);
+  }
+  JEM_api agt_message_t       JEM_stdcall agt_receive(agt_handle_t handle) {
+    return lookup_vtable(handle).receive(handle);
+  }
 
-  JEM_api agt_status_t        JEM_stdcall agt_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots);
-  JEM_api void                JEM_stdcall agt_release_many_slots(agt_handle_t handle, jem_size_t slotCount, void** slots);
-  JEM_api void                JEM_stdcall agt_send_many(agt_handle_t handle, jem_size_t messageCount, void** messageSlots, agt_message_t* messages, agt_send_message_flags_t flags);
-  JEM_api agt_status_t        JEM_stdcall agt_receive_many(agt_handle_t handle, jem_size_t count, agt_message_t* messages);
+  JEM_api agt_status_t        JEM_stdcall agt_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots) {
+    return lookup_vtable(handle).acquire_many_slots(handle, slotSize, slotCount, slots);
+  }
+  JEM_api void                JEM_stdcall agt_release_many_slots(agt_handle_t handle, jem_size_t slotCount, void** slots) {
+    lookup_vtable(handle).release_many_slots(handle, slotCount, slots);
+  }
+  JEM_api void                JEM_stdcall agt_send_many(agt_handle_t handle, jem_size_t messageCount, void** messageSlots, agt_message_t* messages, agt_send_message_flags_t flags) {
+    lookup_vtable(handle).send_many(handle, messageCount, messageSlots, messages, flags);
+  }
+  JEM_api agt_status_t        JEM_stdcall agt_receive_many(agt_handle_t handle, jem_size_t count, agt_message_t* messages) {
+    return lookup_vtable(handle).receive_many(handle, count, messages);
+  }
 
 
-  JEM_api agt_status_t        JEM_stdcall agt_try_acquire_slot(agt_handle_t handle, jem_size_t slotSize, void** pSlot, jem_u64_t timeout_us);
-  JEM_api agt_status_t        JEM_stdcall agt_try_receive(agt_handle_t handle, agt_message_t* pMessage, jem_u64_t timeout_us);
+  JEM_api agt_status_t        JEM_stdcall agt_try_acquire_slot(agt_handle_t handle, jem_size_t slotSize, void** pSlot, jem_u64_t timeout_us) {
+    return lookup_vtable(handle).try_acquire_slot(handle, slotSize, pSlot, timeout_us);
+  }
+  JEM_api agt_status_t        JEM_stdcall agt_try_receive(agt_handle_t handle, agt_message_t* pMessage, jem_u64_t timeout_us) {
+    return lookup_vtable(handle).try_receive(handle, pMessage, timeout_us);
+  }
 
-  JEM_api agt_status_t        JEM_stdcall agt_try_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots, jem_u64_t timeout_us);
-  JEM_api agt_status_t        JEM_stdcall agt_try_receive_many(agt_handle_t handle, jem_size_t slotCount, agt_message_t* message, jem_u64_t timeout_us);
+  JEM_api agt_status_t        JEM_stdcall agt_try_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots, jem_u64_t timeout_us) {
+    return lookup_vtable(handle).try_acquire_many_slots(handle, slotSize, slotCount, slots, timeout_us);
+  }
+  JEM_api agt_status_t        JEM_stdcall agt_try_receive_many(agt_handle_t handle, jem_size_t slotCount, agt_message_t* message, jem_u64_t timeout_us) {
+    return lookup_vtable(handle).try_receive_many(handle, slotCount, message, timeout_us);
+  }
 
 
-  JEM_api agt_status_t        JEM_stdcall agt_acquire_slot_ex(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params);
-  JEM_api agt_status_t        JEM_stdcall agt_release_slot_ex(agt_handle_t handle, const agt_release_slot_ex_params_t* params);
-  JEM_api agt_status_t        JEM_stdcall agt_send_ex(agt_handle_t handle, const agt_send_ex_params_t* params);
-  JEM_api agt_status_t        JEM_stdcall agt_receive_ex(agt_handle_t handle, const agt_receive_ex_params_t* params);
+  JEM_api agt_status_t        JEM_stdcall agt_acquire_slot_ex(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params) {
+    return lookup_vtable(handle).acquire_slot_ex(handle, params);
+  }
+  JEM_api agt_status_t        JEM_stdcall agt_release_slot_ex(agt_handle_t handle, const agt_release_slot_ex_params_t* params) {
+    return lookup_vtable(handle).release_slot_ex(handle, params);
+  }
+  JEM_api agt_status_t        JEM_stdcall agt_send_ex(agt_handle_t handle, const agt_send_ex_params_t* params) {
+    return lookup_vtable(handle).send_ex(handle, params);
+  }
+  JEM_api agt_status_t        JEM_stdcall agt_receive_ex(agt_handle_t handle, const agt_receive_ex_params_t* params) {
+    return lookup_vtable(handle).receive_ex(handle, params);
+  }
+
+
+  JEM_api bool                JEM_stdcall agt_discard(agt_message_t message) {
+    return lookup_vtable(message->parent).discard(message->parent, message);
+  }
+  JEM_api agt_status_t        JEM_stdcall agt_cancel(agt_message_t message) {
+    return lookup_vtable(message->parent).cancel(message->parent, message);
+  }
+
+  JEM_api void                JEM_stdcall agt_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes) {
+    lookup_vtable(handle).query_attributes(handle, attributeCount, attributeKinds, attributes);
+  }
+
 
 }

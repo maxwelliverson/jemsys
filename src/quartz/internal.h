@@ -1633,8 +1633,40 @@ namespace qtz {
       jem_u32_t  hugePageCount;
       struct {}* hugePages;
     };
+    
+    struct thread_local_segment{
+      jem_size_t totalSize;
+      void*      address;
+      bool       locallyAllocated;
+      
+    };
+    
+    struct local_heap;
+    
+    struct thread_group{
+      jem_size_t  groupSize;
+      local_heap* heaps;
+    };
+    
+    struct local_heap{
+      qtz_local_id_t        threadId;
+      thread_local_segment* segments;
+      jem_size_t            totalAllocated;
+      local_heap*           parent;
+      jem_size_t            childCount;
+      local_heap**          children;
+      thread_group*         group;
+    };
+    
+    struct shared_heap{
+      jem_size_t   threadCount;
+      local_heap** threadHeaps;
+    };
 
-    struct memory_manager{};
+    struct memory_manager{
+      jem_size_t addressSpaceSize;
+      
+    };
 
 
 

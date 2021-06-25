@@ -9,34 +9,34 @@
 
 JEM_begin_c_namespace
 
-JEM_api void*               JEM_stdcall agt_dynamic_ipc_spsc_mailbox_acquire_slot(agt_handle_t handle, jem_size_t slotSize);
+JEM_api void*               JEM_stdcall agt_dynamic_ipc_spsc_mailbox_acquire_slot(agt_handle_t handle, jem_size_t slotSize) JEM_noexcept;
 
-JEM_api void                JEM_stdcall agt_dynamic_ipc_spsc_mailbox_release_slot(agt_handle_t handle, void* slot);
-JEM_api agt_message_t       JEM_stdcall agt_dynamic_ipc_spsc_mailbox_send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags);
-JEM_api agt_message_t       JEM_stdcall agt_dynamic_ipc_spsc_mailbox_receive(agt_handle_t handle);
+JEM_api void                JEM_stdcall agt_dynamic_ipc_spsc_mailbox_release_slot(agt_handle_t handle, void* slot) JEM_noexcept;
+JEM_api agt_message_t       JEM_stdcall agt_dynamic_ipc_spsc_mailbox_send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags) JEM_noexcept;
+JEM_api agt_message_t       JEM_stdcall agt_dynamic_ipc_spsc_mailbox_receive(agt_handle_t handle) JEM_noexcept;
 
-JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots);
-JEM_api void                JEM_stdcall agt_dynamic_ipc_spsc_mailbox_release_many_slots(agt_handle_t handle, jem_size_t slotCount, void** slots);
-JEM_api void                JEM_stdcall agt_dynamic_ipc_spsc_mailbox_send_many(agt_handle_t handle, jem_size_t messageCount, void** messageSlots, agt_message_t* messages, agt_send_message_flags_t flags);
-JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_receive_many(agt_handle_t handle, jem_size_t count, agt_message_t* messages);
-
-
-JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_try_acquire_slot(agt_handle_t handle, jem_size_t slotSize, void** pSlot, jem_u64_t timeout_us);
-JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_try_receive(agt_handle_t handle, agt_message_t* pMessage, jem_u64_t timeout_us);
-
-JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_try_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots, jem_u64_t timeout_us);
-JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_try_receive_many(agt_handle_t handle, jem_size_t slotCount, agt_message_t* message, jem_u64_t timeout_us);
+JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots) JEM_noexcept;
+JEM_api void                JEM_stdcall agt_dynamic_ipc_spsc_mailbox_release_many_slots(agt_handle_t handle, jem_size_t slotCount, void** slots) JEM_noexcept;
+JEM_api void                JEM_stdcall agt_dynamic_ipc_spsc_mailbox_send_many(agt_handle_t handle, jem_size_t messageCount, void** messageSlots, agt_message_t* messages, agt_send_message_flags_t flags) JEM_noexcept;
+JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_receive_many(agt_handle_t handle, jem_size_t count, agt_message_t* messages) JEM_noexcept;
 
 
-JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_acquire_slot_ex(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params);
-JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_release_slot_ex(agt_handle_t handle, const agt_release_slot_ex_params_t* params);
-JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_send_ex(agt_handle_t handle, const agt_send_ex_params_t* params);
-JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_receive_ex(agt_handle_t handle, const agt_receive_ex_params_t* params);
+JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_try_acquire_slot(agt_handle_t handle, jem_size_t slotSize, void** pSlot, jem_u64_t timeout_us) JEM_noexcept;
+JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_try_receive(agt_handle_t handle, agt_message_t* pMessage, jem_u64_t timeout_us) JEM_noexcept;
+
+JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_try_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots, jem_u64_t timeout_us) JEM_noexcept;
+JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_try_receive_many(agt_handle_t handle, jem_size_t slotCount, agt_message_t* message, jem_u64_t timeout_us) JEM_noexcept;
 
 
-JEM_api bool                JEM_stdcall agt_dynamic_ipc_spsc_mailbox_discard(agt_message_t message);
-JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_cancel(agt_message_t message);
-JEM_api void                JEM_stdcall agt_dynamic_ipc_spsc_mailbox_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes);
+JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_acquire_slot_ex(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params) JEM_noexcept;
+JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_release_slot_ex(agt_handle_t handle, const agt_release_slot_ex_params_t* params) JEM_noexcept;
+JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_send_ex(agt_handle_t handle, const agt_send_ex_params_t* params) JEM_noexcept;
+JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_receive_ex(agt_handle_t handle, const agt_receive_ex_params_t* params) JEM_noexcept;
+
+
+JEM_api bool                JEM_stdcall agt_dynamic_ipc_spsc_mailbox_discard(agt_message_t message) JEM_noexcept;
+JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_cancel(agt_message_t message) JEM_noexcept;
+JEM_api void                JEM_stdcall agt_dynamic_ipc_spsc_mailbox_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes) JEM_noexcept;
 
 
 JEM_end_c_namespace

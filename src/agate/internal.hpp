@@ -128,6 +128,10 @@ namespace {
     return reinterpret_cast<agt_object*>(handle & ObjectAddressMask)->flags;
   }
 
+  JEM_forceinline bool handle_has_permissions(agt_handle_t handle, jem_flags32_t flags) noexcept {
+    return (agt_internal_get_handle_flags(handle) & flags) == flags;
+  }
+
   template <typename T>
   JEM_forceinline T cast(agt_handle_t handle) noexcept {
     constexpr static jem_size_t ObjectAddressMask = ~static_cast<jem_size_t>( agt::handle_max_flag - 1 );
@@ -456,10 +460,21 @@ namespace agt{
     agt_message_t              prevQueuedMessage;
     agt_message_t              prevReleasedSlot;
   };
-  struct dynamic_private_mailbox          : dynamic_local_object {
+  struct dynamic_private_mailbox          : dynamic_local_object{
 
     inline constexpr static object_type_id_t object_id = object_type_private_mailbox;
 
+    address_t        messageSlots;
+    jem_size_t       mailboxSize;
+    jem_size_t       maxSlotSize;
+    jem_size_t       slotAlignment;
+    PFN_mailbox_dtor pfnDtor;
+    void*            dtorUserData;
+  JEM_cache_aligned
+    jem_size_t       availableSpace;
+    jem_size_t       queuedMessageCount;
+    jem_size_t       nextWriteOffset;
+    jem_size_t       nextReadOffset;
   };
 
 
