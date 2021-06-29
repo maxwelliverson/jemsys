@@ -9,7 +9,7 @@ target_include_directories(jemsys.internal.ipc PUBLIC include src)
 
 add_library(jemsys.quartz src/quartz/mm.cpp src/quartz/init.cpp src/quartz/queue.cpp src/quartz/epoch.cpp src/quartz/deputy.cpp src/quartz/module.cpp)
 target_include_directories(jemsys.quartz PUBLIC include src)
-add_library(jemsys.agate src/agate/mailbox.cpp src/agate/deputy.cpp src/agate/spsc_mailbox.cpp src/agate/mpsc_mailbox.cpp src/agate/spmc_mailbox.cpp src/agate/mpmc_mailbox.cpp src/agate/message.cpp src/agate/dispatch.cpp)
+add_library(jemsys.agate src/agate/mailbox.cpp src/agate/deputy.cpp src/agate/spsc_mailbox.cpp src/agate/mpsc_mailbox.cpp src/agate/spmc_mailbox.cpp src/agate/mpmc_mailbox.cpp src/agate/message.cpp src/agate/dispatch.cpp src/agate/dispatch/mpsc_mailbox/local.cpp src/agate/handle.cpp)
 target_include_directories(jemsys.agate PUBLIC include src)
 add_library(jemsys.opal src/opal/agent.cpp)
 target_include_directories(jemsys.opal PUBLIC include src)

@@ -36,7 +36,7 @@ JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_receive_ex(
 
 JEM_api bool                JEM_stdcall agt_dynamic_ipc_spsc_mailbox_discard(agt_message_t message) JEM_noexcept;
 JEM_api agt_status_t        JEM_stdcall agt_dynamic_ipc_spsc_mailbox_cancel(agt_message_t message) JEM_noexcept;
-JEM_api void                JEM_stdcall agt_dynamic_ipc_spsc_mailbox_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes) JEM_noexcept;
+JEM_api void                JEM_stdcall agt_dynamic_ipc_spsc_mailbox_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeTypes, agt_handle_attribute_t* attributes) JEM_noexcept;
 
 
 JEM_end_c_namespace

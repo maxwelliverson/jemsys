@@ -10,7 +10,6 @@
 JEM_begin_c_namespace
 
 JEM_api void*               JEM_stdcall agt_local_mpsc_mailbox_acquire_slot(agt_handle_t handle, jem_size_t slotSize) JEM_noexcept;
-
 JEM_api void                JEM_stdcall agt_local_mpsc_mailbox_release_slot(agt_handle_t handle, void* slot) JEM_noexcept;
 JEM_api agt_message_t       JEM_stdcall agt_local_mpsc_mailbox_send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags) JEM_noexcept;
 JEM_api agt_message_t       JEM_stdcall agt_local_mpsc_mailbox_receive(agt_handle_t handle) JEM_noexcept;
@@ -36,7 +35,7 @@ JEM_api agt_status_t        JEM_stdcall agt_local_mpsc_mailbox_receive_ex(agt_ha
 
 JEM_api bool                JEM_stdcall agt_local_mpsc_mailbox_discard(agt_message_t message) JEM_noexcept;
 JEM_api agt_status_t        JEM_stdcall agt_local_mpsc_mailbox_cancel(agt_message_t message) JEM_noexcept;
-JEM_api void                JEM_stdcall agt_local_mpsc_mailbox_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes) JEM_noexcept;
+JEM_api void                JEM_stdcall agt_local_mpsc_mailbox_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeTypes, agt_handle_attribute_t* attributes) JEM_noexcept;
 
 
 

@@ -119,6 +119,11 @@ namespace {
   inline constexpr jem_size_t MessageBaseSize = sizeof(agt_message);
   static_assert(MessageBaseSize == 32);
 
+  JEM_forceinline agt_object* get_handle_object(agt_handle_t handle) noexcept {
+    constexpr static jem_size_t ObjectAddressMask = ~static_cast<jem_size_t>( agt::handle_max_flag - 1 );
+    return reinterpret_cast<agt_object*>(handle & ObjectAddressMask);
+  }
+
   JEM_forceinline agt_handle_flags_t agt_internal_get_handle_flags(agt_handle_t handle) noexcept {
     constexpr static auto HandleFlagMask = static_cast<jem_size_t>( agt::handle_max_flag - 1 );
     return handle & HandleFlagMask;
@@ -147,12 +152,24 @@ namespace {
   }
 
 
+  template <typename Mailbox>
+  JEM_forceinline typename Mailbox::message_type* get_message(const Mailbox* mailbox, jem_size_t slot) noexcept {
+    if constexpr ( std::is_pointer_v<std::remove_cvref_t<decltype(mailbox->messageSlots)>>) {
+      return reinterpret_cast<typename Mailbox::message_type*>(mailbox->messageSlots + slot);
+    }
+    else {
+      return reinterpret_cast<typename Mailbox::message_type*>(mailbox->messageSlots.get() + slot);
+    }
 
-  JEM_forceinline agt_message_t get_message(const agt_mailbox* mailbox, jem_size_t slot) noexcept {
-    return reinterpret_cast<agt_message_t>(mailbox->messageSlots.get() + slot);
   }
-  JEM_forceinline jem_size_t    get_slot(const agt_mailbox* mailbox, agt_message_t message) noexcept {
-    return reinterpret_cast<address_t>(message) - mailbox->messageSlots.get();
+  template <typename Mailbox>
+  JEM_forceinline jem_size_t    get_slot(const Mailbox* mailbox, agt_message_t message) noexcept {
+    if constexpr ( std::is_pointer_v<std::remove_cvref_t<decltype(mailbox->messageSlots)>>) {
+      return reinterpret_cast<address_t>(message) - mailbox->messageSlots;
+    }
+    else {
+      return reinterpret_cast<address_t>(message) - mailbox->messageSlots.get();
+    }
   }
 
   JEM_forceinline void*         message_to_payload(agt_message_t message) noexcept {
@@ -172,6 +189,11 @@ namespace agt{
   struct local_message : agt_message {
     local_message* nextSlot;
   };
+
+  using ipc_message_t          = ipc_message*;
+  using local_message_t        = local_message*;
+  using atomic_ipc_message_t   = std::atomic<ipc_message_t>;
+  using atomic_local_message_t = std::atomic<local_message_t>;
 
   struct local_object         : agt_object{
     inline constexpr static jem_flags32_t ipc_flag = 0;
@@ -255,11 +277,11 @@ namespace agt{
     jem_size_t         slotSize;
     semaphore_t        slotSemaphore;
   JEM_cache_aligned
-    atomic_size_t      nextFreeSlot;
-    jem_size_t         payloadOffset;
+    atomic_local_message_t nextFreeSlot;
+    jem_size_t             payloadOffset;
   JEM_cache_aligned
-    atomic_size_t      lastQueuedSlot;
-    agt_message_t      previousMessage;
+    atomic_local_message_t lastQueuedSlot;
+    agt_message_t          previousReceivedMessage;
   JEM_cache_aligned                          // 192 - alignment
     atomic_u32_t       queuedSinceLastCheck; // 196
     jem_u32_t          minQueuedMessages;    // 200

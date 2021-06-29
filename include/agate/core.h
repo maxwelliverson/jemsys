@@ -9,6 +9,8 @@
 
 JEM_begin_c_namespace
 
+#define AGT_NULL_HANDLE ((agt_handle_t)0)
+
 typedef jem_u64_t agt_handle_t;
 
 typedef struct agt_mailbox*  agt_mailbox_t;
@@ -42,7 +44,9 @@ typedef enum {
   AGT_ERROR_TOO_MANY_PRODUCERS,
   AGT_ERROR_TOO_MANY_CONSUMERS,
   AGT_ERROR_ALREADY_RECEIVED,
-  AGT_ERROR_NOT_YET_IMPLEMENTED
+  AGT_ERROR_NOT_YET_IMPLEMENTED,
+  AGT_ERROR_INCOMPATIBLE_PARAMETERS,
+  AGT_ERROR_DUPLICATE_PARAMETERS
 } agt_status_t;
 
 

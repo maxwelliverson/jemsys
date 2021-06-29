@@ -234,7 +234,7 @@ JEM_api agt_status_t        JEM_stdcall agt_cancel(agt_message_t message) noexce
   return lookup_vtable(message->parent).cancel(message);
 }
 
-JEM_api void                JEM_stdcall agt_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes) noexcept {
+JEM_api void                JEM_stdcall agt_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeTypes, agt_handle_attribute_t* attributes) noexcept {
   lookup_vtable(handle).query_attributes(handle, attributeCount, attributeKinds, attributes);
 }
 }

@@ -50,7 +50,7 @@ JEM_api agt_status_t        JEM_stdcall agt_receive_ex_dynamic_local_mpmc_mailbo
 
 JEM_api bool                JEM_stdcall agt_discard_dynamic_local_mpmc_mailbox(agt_message_t message);
 JEM_api agt_status_t        JEM_stdcall agt_cancel_dynamic_local_mpmc_mailbox(agt_message_t message);
-JEM_api void                JEM_stdcall agt_query_attributes_dynamic_local_mpmc_mailbox(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes);
+JEM_api void                JEM_stdcall agt_query_attributes_dynamic_local_mpmc_mailbox(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeTypes, agt_handle_attribute_t* attributes);
 
 
 JEM_api void*               JEM_stdcall agt_acquire_slot_ipc_mpmc_mailbox(agt_handle_t handle, jem_size_t slotSize);
@@ -79,7 +79,7 @@ JEM_api agt_status_t        JEM_stdcall agt_receive_ex_ipc_mpmc_mailbox(agt_hand
 
 JEM_api bool                JEM_stdcall agt_discard_ipc_mpmc_mailbox(agt_message_t message);
 JEM_api agt_status_t        JEM_stdcall agt_cancel_ipc_mpmc_mailbox(agt_message_t message);
-JEM_api void                JEM_stdcall agt_query_attributes_ipc_mpmc_mailbox(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes);
+JEM_api void                JEM_stdcall agt_query_attributes_ipc_mpmc_mailbox(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeTypes, agt_handle_attribute_t* attributes);
 
 
 
@@ -109,7 +109,7 @@ JEM_api agt_status_t        JEM_stdcall agt_receive_ex_dynamic_ipc_mpmc_mailbox(
 
 JEM_api bool                JEM_stdcall agt_discard_dynamic_ipc_mpmc_mailbox(agt_message_t message);
 JEM_api agt_status_t        JEM_stdcall agt_cancel_dynamic_ipc_mpmc_mailbox(agt_message_t message);
-JEM_api void                JEM_stdcall agt_query_attributes_dynamic_ipc_mpmc_mailbox(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes);
+JEM_api void                JEM_stdcall agt_query_attributes_dynamic_ipc_mpmc_mailbox(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeTypes, agt_handle_attribute_t* attributes);
 
 
 

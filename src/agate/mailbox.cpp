@@ -45,7 +45,7 @@ namespace {
 
   using PFN_discard               = bool(JEM_stdcall*)(agt_handle_t handle, agt_message_t message) noexcept;
   using PFN_cancel                = agt_status_t(JEM_stdcall*)(agt_handle_t handle, agt_message_t message) noexcept;
-  using PFN_query_attributes      = void(JEM_stdcall*)(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes) noexcept;
+  using PFN_query_attributes      = void(JEM_stdcall*)(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeTypes, agt_handle_attribute_t* attributes) noexcept;
 
 
   struct object_vtable_t{
@@ -341,7 +341,7 @@ namespace {
     static agt_status_t  JEM_stdcall cancel(agt_handle_t handle, agt_message_t message) noexcept {
 
     }
-    static void          JEM_stdcall query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes) noexcept {
+    static void          JEM_stdcall query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeTypes, agt_handle_attribute_t* attributes) noexcept {
 
     }
   };
@@ -630,7 +630,7 @@ extern "C" {
     return lookup_vtable(message->parent).cancel(message->parent, message);
   }
 
-  JEM_api void                JEM_stdcall agt_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_kind_t* attributeKinds, agt_handle_attribute_t* attributes) {
+  JEM_api void                JEM_stdcall agt_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeTypes, agt_handle_attribute_t* attributes) {
     lookup_vtable(handle).query_attributes(handle, attributeCount, attributeKinds, attributes);
   }
 
