@@ -32,6 +32,7 @@ namespace agt{
     message_is_cancelled          = 0x0010,
     message_needs_cleanup         = 0x0020,
     message_has_been_received     = 0x0040,
+    message_result_was_checked    = 0x0080,
 
     message_is_placeholder        = 0x8000
   };
@@ -46,7 +47,7 @@ namespace agt{
   using PFN_discard_message     = void(JEM_stdcall*)(agt_mailbox_t mailbox, agt_message_t message);
   using PFN_cancel_message      = agt_status_t(JEM_stdcall*)(agt_mailbox_t mailbox, agt_message_t message);
 
-  using PFN_mailbox_dtor        = agt_mailbox_cleanup_callback_t;
+  using PFN_mailbox_dtor        = agt_cleanup_callback_t;
 
   enum object_flag_bits_e{
     object_has_single_consumer     = 0x0001,
@@ -86,6 +87,60 @@ namespace agt{
     object_type_private_mailbox
   };
 
+  enum object_kind_t {
+    object_kind_local_mpsc_mailbox,
+    object_kind_dynamic_local_mpsc_mailbox,
+    object_kind_ipc_mpsc_mailbox,
+    object_kind_dynamic_ipc_mpsc_mailbox,
+
+    object_kind_local_spsc_mailbox,
+    object_kind_dynamic_local_spsc_mailbox,
+    object_kind_ipc_spsc_mailbox,
+    object_kind_dynamic_ipc_spsc_mailbox,
+
+    object_kind_local_mpmc_mailbox,
+    object_kind_dynamic_local_mpmc_mailbox,
+    object_kind_ipc_mpmc_mailbox,
+    object_kind_dynamic_ipc_mpmc_mailbox,
+
+    object_kind_local_spmc_mailbox,
+    object_kind_dynamic_local_spmc_mailbox,
+    object_kind_ipc_spmc_mailbox,
+    object_kind_dynamic_ipc_spmc_mailbox,
+
+    object_kind_local_thread_deputy,
+    object_kind_dynamic_local_thread_deputy,
+    object_kind_ipc_thread_deputy,
+    object_kind_dynamic_ipc_thread_deputy,
+
+    object_kind_local_thread_pool_deputy,
+    object_kind_dynamic_local_thread_pool_deputy,
+    object_kind_ipc_thread_pool_deputy,
+    object_kind_dynamic_ipc_thread_pool_deputy,
+
+    object_kind_local_lazy_deputy,
+    object_kind_dynamic_local_lazy_deputy,
+    object_kind_ipc_lazy_deputy,
+    object_kind_dynamic_ipc_lazy_deputy,
+
+    object_kind_local_proxy_deputy,
+    object_kind_dynamic_local_proxy_deputy,
+    object_kind_ipc_proxy_deputy,
+    object_kind_dynamic_ipc_proxy_deputy,
+
+    object_kind_local_virtual_deputy,
+    object_kind_dynamic_local_virtual_deputy,
+    object_kind_ipc_virtual_deputy,
+    object_kind_dynamic_ipc_virtual_deputy,
+
+    object_kind_local_collective_deputy,
+    object_kind_dynamic_local_collective_deputy,
+    object_kind_ipc_collective_deputy,
+    object_kind_dynamic_ipc_collective_deputy,
+
+    object_kind_private_mailbox,
+    object_kind_dynamic_private_mailbox
+  };
 
   template <typename T>
   struct handle_traits;
@@ -97,7 +152,7 @@ extern "C" {
   typedef jem_flags32_t agt_handle_flags_t;
 
   struct agt_object{
-    agt_object_flags_t flags;
+    agt::object_kind_t kind;
     atomic_u32_t       refCount;
   };
 
@@ -128,9 +183,9 @@ namespace {
     constexpr static auto HandleFlagMask = static_cast<jem_size_t>( agt::handle_max_flag - 1 );
     return handle & HandleFlagMask;
   }
-  JEM_forceinline agt_object_flags_t agt_internal_get_object_flags(agt_handle_t handle) noexcept {
+  JEM_forceinline agt::object_kind_t agt_internal_get_object_kind(agt_handle_t handle) noexcept {
     constexpr static jem_size_t ObjectAddressMask = ~static_cast<jem_size_t>( agt::handle_max_flag - 1 );
-    return reinterpret_cast<agt_object*>(handle & ObjectAddressMask)->flags;
+    return reinterpret_cast<agt_object*>(handle & ObjectAddressMask)->kind;
   }
 
   JEM_forceinline bool handle_has_permissions(agt_handle_t handle, jem_flags32_t flags) noexcept {
@@ -275,13 +330,13 @@ namespace agt{
     memory_desc        msgMemory;
     jem_size_t         slotCount;
     jem_size_t         slotSize;
-    semaphore_t        slotSemaphore;
+    shared_semaphore_t slotSemaphore;
   JEM_cache_aligned
     atomic_local_message_t nextFreeSlot;
     jem_size_t             payloadOffset;
   JEM_cache_aligned
     atomic_local_message_t lastQueuedSlot;
-    agt_message_t          previousReceivedMessage;
+    local_message_t        previousReceivedMessage;
   JEM_cache_aligned                          // 192 - alignment
     atomic_u32_t       queuedSinceLastCheck; // 196
     jem_u32_t          minQueuedMessages;    // 200

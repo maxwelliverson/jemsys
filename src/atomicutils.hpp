@@ -307,6 +307,10 @@ namespace {
           return;
       }
     }
+    void acquire(jem_ptrdiff_t n) noexcept {
+      for (jem_ptrdiff_t acquired = 0; acquired < n; ++acquired )
+        acquire();
+    }
 
     JEM_nodiscard bool try_acquire() noexcept {
       jem_ptrdiff_t current = value.load();
@@ -317,9 +321,21 @@ namespace {
       
       return value.compare_exchange_weak(current, current - 1);
     }
+    JEM_nodiscard bool try_acquire(jem_ptrdiff_t n) noexcept {
+      for (jem_ptrdiff_t acquired = 0; acquired < n; ++acquired ) {
+        if ( !try_acquire() ) {
+          release(acquired);
+          return false;
+        }
+      }
+      return true;
+    }
 
     JEM_nodiscard bool try_acquire_for(jem_u64_t timeout_us) noexcept {
       return try_acquire_until(deadline_t::from_timeout_us(timeout_us));
+    }
+    JEM_nodiscard bool try_acquire_for(jem_ptrdiff_t n, jem_u64_t timeout_us) noexcept {
+      return try_acquire_until(n, deadline_t::from_timeout_us(timeout_us));
     }
     JEM_nodiscard bool try_acquire_until(deadline_t deadline) noexcept {
       jem_ptrdiff_t current  = value.load(std::memory_order_relaxed);
@@ -333,6 +349,15 @@ namespace {
         if ( value.compare_exchange_weak(current, current - 1) )
           return true;
       }
+    }
+    JEM_nodiscard bool try_acquire_until(jem_ptrdiff_t n, deadline_t deadline) noexcept {
+      for (jem_ptrdiff_t acquired = 0; acquired < n; ++acquired ) {
+        if ( !try_acquire_until(deadline) ) {
+          release(acquired);
+          return false;
+        }
+      }
+      return true;
     }
     
   private:
@@ -398,6 +423,10 @@ namespace {
           return;
       }
     }
+    void acquire(jem_ptrdiff_t n) noexcept {
+      for (jem_ptrdiff_t acquired = 0; acquired < n; ++acquired )
+        acquire();
+    }
 
     JEM_nodiscard bool try_acquire() noexcept {
       jem_ptrdiff_t current = value.load();
@@ -408,9 +437,21 @@ namespace {
       
       return value.compare_exchange_weak(current, current - 1);
     }
+    JEM_nodiscard bool try_acquire(jem_ptrdiff_t n) noexcept {
+      for (jem_ptrdiff_t acquired = 0; acquired < n; ++acquired ) {
+        if ( !try_acquire() ) {
+          release(acquired);
+          return false;
+        }
+      }
+      return true;
+    }
 
     JEM_nodiscard bool try_acquire_for(jem_u64_t timeout_us) noexcept {
       return try_acquire_until(deadline_t::from_timeout_us(timeout_us));
+    }
+    JEM_nodiscard bool try_acquire_for(jem_ptrdiff_t n, jem_u64_t timeout_us) noexcept {
+      return try_acquire_until(n, deadline_t::from_timeout_us(timeout_us));
     }
     JEM_nodiscard bool try_acquire_until(deadline_t deadline) noexcept {
       jem_ptrdiff_t current  = value.load(std::memory_order_relaxed);
@@ -424,6 +465,15 @@ namespace {
         if ( value.compare_exchange_weak(current, current - 1) )
           return true;
       }
+    }
+    JEM_nodiscard bool try_acquire_until(jem_ptrdiff_t n, deadline_t deadline) noexcept {
+      for (jem_ptrdiff_t acquired = 0; acquired < n; ++acquired ) {
+        if ( !try_acquire_until(deadline) ) {
+          release(acquired);
+          return false;
+        }
+      }
+      return true;
     }
     
   private:

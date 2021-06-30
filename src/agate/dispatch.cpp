@@ -166,7 +166,7 @@ namespace {
       JEM_init_vtable(dynamic_private_mailbox)
     };
 
-    return object_vtable_table[agt_internal_get_object_flags(handle)];
+    return object_vtable_table[agt_internal_get_object_kind(handle)];
   }
 }
 
@@ -235,7 +235,7 @@ JEM_api agt_status_t        JEM_stdcall agt_cancel(agt_message_t message) noexce
 }
 
 JEM_api void                JEM_stdcall agt_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeTypes, agt_handle_attribute_t* attributes) noexcept {
-  lookup_vtable(handle).query_attributes(handle, attributeCount, attributeKinds, attributes);
+  lookup_vtable(handle).query_attributes(handle, attributeCount, attributeTypes, attributes);
 }
 }
 
