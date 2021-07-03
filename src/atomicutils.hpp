@@ -556,6 +556,90 @@ namespace {
     std::atomic<jem_u8_t> value;
   };
 
+  class atomic_counter_t{
+  public:
+
+    atomic_counter_t() = default;
+
+
+    void increase(jem_u32_t value = 1) noexcept {
+      value_.fetch_add(value, std::memory_order_relaxed);
+      value_.notify_one();
+    }
+
+    JEM_nodiscard jem_u32_t take() noexcept {
+      return value_.exchange(0);
+    }
+
+    JEM_nodiscard jem_u32_t take_at_least(jem_u32_t value) noexcept {
+
+    }
+
+
+
+  private:
+    std::atomic<jem_u32_t> value_ = 0;
+  };
+
+  class mpsc_counter_t{
+
+  public:
+
+    mpsc_counter_t() = default;
+
+
+    void increase(jem_u32_t value) noexcept {
+      mp_value_.fetch_add(value, std::memory_order_relaxed);
+      mp_value_.notify_one();
+    }
+    void decrease(jem_u32_t value) noexcept {
+      while ( sc_value_ < value ) {
+        mp_value_.wait(0, std::memory_order_acquire);
+        priv_update();
+      }
+      sc_value_ -= value;
+    }
+    JEM_nodiscard bool try_decrease(jem_u32_t value) noexcept {
+      if ( sc_value_ < value ) {
+        priv_update();
+        if ( sc_value_ < value )
+          return false;
+      }
+      sc_value_ -= value;
+      return true;
+    }
+    JEM_nodiscard bool try_decrease_for(jem_u32_t value, jem_u64_t timeout_us) noexcept {
+      if ( sc_value_ < value ) {
+        atomic_wait(mp_value_, 0, deadline_t::from_timeout_us(timeout_us));
+        priv_update();
+        if ( sc_value_ < value )
+          return false;
+      }
+      sc_value_ -= value;
+      return true;
+    }
+    JEM_nodiscard bool try_decrease_until(jem_u32_t value, deadline_t deadline) noexcept {
+      if ( sc_value_ < value ) {
+        atomic_wait(mp_value_, 0, deadline);
+        priv_update();
+        if ( sc_value_ < value )
+          return false;
+      }
+      sc_value_ -= value;
+      return true;
+    }
+
+  private:
+
+    JEM_forceinline void priv_update() noexcept {
+      sc_value_ += mp_value_.exchange(0, std::memory_order_acquire);
+    }
+
+
+    jem_u32_t              sc_value_ = 0;
+    std::atomic<jem_u32_t> mp_value_ = 0;
+  };
+
   using atomic_flags8_t  = atomic_flags<jem_u8_t>;
   using atomic_flags16_t = atomic_flags<jem_u16_t>;
   using atomic_flags32_t = atomic_flags<jem_u32_t>;

@@ -163,16 +163,13 @@ extern "C" {
     agt_handle_t     parent;
     atomic_flags32_t flags;
     agt_status_t     status;
-    jem_size_t       payloadSize;
+    // jem_size_t       payloadSize;
     // jem_size_t       nextSlot;
   };
 
 }
 
 namespace {
-
-  inline constexpr jem_size_t MessageBaseSize = sizeof(agt_message);
-  static_assert(MessageBaseSize == 32);
 
   JEM_forceinline agt_object* get_handle_object(agt_handle_t handle) noexcept {
     constexpr static jem_size_t ObjectAddressMask = ~static_cast<jem_size_t>( agt::handle_max_flag - 1 );
@@ -226,14 +223,6 @@ namespace {
       return reinterpret_cast<address_t>(message) - mailbox->messageSlots.get();
     }
   }
-
-  JEM_forceinline void*         message_to_payload(agt_message_t message) noexcept {
-    return reinterpret_cast<address_t>(message) + MessageBaseSize;
-  }
-  JEM_forceinline agt_message_t payload_to_message(void* payload) noexcept {
-    return reinterpret_cast<agt_message_t>(static_cast<address_t>(payload) - MessageBaseSize);
-  }
-
 }
 
 namespace agt{
@@ -338,8 +327,7 @@ namespace agt{
     atomic_local_message_t lastQueuedSlot;
     local_message_t        previousReceivedMessage;
   JEM_cache_aligned                          // 192 - alignment
-    atomic_u32_t       queuedSinceLastCheck; // 196
-    jem_u32_t          minQueuedMessages;    // 200
+    mpsc_counter_t     queuedMessageCount;
     PFN_mailbox_dtor   pfnDtor;              // 208
     void*              dtorUserData;         // 216
     jem_u32_t          maxProducers;         // 220
@@ -391,7 +379,21 @@ namespace agt{
     void*                      dtorUserData;         // [3]: 8;  (16, 24)
   };
   struct dynamic_local_mpmc_mailbox       : dynamic_local_object, mpmc_mailbox { };
-  struct dynamic_local_mpsc_mailbox       : dynamic_local_object, mpsc_mailbox { };
+  struct dynamic_local_mpsc_mailbox       : dynamic_local_object, mpsc_mailbox {
+    address_t              messageSlots;
+    jem_size_t             mailboxSize;
+    jem_size_t             maxMessageSize;
+    jem_size_t             defaultMessageSize;
+  JEM_cache_aligned
+    std::atomic<address_t> nextWriteOffset;
+  JEM_cache_aligned
+    std::atomic<address_t> lastWriteOffset;
+    address_t              nextReadOffset;
+  JEM_cache_aligned                              // 192 - alignment
+    mpsc_counter_t         queuedMessageCount;
+    PFN_mailbox_dtor       pfnDtor;              // 208
+    void*                  dtorUserData;         // 216
+  };
   struct dynamic_local_spmc_mailbox       : dynamic_local_object, spmc_mailbox { };
   struct dynamic_local_spsc_mailbox       : dynamic_local_object, spsc_mailbox { };
   struct ipc_mpmc_mailbox                 : ipc_object, mpmc_mailbox {

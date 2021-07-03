@@ -20,7 +20,8 @@ namespace impl{
         lastQueuedMessage->nextSlot = firstMsg;
       } while ( !mailbox->lastQueuedSlot.compare_exchange_weak(lastQueuedMessage, lastMsg) );
 
-      mailbox->queuedMessageCount.increase(slotCount);
+      mailbox->queuedSinceLastCheck.fetch_add(slotCount, std::memory_order_relaxed);
+      mailbox->queuedSinceLastCheck.notify_one();
     }
 
     JEM_forceinline void enqueue_slot(mailbox_t mailbox, message_t message) noexcept {
@@ -29,7 +30,8 @@ namespace impl{
         lastQueuedMessage->nextSlot = message;
       } while ( !mailbox->lastQueuedSlot.compare_exchange_weak(lastQueuedMessage, message) );
 
-      mailbox->queuedMessageCount.increase(1);
+      mailbox->queuedSinceLastCheck.fetch_add(1, std::memory_order_relaxed);
+      mailbox->queuedSinceLastCheck.notify_one();
     }
     JEM_forceinline void release_slot(mailbox_t mailbox, message_t message) noexcept {
       message_t  newNextMsg = mailbox->nextFreeSlot.load(std::memory_order_acquire);
@@ -57,6 +59,31 @@ namespace impl{
 
       return message_to_payload(mailbox, message);
     }
+
+    JEM_forceinline void wait_on_queued_messages(agt::local_mpsc_mailbox* mailbox, jem_size_t count) noexcept {
+      while ( mailbox->minQueuedMessages < count ) {
+        mailbox->queuedSinceLastCheck.wait(0, std::memory_order_acquire);
+        mailbox->minQueuedMessages += mailbox->queuedSinceLastCheck.exchange(0, std::memory_order_acquire);
+      }
+    }
+    JEM_forceinline bool try_wait_on_queued_messages(agt::local_mpsc_mailbox* mailbox, jem_size_t count) noexcept {
+      if ( mailbox->minQueuedMessages < count ) {
+        mailbox->minQueuedMessages += mailbox->queuedSinceLastCheck.exchange(0, std::memory_order_acquire);
+        if ( mailbox->minQueuedMessages < count )
+          return false;
+      }
+      return true;
+    }
+    JEM_forceinline bool try_wait_on_queued_messages_for(agt::local_mpsc_mailbox* mailbox, jem_size_t count, jem_u64_t timeout_us) noexcept {
+      if ( mailbox->minQueuedMessages < count ) {
+        atomic_wait(mailbox->queuedSinceLastCheck, 0, deadline_t::from_timeout_us(timeout_us));
+        mailbox->minQueuedMessages += mailbox->queuedSinceLastCheck.exchange(0, std::memory_order_acquire);
+        if ( mailbox->minQueuedMessages < count )
+          return false;
+      }
+      return true;
+    }
+
 
     JEM_forceinline void discard_slot(mailbox_t mailbox, message_t message) noexcept {
       if ( message->flags.test_and_set(agt::message_result_is_discarded) )
@@ -139,10 +166,10 @@ extern "C" {
     message_t message;
 
 
-    mailbox->queuedMessageCount.decrease(1);
+    impl::wait_on_queued_messages(mailbox, 1);
 
     message = static_cast< message_t >(mailbox->previousReceivedMessage)->nextSlot;
-
+    --mailbox->minQueuedMessages;
     impl::discard_slot(mailbox, mailbox->previousReceivedMessage);
     mailbox->previousReceivedMessage = message;
 
@@ -264,13 +291,14 @@ extern "C" {
     const auto mailbox = cast<mailbox_t>(handle);
 
     if ( timeout_us == JEM_WAIT ) [[unlikely]] {
-      mailbox->queuedMessageCount.decrease(1);
+      impl::wait_on_queued_messages(mailbox, 1);
     }
-    else if ( !(timeout_us == JEM_DO_NOT_WAIT ? mailbox->queuedMessageCount.try_decrease(1) : mailbox->queuedMessageCount.try_decrease_for(1, timeout_us)) ) {
+    else if ( !(timeout_us == JEM_DO_NOT_WAIT ? impl::try_wait_on_queued_messages(mailbox, 1) : impl::try_wait_on_queued_messages_for(mailbox, 1, timeout_us)) ) {
       return AGT_ERROR_MAILBOX_IS_EMPTY;
     }
 
     *pMessage = mailbox->previousReceivedMessage->nextSlot;
+    --mailbox->minQueuedMessages;
     impl::discard_slot(mailbox, mailbox->previousReceivedMessage);
     mailbox->previousReceivedMessage = static_cast<message_t>(*pMessage);
     return AGT_SUCCESS;

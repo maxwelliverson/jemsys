@@ -1,17 +1,19 @@
 //
-// Created by maxwe on 2021-06-25.
+// Created by maxwe on 2021-07-02.
 //
+
 
 #include <agate/dispatch/mpsc_mailbox/local.h>
 
 #include "agate/internal.hpp"
+#include "heaputils.hpp"
 
 #include <ranges>
 
 namespace impl{
   namespace {
     using message_t = agt::local_message*;
-    using mailbox_t = agt::local_mpsc_mailbox*;
+    using mailbox_t = agt::dynamic_local_mpsc_mailbox*;
 
     JEM_forceinline void enqueue_slots(mailbox_t mailbox, jem_size_t slotCount, message_t firstMsg, message_t lastMsg) noexcept {
       message_t lastQueuedMessage = mailbox->lastQueuedSlot.load(std::memory_order_acquire);
@@ -20,16 +22,19 @@ namespace impl{
         lastQueuedMessage->nextSlot = firstMsg;
       } while ( !mailbox->lastQueuedSlot.compare_exchange_weak(lastQueuedMessage, lastMsg) );
 
-      mailbox->queuedMessageCount.increase(slotCount);
+      mailbox->queuedSinceLastCheck.fetch_add(slotCount, std::memory_order_relaxed);
+      mailbox->queuedSinceLastCheck.notify_one();
     }
 
     JEM_forceinline void enqueue_slot(mailbox_t mailbox, message_t message) noexcept {
+
       message_t lastQueuedMessage = mailbox->lastQueuedSlot.load(std::memory_order_acquire);
       do {
         lastQueuedMessage->nextSlot = message;
       } while ( !mailbox->lastQueuedSlot.compare_exchange_weak(lastQueuedMessage, message) );
 
-      mailbox->queuedMessageCount.increase(1);
+      mailbox->queuedSinceLastCheck.fetch_add(1, std::memory_order_relaxed);
+      mailbox->queuedSinceLastCheck.notify_one();
     }
     JEM_forceinline void release_slot(mailbox_t mailbox, message_t message) noexcept {
       message_t  newNextMsg = mailbox->nextFreeSlot.load(std::memory_order_acquire);
@@ -39,15 +44,19 @@ namespace impl{
       mailbox->slotSemaphore.release();
     }
 
-    JEM_forceinline void*         message_to_payload(const agt::local_mpsc_mailbox* mailbox, agt_message_t message) noexcept {
+    JEM_forceinline void*         message_to_payload(const agt::dynamic_local_mpsc_mailbox* mailbox, agt_message_t message) noexcept {
       return reinterpret_cast<jem_u8_t*>(message) + mailbox->payloadOffset;
     }
-    JEM_forceinline agt_message_t payload_to_message(const agt::local_mpsc_mailbox* mailbox, void* payload) noexcept {
+    JEM_forceinline agt_message_t payload_to_message(const agt::dynamic_local_mpsc_mailbox* mailbox, void* payload) noexcept {
       return reinterpret_cast<agt_message_t>(static_cast<std::byte*>(payload) - mailbox->payloadOffset);
     }
 
 
-    JEM_forceinline void* get_free_slot(agt::local_mpsc_mailbox* mailbox) noexcept {
+    JEM_forceinline void move_to_back_of_heap(mailbox_t mailbox, message_t message) noexcept {
+
+    }
+
+    JEM_forceinline void* get_free_slot(agt::dynamic_local_mpsc_mailbox* mailbox) noexcept {
       message_t  message = mailbox->nextFreeSlot.load(std::memory_order_acquire);
       message_t  nextMessage;
 
@@ -57,6 +66,8 @@ namespace impl{
 
       return message_to_payload(mailbox, message);
     }
+
+
 
     JEM_forceinline void discard_slot(mailbox_t mailbox, message_t message) noexcept {
       if ( message->flags.test_and_set(agt::message_result_is_discarded) )
@@ -92,9 +103,9 @@ namespace impl{
 
 extern "C" {
 
-  JEM_api void*               JEM_stdcall agt_local_mpsc_mailbox_acquire_slot(agt_handle_t handle, jem_size_t slotSize) JEM_noexcept {
+  JEM_api void*               JEM_stdcall agt_dynamic_local_mpsc_mailbox_acquire_slot(agt_handle_t handle, jem_size_t slotSize) JEM_noexcept {
     using message_t = agt::local_message*;
-    using mailbox_t = agt::local_mpsc_mailbox*;
+    using mailbox_t = agt::dynamic_local_mpsc_mailbox*;
 
 
     const auto mailbox = cast<mailbox_t>(handle);
@@ -102,10 +113,10 @@ extern "C" {
     mailbox->slotSemaphore.acquire();
     return impl::get_free_slot(mailbox);
   }
-  JEM_api void                JEM_stdcall agt_local_mpsc_mailbox_release_slot(agt_handle_t handle, void* slot) JEM_noexcept {
+  JEM_api void                JEM_stdcall agt_dynamic_local_mpsc_mailbox_release_slot(agt_handle_t handle, void* slot) JEM_noexcept {
 
     using message_t = agt::local_message*;
-    using mailbox_t = agt::local_mpsc_mailbox*;
+    using mailbox_t = agt::dynamic_local_mpsc_mailbox*;
 
     const auto mailbox = cast<mailbox_t>(handle);
     const auto message = static_cast<message_t>(impl::payload_to_message(mailbox, slot));
@@ -115,10 +126,10 @@ extern "C" {
     } while( !mailbox->nextFreeSlot.compare_exchange_weak(newNextSlot, message) );
     mailbox->slotSemaphore.release();
   }
-  JEM_api agt_message_t       JEM_stdcall agt_local_mpsc_mailbox_send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags) JEM_noexcept {
+  JEM_api agt_message_t       JEM_stdcall agt_dynamic_local_mpsc_mailbox_send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags) JEM_noexcept {
 
     using message_t = agt::local_message*;
-    using mailbox_t = agt::local_mpsc_mailbox*;
+    using mailbox_t = agt::dynamic_local_mpsc_mailbox*;
 
 
     const auto mailbox = cast<mailbox_t>(handle);
@@ -130,40 +141,40 @@ extern "C" {
 
     return message;
   }
-  JEM_api agt_message_t       JEM_stdcall agt_local_mpsc_mailbox_receive(agt_handle_t handle) JEM_noexcept {
+  JEM_api agt_message_t       JEM_stdcall agt_dynamic_local_mpsc_mailbox_receive(agt_handle_t handle) JEM_noexcept {
 
     using message_t = agt::local_message*;
-    using mailbox_t = agt::local_mpsc_mailbox*;
+    using mailbox_t = agt::dynamic_local_mpsc_mailbox*;
 
     const auto mailbox = cast<mailbox_t>(handle);
     message_t message;
 
 
-    mailbox->queuedMessageCount.decrease(1);
+    impl::wait_on_queued_messages(mailbox, 1);
 
     message = static_cast< message_t >(mailbox->previousReceivedMessage)->nextSlot;
-
+    --mailbox->minQueuedMessages;
     impl::discard_slot(mailbox, mailbox->previousReceivedMessage);
     mailbox->previousReceivedMessage = message;
 
     return message;
   }
 
-  JEM_api agt_status_t        JEM_stdcall agt_local_mpsc_mailbox_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots) JEM_noexcept {
+  JEM_api agt_status_t        JEM_stdcall agt_dynamic_local_mpsc_mailbox_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots) JEM_noexcept {
     using message_t = agt::local_message*;
-    using mailbox_t = agt::local_mpsc_mailbox*;
+    using mailbox_t = agt::dynamic_local_mpsc_mailbox*;
 
-    assert( agt_internal_get_object_kind(handle) == agt::object_kind_local_mpsc_mailbox );
+    assert( agt_internal_get_object_kind(handle) == agt::object_kind_dynamic_local_mpsc_mailbox );
     assert( slotCount == 0 || slots != nullptr );
 
     const auto      mailbox = cast<mailbox_t>(handle);
 
     if ( !handle_has_permissions(handle, agt::handle_has_send_permission) ) [[unlikely]]
-      return AGT_ERROR_INSUFFICIENT_PERMISSIONS;
+    return AGT_ERROR_INSUFFICIENT_PERMISSIONS;
     if ( slotCount > mailbox->slotCount ) [[unlikely]]
-      return AGT_ERROR_INSUFFICIENT_SLOTS;
+    return AGT_ERROR_INSUFFICIENT_SLOTS;
     if ( slotSize > mailbox->slotSize ) [[unlikely]]
-      return AGT_ERROR_MESSAGE_TOO_LARGE;
+    return AGT_ERROR_MESSAGE_TOO_LARGE;
 
 
     if ( slotCount != 0 ) [[likely]] {
@@ -173,9 +184,9 @@ extern "C" {
 
     return AGT_SUCCESS;
   }
-  JEM_api void                JEM_stdcall agt_local_mpsc_mailbox_release_many_slots(agt_handle_t handle, jem_size_t slotCount, void** slots) JEM_noexcept {
+  JEM_api void                JEM_stdcall agt_dynamic_local_mpsc_mailbox_release_many_slots(agt_handle_t handle, jem_size_t slotCount, void** slots) JEM_noexcept {
     using message_t = agt::local_message*;
-    using mailbox_t = agt::local_mpsc_mailbox*;
+    using mailbox_t = agt::dynamic_local_mpsc_mailbox*;
 
     assert(slotCount <= (std::numeric_limits<ptrdiff_t>::max)());
 
@@ -190,10 +201,10 @@ extern "C" {
       mailbox->slotSemaphore.release(static_cast<ptrdiff_t>(slotCount));
     }
   }
-  JEM_api void                JEM_stdcall agt_local_mpsc_mailbox_send_many(agt_handle_t handle, jem_size_t slotCount, void** messageSlots, agt_message_t* messages, agt_send_message_flags_t flags) JEM_noexcept {
+  JEM_api void                JEM_stdcall agt_dynamic_local_mpsc_mailbox_send_many(agt_handle_t handle, jem_size_t slotCount, void** messageSlots, agt_message_t* messages, agt_send_message_flags_t flags) JEM_noexcept {
 
     using message_t = agt::local_message*;
-    using mailbox_t = agt::local_mpsc_mailbox*;
+    using mailbox_t = agt::dynamic_local_mpsc_mailbox*;
 
     if ( slotCount != 0 ) [[likely]] {
       const auto mailbox = cast<mailbox_t>(handle);
@@ -208,11 +219,11 @@ extern "C" {
       impl::enqueue_slots(mailbox, slotCount, firstMessage, lastMessage);
     }
   }
-  JEM_api agt_status_t        JEM_stdcall agt_local_mpsc_mailbox_receive_many(agt_handle_t handle, jem_size_t count, agt_message_t* messages) JEM_noexcept {
+  JEM_api agt_status_t        JEM_stdcall agt_dynamic_local_mpsc_mailbox_receive_many(agt_handle_t handle, jem_size_t count, agt_message_t* messages) JEM_noexcept {
 
     return AGT_ERROR_NOT_YET_IMPLEMENTED;
     /*using message_t = agt::local_message*;
-    using mailbox_t = agt::local_mpsc_mailbox*;
+    using mailbox_t = agt::dynamic_local_mpsc_mailbox*;
 
     const auto mailbox = cast<mailbox_t>(handle);
     message_t message;
@@ -227,24 +238,24 @@ extern "C" {
 
     message = mailbox->previousReceivedMessage->nextSlot;
     --mailbox->minQueuedMessages;
-    agt_local_mpsc_mailbox_discard(mailbox->previousReceivedMessage);
+    agt_dynamic_local_mpsc_mailbox_discard(mailbox->previousReceivedMessage);
     mailbox->previousReceivedMessage = message;
 
     return message;*/
   }
 
 
-  JEM_api agt_status_t        JEM_stdcall agt_local_mpsc_mailbox_try_acquire_slot(agt_handle_t handle, jem_size_t slotSize, void** pSlot, jem_u64_t timeout_us) JEM_noexcept {
+  JEM_api agt_status_t        JEM_stdcall agt_dynamic_local_mpsc_mailbox_try_acquire_slot(agt_handle_t handle, jem_size_t slotSize, void** pSlot, jem_u64_t timeout_us) JEM_noexcept {
 
     using message_t = agt::local_message*;
-    using mailbox_t = agt::local_mpsc_mailbox*;
+    using mailbox_t = agt::dynamic_local_mpsc_mailbox*;
 
     const auto mailbox = cast<mailbox_t>(handle);
 
     if ( !handle_has_permissions(handle, agt::handle_has_send_permission) ) [[unlikely]]
-      return AGT_ERROR_INSUFFICIENT_PERMISSIONS;
+    return AGT_ERROR_INSUFFICIENT_PERMISSIONS;
     if ( slotSize > mailbox->slotSize ) [[unlikely]]
-      return AGT_ERROR_MESSAGE_TOO_LARGE;
+    return AGT_ERROR_MESSAGE_TOO_LARGE;
 
     if ( timeout_us == JEM_WAIT ) [[unlikely]] {
       mailbox->slotSemaphore.acquire();
@@ -256,37 +267,38 @@ extern "C" {
     *pSlot = impl::get_free_slot(mailbox);
     return AGT_SUCCESS;
   }
-  JEM_api agt_status_t        JEM_stdcall agt_local_mpsc_mailbox_try_receive(agt_handle_t handle, agt_message_t* pMessage, jem_u64_t timeout_us) JEM_noexcept {
+  JEM_api agt_status_t        JEM_stdcall agt_dynamic_local_mpsc_mailbox_try_receive(agt_handle_t handle, agt_message_t* pMessage, jem_u64_t timeout_us) JEM_noexcept {
 
     using message_t = agt::local_message*;
-    using mailbox_t = agt::local_mpsc_mailbox*;
+    using mailbox_t = agt::dynamic_local_mpsc_mailbox*;
 
     const auto mailbox = cast<mailbox_t>(handle);
 
     if ( timeout_us == JEM_WAIT ) [[unlikely]] {
-      mailbox->queuedMessageCount.decrease(1);
+      impl::wait_on_queued_messages(mailbox, 1);
     }
-    else if ( !(timeout_us == JEM_DO_NOT_WAIT ? mailbox->queuedMessageCount.try_decrease(1) : mailbox->queuedMessageCount.try_decrease_for(1, timeout_us)) ) {
+    else if ( !(timeout_us == JEM_DO_NOT_WAIT ? impl::try_wait_on_queued_messages(mailbox, 1) : impl::try_wait_on_queued_messages_for(mailbox, 1, timeout_us)) ) {
       return AGT_ERROR_MAILBOX_IS_EMPTY;
     }
 
     *pMessage = mailbox->previousReceivedMessage->nextSlot;
+    --mailbox->minQueuedMessages;
     impl::discard_slot(mailbox, mailbox->previousReceivedMessage);
     mailbox->previousReceivedMessage = static_cast<message_t>(*pMessage);
     return AGT_SUCCESS;
   }
 
-  JEM_api agt_status_t        JEM_stdcall agt_local_mpsc_mailbox_try_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots, jem_u64_t timeout_us) JEM_noexcept {
+  JEM_api agt_status_t        JEM_stdcall agt_dynamic_local_mpsc_mailbox_try_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots, jem_u64_t timeout_us) JEM_noexcept {
 
     using message_t = agt::local_message*;
-    using mailbox_t = agt::local_mpsc_mailbox*;
+    using mailbox_t = agt::dynamic_local_mpsc_mailbox*;
 
     const auto mailbox = cast<mailbox_t>(handle);
 
     if ( timeout_us == JEM_WAIT ) [[unlikely]]
-      return agt_local_mpsc_mailbox_acquire_many_slots(handle, slotSize, slotCount, slots);
+    return agt_dynamic_local_mpsc_mailbox_acquire_many_slots(handle, slotSize, slotCount, slots);
     if ( slotCount == 0 ) [[unlikely]]
-      return AGT_SUCCESS;
+    return AGT_SUCCESS;
 
 
     if ( timeout_us == JEM_DO_NOT_WAIT ) {
@@ -302,53 +314,53 @@ extern "C" {
 
     return AGT_SUCCESS;
   }
-  JEM_api agt_status_t        JEM_stdcall agt_local_mpsc_mailbox_try_receive_many(agt_handle_t handle, jem_size_t slotCount, agt_message_t* message, jem_u64_t timeout_us) JEM_noexcept {
+  JEM_api agt_status_t        JEM_stdcall agt_dynamic_local_mpsc_mailbox_try_receive_many(agt_handle_t handle, jem_size_t slotCount, agt_message_t* message, jem_u64_t timeout_us) JEM_noexcept {
     return AGT_ERROR_NOT_YET_IMPLEMENTED;
   }
 
 
-  JEM_api agt_status_t        JEM_stdcall agt_local_mpsc_mailbox_acquire_slot_ex(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params) JEM_noexcept {
+  JEM_api agt_status_t        JEM_stdcall agt_dynamic_local_mpsc_mailbox_acquire_slot_ex(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params) JEM_noexcept {
     return AGT_ERROR_NOT_YET_IMPLEMENTED;
   }
-  JEM_api agt_status_t        JEM_stdcall agt_local_mpsc_mailbox_release_slot_ex(agt_handle_t handle, const agt_release_slot_ex_params_t* params) JEM_noexcept {
+  JEM_api agt_status_t        JEM_stdcall agt_dynamic_local_mpsc_mailbox_release_slot_ex(agt_handle_t handle, const agt_release_slot_ex_params_t* params) JEM_noexcept {
     return AGT_ERROR_NOT_YET_IMPLEMENTED;
   }
-  JEM_api agt_status_t        JEM_stdcall agt_local_mpsc_mailbox_send_ex(agt_handle_t handle, const agt_send_ex_params_t* params) JEM_noexcept {
+  JEM_api agt_status_t        JEM_stdcall agt_dynamic_local_mpsc_mailbox_send_ex(agt_handle_t handle, const agt_send_ex_params_t* params) JEM_noexcept {
     return AGT_ERROR_NOT_YET_IMPLEMENTED;
   }
-  JEM_api agt_status_t        JEM_stdcall agt_local_mpsc_mailbox_receive_ex(agt_handle_t handle, const agt_receive_ex_params_t* params) JEM_noexcept {
+  JEM_api agt_status_t        JEM_stdcall agt_dynamic_local_mpsc_mailbox_receive_ex(agt_handle_t handle, const agt_receive_ex_params_t* params) JEM_noexcept {
     return AGT_ERROR_NOT_YET_IMPLEMENTED;
   }
 
 
-  JEM_api bool                JEM_stdcall agt_local_mpsc_mailbox_discard(agt_message_t message) JEM_noexcept {
+  JEM_api bool                JEM_stdcall agt_dynamic_local_mpsc_mailbox_discard(agt_message_t message) JEM_noexcept {
     if ( message->flags.fetch( agt::message_result_cannot_discard | agt::message_result_was_checked ) == agt::message_result_cannot_discard )
       return false;
     impl::discard_slot(cast<impl::mailbox_t>(message->parent), static_cast<impl::message_t>(message));
     return true;
   }
-  JEM_api agt_status_t        JEM_stdcall agt_local_mpsc_mailbox_cancel(agt_message_t message) JEM_noexcept {
+  JEM_api agt_status_t        JEM_stdcall agt_dynamic_local_mpsc_mailbox_cancel(agt_message_t message) JEM_noexcept {
     return AGT_ERROR_NOT_YET_IMPLEMENTED;
   }
-  JEM_api void                JEM_stdcall agt_local_mpsc_mailbox_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeTypes, agt_handle_attribute_t* attributes) JEM_noexcept {
+  JEM_api void                JEM_stdcall agt_dynamic_local_mpsc_mailbox_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeTypes, agt_handle_attribute_t* attributes) JEM_noexcept {
 
     const auto mailbox = cast<impl::mailbox_t>(handle);
 
     for ( jem_size_t i = 0; i < attributeCount; ++i ) {
       switch ( attributeTypes[i] ) {
         case AGT_HANDLE_ATTRIBUTE_TYPE_MAX_MESSAGE_SIZE:
-        case AGT_HANDLE_ATTRIBUTE_TYPE_DEFAULT_MESSAGE_SIZE:
-          attributes[i].u64 = mailbox->slotSize;
-          break;
-        case AGT_HANDLE_ATTRIBUTE_TYPE_MAX_CONSUMERS:
-          attributes[i].u32 = 1;
-          break;
-        case AGT_HANDLE_ATTRIBUTE_TYPE_MAX_PRODUCERS:
-          attributes[i].u32 = mailbox->maxProducers;
-          break;
-        case AGT_HANDLE_ATTRIBUTE_TYPE_IS_INTERPROCESS:
-          attributes[i].boolean = false;
-          break;
+          case AGT_HANDLE_ATTRIBUTE_TYPE_DEFAULT_MESSAGE_SIZE:
+            attributes[i].u64 = mailbox->slotSize;
+            break;
+            case AGT_HANDLE_ATTRIBUTE_TYPE_MAX_CONSUMERS:
+              attributes[i].u32 = 1;
+              break;
+              case AGT_HANDLE_ATTRIBUTE_TYPE_MAX_PRODUCERS:
+                attributes[i].u32 = mailbox->maxProducers;
+                break;
+                case AGT_HANDLE_ATTRIBUTE_TYPE_IS_INTERPROCESS:
+                  attributes[i].boolean = false;
+                  break;
       }
     }
   }
