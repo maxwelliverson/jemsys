@@ -25,6 +25,21 @@ typedef struct qtz_module_builder* qtz_module_builder_t;
 
 typedef struct qtz_error*          qtz_error_t;
 
+typedef enum {
+  QTZ_SUCCESS,
+  QTZ_ERROR_INTERNAL,
+  QTZ_ERROR_UNKNOWN,
+  QTZ_ERROR_BAD_SIZE,
+  QTZ_ERROR_INVALID_ARGUMENT,
+  QTZ_ERROR_BAD_ENCODING_IN_NAME,
+  QTZ_ERROR_NAME_TOO_LONG,
+  QTZ_ERROR_INSUFFICIENT_BUFFER_SIZE,
+  QTZ_ERROR_BAD_ALLOC,
+  QTZ_ERROR_TOO_MANY_PRODUCERS,
+  QTZ_ERROR_TOO_MANY_CONSUMERS
+} qtz_status_t;
+
+
 
 typedef enum {
   QTZ_SCOPE_SYSTEM,

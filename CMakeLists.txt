@@ -14,6 +14,9 @@ target_include_directories(jemsys.agate PUBLIC include src)
 add_library(jemsys.opal src/opal/agent.cpp)
 target_include_directories(jemsys.opal PUBLIC include src)
 
+add_executable(jemsys.quartz.kernel src/quartz/kernel.cpp)
+target_include_directories(jemsys.quartz.kernel PUBLIC include src)
+
 add_library(jemsys library.c include/jemsys.h)
 
 target_link_libraries(jemsys.quartz PUBLIC jemsys.internal.ipc)
