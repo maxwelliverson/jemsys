@@ -18,25 +18,21 @@ namespace {
     .parent      = AGT_NULL_HANDLE,
     .flags       = agt::message_result_is_ready,
     .status      = AGT_SUCCESS,
-    .payloadSize = 0,
   };
   inline agt_message immediate_invalid_argument_msg{
     .parent      = AGT_NULL_HANDLE,
     .flags       = agt::message_result_is_ready,
     .status      = AGT_ERROR_INVALID_ARGUMENT,
-    .payloadSize = 0,
   };
   inline agt_message immediate_incompatible_params_msg{
     .parent      = AGT_NULL_HANDLE,
     .flags       = agt::message_result_is_ready,
     .status      = AGT_ERROR_INCOMPATIBLE_PARAMETERS,
-    .payloadSize = 0,
   };
   inline agt_message immediate_duplicate_params_msg{
     .parent      = AGT_NULL_HANDLE,
     .flags       = agt::message_result_is_ready,
     .status      = AGT_ERROR_DUPLICATE_PARAMETERS,
-    .payloadSize = 0,
   };
 
 

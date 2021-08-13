@@ -1598,75 +1598,7 @@ namespace qtz {
 
   namespace {
 
-    template <typename Word, size_t Bits = std::dynamic_extent>
-    struct bitmap{
 
-      inline constexpr static size_t Extent = Bits == std::dynamic_extent ? Bits : (Bits / (sizeof(Word) * 8));
-
-      std::span<Word, Extent> fields;
-    };
-
-    struct small_alloc { };
-    struct medium_alloc{ };
-    struct large_alloc { };
-    struct huge_alloc  { };
-
-    struct page_allocation_handle{
-      jem_u16_t pageCount;
-      jem_u16_t smallPageAddress;
-      jem_u16_t hugePageOffset;
-      jem_u8_t  purpose;
-      jem_u8_t  lifetime;
-    };
-
-    struct page_4gb_desc  { }; // 16
-    struct page_256mb_desc{ }; // 16
-    struct page_16mb_desc { }; // 16
-    struct page_1mb_desc  { }; // 16
-    struct page_64kb_desc { }; // 16
-    struct page_4kb_desc  { }; // 16
-
-
-
-
-    struct page_map{
-      jem_u32_t  hugePageCount;
-      struct {}* hugePages;
-    };
-    
-    struct thread_local_segment{
-      jem_size_t totalSize;
-      void*      address;
-      bool       locallyAllocated;
-      
-    };
-    
-    struct local_heap;
-    
-    struct thread_group{
-      jem_size_t  groupSize;
-      local_heap* heaps;
-    };
-    
-    struct local_heap{
-      qtz_local_id_t        threadId;
-      thread_local_segment* segments;
-      jem_size_t            totalAllocated;
-      local_heap*           parent;
-      jem_size_t            childCount;
-      local_heap**          children;
-      thread_group*         group;
-    };
-    
-    struct shared_heap{
-      jem_size_t   threadCount;
-      local_heap** threadHeaps;
-    };
-
-    struct memory_manager{
-      jem_size_t addressSpaceSize;
-      
-    };
 
 
 

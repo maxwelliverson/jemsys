@@ -561,6 +561,8 @@ namespace qtz::types{
       return *(&constants.si_member_function_pointer_alignment + jem_size_t(inheritance));
     }
   };
+
+
 }
 
 #endif//JEMSYS_QUARTZ_INTERNAL_TYPES_HPP

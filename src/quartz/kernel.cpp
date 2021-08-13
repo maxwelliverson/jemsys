@@ -83,8 +83,8 @@ namespace {
     std::unordered_map<int, process_info> processes;
 
     void*                                 fileMappingHandle;
-    void*  address;
-    size_t totalSize;
+    void*                                 address;
+    size_t                                totalSize;
   };
 
   struct init_kernel_args {

@@ -525,6 +525,7 @@ namespace agt{
 
     inline constexpr static object_type_id_t object_id = object_type_private_mailbox;
 
+    jem_size_t                 payloadOffset;
     address_t                  messageSlots;
     jem_size_t                 messageSize;
     jem_size_t                 slotCount;
@@ -534,10 +535,10 @@ namespace agt{
   JEM_cache_aligned
     jem_size_t                 availableSlotCount;
     jem_size_t                 queuedMessageCount;
-    agt_message_t              nextFreeSlot;
-    agt_message_t              prevAcquiredSlot;
-    agt_message_t              prevQueuedMessage;
-    agt_message_t              prevReleasedSlot;
+    local_message_t            nextFreeSlot;
+    local_message_t            prevAcquiredSlot;
+    local_message_t            prevQueuedMessage;
+    local_message_t            prevReleasedSlot;
   };
   struct dynamic_private_mailbox          : dynamic_local_object{
 

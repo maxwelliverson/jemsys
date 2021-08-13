@@ -5,6 +5,7 @@
 #include "ipc/file.hpp"
 #include "ipc/segment.hpp"
 #include "ipc/process.hpp"
+#include "ipc/memory.hpp"
 #include "ipc/mpsc_mailbox.hpp"
 
 
@@ -38,6 +39,9 @@
   if (!CreateProcessA(applicationName, commandLine, &processAttributes, &threadAttributes, inherit, DETACHED_PROCESS, environmentBlock.get(), ))
     return std::nullopt;
 }*/
+
+
+
 
 void* ipc::process::reserve_memory(jem_size_t size, jem_size_t alignment) const noexcept {
   if ( alignment == JEM_DONT_CARE ) {
@@ -122,15 +126,153 @@ jem_size_t ipc::process::write(void* dstAddr, const void* srcAddr, jem_size_t by
 }
 
 
-ipc::process ipc::process::open(ipc::process::id processId, ipc::process_permissions_t permissions) noexcept {
+std::optional<ipc::process> ipc::process::open(ipc::process::id processId, ipc::process_permissions_t permissions) noexcept {
   process proc{};
   HANDLE handle = OpenProcess(permissions, true, processId);
   if ( handle ) {
     proc.handle_      = handle;
     proc.id_          = processId;
     proc.permissions_ = permissions;
+    return proc;
   }
+  return std::nullopt;
+}
+std::optional<ipc::process> ipc::process::launch(const char* applicationName, char* commandLineOpts, std::span<process_extra_arg> extraArgs) {
+
+
+  std::unique_ptr<char[]> envBuffer = nullptr;
+
+  LPSECURITY_ATTRIBUTES procAttr   = nullptr;
+  LPSECURITY_ATTRIBUTES threadAttr = nullptr;
+  bool        inheritHandles       = true;
+  void*       environment          = nullptr;
+  const char* currentDirectory     = nullptr;
+  void**      pThreadHandle        = nullptr;
+  int*        pThreadId            = nullptr;
+
+  PROCESS_INFORMATION procInfo;
+
+  for ( auto arg : extraArgs ) {
+    switch ( arg.kind ) {
+      case process_arg_process_security:
+        procAttr = reinterpret_cast<LPSECURITY_ATTRIBUTES>(arg.value);
+        break;
+      case process_arg_thread_security:
+        threadAttr = reinterpret_cast<LPSECURITY_ATTRIBUTES>(arg.value);
+        break;
+      case process_arg_inherit_handle:
+        inheritHandles = arg.value;
+        break;
+      case process_arg_environment:
+        envBuffer = reinterpret_cast<ipc::environment<char>*>(arg.value)->get_normalized_buffer();
+        environment = envBuffer.get();
+        break;
+      case process_arg_current_directory:
+        currentDirectory = reinterpret_cast<const char*>(arg.value);
+        break;
+      case process_arg_thread_id:
+        pThreadId = reinterpret_cast<int*>(arg.value);
+        break;
+      case process_arg_thread_handle:
+        pThreadHandle = reinterpret_cast<void**>(arg.value);
+        break;
+    }
+  }
+
+  if (!CreateProcess(applicationName,
+                commandLineOpts,
+                procAttr,
+                threadAttr,
+                inheritHandles,
+                DETACHED_PROCESS,
+                environment,
+                currentDirectory,
+                nullptr,
+                &procInfo)) {
+    return std::nullopt;
+  }
+
+  process proc;
+
+  proc.handle_ = procInfo.hProcess;
+  proc.id_     = procInfo.dwProcessId;
+  proc.permissions_ = static_cast<process_permissions_t>(PROCESS_ALL_ACCESS);
+
+  if ( pThreadHandle != nullptr ) {
+    *pThreadHandle = procInfo.hThread;
+  }
+  if ( pThreadId != nullptr ) {
+    *pThreadId = procInfo.dwThreadId;
+  }
+
   return proc;
 }
+std::optional<ipc::process> ipc::process::launch_child(const char* applicationName, char* commandLineOpts, std::span<process_extra_arg> extraArgs) {
 
+  std::unique_ptr<char[]> envBuffer = nullptr;
 
+  LPSECURITY_ATTRIBUTES procAttr   = nullptr;
+  LPSECURITY_ATTRIBUTES threadAttr = nullptr;
+  bool        inheritHandles       = true;
+  void*       environment          = nullptr;
+  const char* currentDirectory     = nullptr;
+  void**      pThreadHandle        = nullptr;
+  int*        pThreadId            = nullptr;
+
+  PROCESS_INFORMATION procInfo;
+
+  for ( auto arg : extraArgs ) {
+    switch ( arg.kind ) {
+      case process_arg_process_security:
+        procAttr = reinterpret_cast<LPSECURITY_ATTRIBUTES>(arg.value);
+        break;
+        case process_arg_thread_security:
+          threadAttr = reinterpret_cast<LPSECURITY_ATTRIBUTES>(arg.value);
+          break;
+          case process_arg_inherit_handle:
+            inheritHandles = arg.value;
+            break;
+            case process_arg_environment:
+              envBuffer = reinterpret_cast<ipc::environment<char>*>(arg.value)->get_normalized_buffer();
+              environment = envBuffer.get();
+              break;
+              case process_arg_current_directory:
+                currentDirectory = reinterpret_cast<const char*>(arg.value);
+                break;
+                case process_arg_thread_id:
+                  pThreadId = reinterpret_cast<int*>(arg.value);
+                  break;
+                  case process_arg_thread_handle:
+                    pThreadHandle = reinterpret_cast<void**>(arg.value);
+                    break;
+    }
+  }
+
+  if (!CreateProcess(applicationName,
+                     commandLineOpts,
+                     procAttr,
+                     threadAttr,
+                     inheritHandles,
+                     0,
+                     environment,
+                     currentDirectory,
+                     nullptr,
+                     &procInfo)) {
+    return std::nullopt;
+  }
+
+  process proc;
+
+  proc.handle_ = procInfo.hProcess;
+  proc.id_     = procInfo.dwProcessId;
+  proc.permissions_ = static_cast<process_permissions_t>(PROCESS_ALL_ACCESS);
+
+  if ( pThreadHandle != nullptr ) {
+    *pThreadHandle = procInfo.hThread;
+  }
+  if ( pThreadId != nullptr ) {
+    *pThreadId = procInfo.dwThreadId;
+  }
+
+  return proc;
+}

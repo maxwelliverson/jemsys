@@ -14,16 +14,6 @@
 
 namespace ipc{
 
-  /*template <typename A>
-  concept segment_allocator_c = requires(A& a, void* p, const void* cp, jem_size_t size, jem_size_t align){
-    { a.alloc(size) }                   noexcept -> std::same_as<void*>;
-    { a.alloc(size, align) }            noexcept -> std::same_as<void*>;
-    { a.realloc(p, size, size) }        noexcept -> std::same_as<void*>;
-    { a.realloc(p, size, size, align) } noexcept -> std::same_as<void*>;
-    { a.free(p, size) }                 noexcept;
-    { a.free(p, size, align) }          noexcept;
-  };*/
-
   enum class segment_kind {
     solo,
     leaf,
@@ -166,9 +156,10 @@ namespace ipc{
 
     JEM_nodiscard void* alloc(jem_size_t size) noexcept;
     JEM_nodiscard void* alloc(jem_size_t size, jem_size_t align) noexcept;
-    JEM_nodiscard void* realloc(void* address, jem_size_t size) noexcept;
-    JEM_nodiscard void* realloc(void* address, jem_size_t size, jem_size_t align) noexcept;
+    JEM_nodiscard void* realloc(void* address, jem_size_t newSize, jem_size_t oldSize) noexcept;
+    JEM_nodiscard void* realloc(void* address, jem_size_t newSize, jem_size_t oldSize, jem_size_t align) noexcept;
     void                free(void* address, jem_size_t size) noexcept;
+    void                free(void* address, jem_size_t size, jem_size_t align) noexcept;
 
 
   private:
