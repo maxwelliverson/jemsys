@@ -378,6 +378,7 @@ namespace agt{
     PFN_mailbox_dtor           pfnDtor;              // [3]: 8;  (8,  16)
     void*                      dtorUserData;         // [3]: 8;  (16, 24)
   };
+
   struct dynamic_local_mpmc_mailbox       : dynamic_local_object, mpmc_mailbox { };
   struct dynamic_local_mpsc_mailbox       : dynamic_local_object, mpsc_mailbox {
     address_t              messageSlots;
@@ -396,6 +397,7 @@ namespace agt{
   };
   struct dynamic_local_spmc_mailbox       : dynamic_local_object, spmc_mailbox { };
   struct dynamic_local_spsc_mailbox       : dynamic_local_object, spsc_mailbox { };
+
   struct ipc_mpmc_mailbox                 : ipc_object, mpmc_mailbox {
     ipc_address_t    messageSlots;
     memory_desc      msgMemory;
@@ -486,6 +488,7 @@ namespace agt{
     PFN_mailbox_dtor           pfnDtor;              // [3]: 8;  (8,  16)
     void*                      dtorUserData;         // [3]: 8;  (16, 24)
   };
+
   struct dynamic_ipc_mpmc_mailbox         : dynamic_ipc_object, mpmc_mailbox { };
   struct dynamic_ipc_mpsc_mailbox         : dynamic_ipc_object, mpsc_mailbox { };
   struct dynamic_ipc_spmc_mailbox         : dynamic_ipc_object, spmc_mailbox { };

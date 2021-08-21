@@ -9,12 +9,11 @@
 #include <agate/core.h>
 
 #include "atomicutils.hpp"
+#include "internal.hpp"
 
 namespace qtz{
 
-  using pid_t = int;
-  using tid_t = int;
-  using handle_t = void*;
+
 
 
   enum class knl_cmd{
@@ -41,14 +40,14 @@ namespace qtz{
 
   struct args{
     knl_cmd cmd;
-    pid_t   srcProcess;
+    qtz_pid_t   srcProcess;
   };
 
   struct init_kernel_args {
     const char* processName;
     void*       processInboxFileMapping;
     jem_size_t  processInboxBytes;
-    pid_t       srcProcessId;
+    qtz_pid_t       srcProcessId;
     jem_u32_t   kernelVersion;
     const char* kernelIdentifier;
     const char* kernelBlockName;
@@ -57,7 +56,7 @@ namespace qtz{
 
   struct attach_process_args {
     knl_cmd           cmd;
-    pid_t             srcProcessId;
+    qtz_pid_t             srcProcessId;
     uintptr_t         inboxAddress;
     std::atomic_flag* isReady;
     uintptr_t*        kernelInboxAddress;
@@ -66,35 +65,35 @@ namespace qtz{
   };
   struct attach_thread_args {
     knl_cmd    cmd;
-    pid_t      srcProcessId;
-    tid_t      threadId;
+    qtz_pid_t      srcProcessId;
+    qtz_tid_t      threadId;
     jem_size_t nameLength;
     char       name[];
   };
   struct attach_agt_handle_args {
     knl_cmd      cmd;
-    pid_t        srcProcessId;
+    qtz_pid_t        srcProcessId;
     agt_handle_t handle;
     jem_size_t   nameLength;
     char         name[];
   };
   struct detach_process_args {
     knl_cmd    cmd;
-    pid_t      srcProcessId;
+    qtz_pid_t      srcProcessId;
   };
   struct detach_thread_args {
-    knl_cmd    cmd;
-    pid_t      srcProcessId;
-    tid_t      threadId;
+    knl_cmd   cmd;
+    qtz_pid_t srcProcessId;
+    qtz_tid_t threadId;
   };
   struct detach_agt_handle_args {
     knl_cmd      cmd;
-    pid_t        srcProcessId;
+    qtz_pid_t    srcProcessId;
     agt_handle_t handle;
   };
   struct open_address_space_args {
     knl_cmd           cmd;
-    pid_t             srcProcessId;
+    qtz_pid_t             srcProcessId;
     std::atomic_flag* isReady;
     uintptr_t*        resultAddress;
     jem_size_t        addressSpaceSize;
@@ -103,12 +102,12 @@ namespace qtz{
   };
   struct close_address_space_args {
     knl_cmd           cmd;
-    pid_t             srcProcessId;
+    qtz_pid_t             srcProcessId;
     uintptr_t         addressSpace;
   };
   struct alloc_within_address_space_args {
     knl_cmd           cmd;
-    pid_t             srcProcessId;
+    qtz_pid_t             srcProcessId;
     uintptr_t         addressSpace;
     std::atomic_flag* isReady;
     uintptr_t*        resultAddress;
@@ -118,46 +117,46 @@ namespace qtz{
   };
   struct alloc_thread_local_args {
     knl_cmd           cmd;
-    pid_t             srcProcessId;
+    qtz_pid_t             srcProcessId;
     std::atomic_flag* isReady;
     jem_u32_t*        resultKey;
     jem_size_t        size;
   };
   struct alloc_agt_handle_local_args {
     knl_cmd           cmd;
-    pid_t             srcProcessId;
+    qtz_pid_t             srcProcessId;
     std::atomic_flag* isReady;
     jem_u32_t*        resultKey;
     jem_size_t        size;
   };
   struct alloc_process_local_args {
     knl_cmd           cmd;
-    pid_t             srcProcessId;
+    qtz_pid_t             srcProcessId;
     std::atomic_flag* isReady;
     jem_u32_t*        resultKey;
     jem_size_t        size;
   };
   struct free_within_address_space_args {
     knl_cmd           cmd;
-    pid_t             srcProcessId;
+    qtz_pid_t             srcProcessId;
     uintptr_t*        address;
     jem_size_t        size;
   };
   struct free_thread_local_args {
     knl_cmd           cmd;
-    pid_t             srcProcessId;
+    qtz_pid_t             srcProcessId;
     jem_u32_t         key;
     jem_size_t        size;
   };
   struct free_agt_handle_local_args {
     knl_cmd           cmd;
-    pid_t             srcProcessId;
+    qtz_pid_t             srcProcessId;
     jem_u32_t         key;
     jem_size_t        size;
   };
   struct free_process_local_args {
     knl_cmd           cmd;
-    pid_t             srcProcessId;
+    qtz_pid_t             srcProcessId;
     jem_u32_t         key;
     jem_size_t        size;
   };

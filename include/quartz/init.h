@@ -9,24 +9,7 @@
 
 JEM_begin_c_namespace
 
-typedef enum {
-  QTZ_KERNEL_INIT_OPEN_ALWAYS,
-  QTZ_KERNEL_INIT_CREATE_NEW,
-  QTZ_KERNEL_INIT_OPEN_EXISTING
-} qtz_kernel_init_mode_t;
 
-
-typedef struct {
-  jem_u32_t              kernel_version;
-  qtz_kernel_init_mode_t kernel_mode;
-  const char*            kernel_access_code;
-  jem_size_t             message_slot_count;
-  const char*            process_name;
-} qtz_init_params_t;
-
-JEM_api jem_status_t  JEM_stdcall qtz_init(const qtz_init_params_t* params);
-JEM_api qtz_request_t JEM_stdcall qtz_attach_thread(qtz_deputy_t* pDeputyHandle);
-JEM_api void          JEM_stdcall qtz_detach_thread();
 
 JEM_end_c_namespace
 

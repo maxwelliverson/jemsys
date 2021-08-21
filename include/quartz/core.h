@@ -12,18 +12,11 @@ JEM_begin_c_namespace
 typedef jem_u32_t                  qtz_local_id_t;
 typedef jem_u64_t                  qtz_global_id_t;
 
-typedef struct qtz_mailbox*        qtz_mailbox_t;
 typedef struct qtz_request*        qtz_request_t;
-typedef struct qtz_deputy*         qtz_deputy_t;
-typedef struct qtz_agent*          qtz_agent_t;
 typedef struct qtz_process*        qtz_process_t;
-typedef struct qtz_shared_mailbox* qtz_shared_mailbox_t;
 
 typedef struct qtz_module*         qtz_module_t;
-typedef struct qtz_module_entry*   qtz_module_entry_t;
-typedef struct qtz_module_builder* qtz_module_builder_t;
 
-typedef struct qtz_error*          qtz_error_t;
 
 typedef enum {
   QTZ_SUCCESS,
@@ -38,44 +31,37 @@ typedef enum {
   QTZ_ERROR_TOO_MANY_PRODUCERS,
   QTZ_ERROR_TOO_MANY_CONSUMERS
 } qtz_status_t;
-
-
-
 typedef enum {
-  QTZ_SCOPE_SYSTEM,
-  QTZ_SCOPE_PROCESS,
-  QTZ_SCOPE_DEPUTY
-} qtz_scope_t;
+  QTZ_KERNEL_INIT_OPEN_ALWAYS,
+  QTZ_KERNEL_INIT_CREATE_NEW,
+  QTZ_KERNEL_INIT_OPEN_EXISTING
+} qtz_kernel_init_mode_t;
 
 
-
-
-
+typedef struct {
+  jem_u32_t              kernel_version;
+  qtz_kernel_init_mode_t kernel_mode;
+  const char*            kernel_access_code;
+  jem_size_t             message_slot_count;
+  const char*            process_name;
+  jem_size_t             module_count;
+  const char* const *    modules;
+} qtz_init_params_t;
 
 
 extern const jem_u32_t qtz_page_size;
 
 
-JEM_api jem_status_t JEM_stdcall qtz_request_status(qtz_request_t message);
+
+JEM_api qtz_status_t JEM_stdcall qtz_init(const qtz_init_params_t* params);
+
+
+JEM_api qtz_status_t JEM_stdcall qtz_request_status(qtz_request_t message);
 JEM_api void         JEM_stdcall qtz_request_wait(qtz_request_t message);
 JEM_api void         JEM_stdcall qtz_request_discard(qtz_request_t message);
 
 
 
-
-JEM_api qtz_request_t JEM_stdcall qtz_open_ipc_link();
-JEM_api void          JEM_stdcall qtz_close_ipc_link();
-JEM_api qtz_request_t JEM_stdcall qtz_send_ipc_message(const void* buffer, jem_u32_t messageSize);
-
-
-
-JEM_api qtz_request_t JEM_stdcall qtz_register_agent(jem_u64_t* pResultId, void* state);
-JEM_api void          JEM_stdcall qtz_unregister_agent();
-
-
-
-
 JEM_end_c_namespace
-
 
 #endif//JEMSYS_QUARTZ_CORE_H

@@ -2,8 +2,7 @@
 // Created by maxwe on 2021-06-01.
 //
 
-#include "internal.h"
-
+#include "internal.hpp"
 
 
 #include <quartz/init.h>
@@ -15,6 +14,22 @@
 
 
 using namespace qtz;
+
+void*        g_qtzProcessAddressSpace = nullptr;
+size_t       g_qtzProcessAddressSpaceSize = 0;
+
+
+qtz_handle_t g_qtzProcessInboxFileMapping = nullptr;
+size_t       g_qtzProcessInboxFileMappingBytes = 0;
+
+qtz_handle_t g_qtzMailboxThreadHandle = nullptr;
+qtz_tid_t    g_qtzMailboxThreadId = 0;
+
+qtz_handle_t g_qtzKernelCreationMutex = nullptr;
+qtz_handle_t g_qtzKernelBlockMappingHandle = nullptr;
+
+qtz_handle_t g_qtzKernelProcessHandle = nullptr;
+qtz_pid_t    g_qtzKernelProcessId = 0;
 
 namespace {
 
@@ -63,25 +78,8 @@ namespace {
   bool     g_kernelIsInitialized{false};
 
 
-  void*    g_processAddressSpace;
-  size_t   g_processAddressSpaceSize;
 
-
-  handle_t g_processInboxFileMapping;
-  size_t   g_processInboxFileMappingBytes;
-
-  handle_t g_mailboxThreadHandle;
-  tid_t    g_mailboxThreadId;
-
-
-  handle_t g_kernelCreationMutex;
-  handle_t g_kernelBlockMappingHandle;
-
-  handle_t g_kernelProcessHandle;
-  pid_t    g_kernelProcessId;
-
-  kernel_control_block* g_kernelControlBlock;
-
+  kernel_control_block* g_qtzKernelControlBlock;
 
 
 
@@ -152,8 +150,8 @@ namespace {
                         nullptr,
                         &procInfo) ) {
       status = JEM_ERROR_UNKNOWN;
-      g_kernelControlBlock->state.store(kernel_process_launch_failed);
-      g_kernelControlBlock->state.notify_one();
+      g_qtzKernelControlBlock->state.store(kernel_process_launch_failed);
+      g_qtzKernelControlBlock->state.notify_one();
     }
 
     free(argBuffer);
@@ -167,7 +165,7 @@ namespace {
 
 
 
-  inline jem_status_t initAddressSpace(const qtz_init_params_t& params) noexcept {
+  inline qtz_status_t initAddressSpace(const qtz_init_params_t& params) noexcept {
 
     MEM_ADDRESS_REQUIREMENTS addressRequirements{
       .LowestStartingAddress = nullptr,
@@ -180,7 +178,7 @@ namespace {
       .Pointer = &addressRequirements
     };
 
-    g_processAddressSpace = VirtualAlloc2(
+    g_qtzProcessAddressSpace = VirtualAlloc2(
       GetCurrentProcess(),
       nullptr,
       AddressSpaceSize,
@@ -188,13 +186,13 @@ namespace {
       PAGE_NOACCESS,
       &extendedParameter,
       1);
-    g_processAddressSpaceSize = AddressSpaceSize;
+    g_qtzProcessAddressSpaceSize = AddressSpaceSize;
 
-    if ( g_processAddressSpace == nullptr )
-      return JEM_ERROR_BAD_ALLOC;
-    return JEM_SUCCESS;
+    if ( g_qtzProcessAddressSpace == nullptr )
+      return QTZ_ERROR_BAD_ALLOC;
+    return QTZ_SUCCESS;
   }
-  inline jem_status_t initMailbox(const qtz_init_params_t& params) noexcept {
+  inline qtz_status_t initMailbox(const qtz_init_params_t& params) noexcept {
     
   }
   inline jem_status_t initKernel(const qtz_init_params_t& params) noexcept {
@@ -224,9 +222,9 @@ namespace {
 
     qtz::init_kernel_args kernelArgs{
       .processName             = processName,
-      .processInboxFileMapping = g_processInboxFileMapping,
-      .processInboxBytes       = g_processInboxFileMappingBytes,
-      .srcProcessId            = static_cast<qtz::pid_t>(GetCurrentProcessId()),
+      .processInboxFileMapping = g_qtzProcessInboxFileMapping,
+      .processInboxBytes       = g_qtzProcessInboxFileMappingBytes,
+      .srcProcessId            = static_cast<qtz_pid_t>(GetCurrentProcessId()),
       .kernelVersion           = params.kernel_version,
       .kernelIdentifier        = kernelId,
       .kernelBlockName         = allocKernelBlockName(kernelId),
@@ -240,13 +238,13 @@ namespace {
 
     switch ( params.kernel_mode ) {
       case QTZ_KERNEL_INIT_OPEN_EXISTING:
-        g_kernelBlockMappingHandle = OpenFileMapping(KernelBlockAccessRights, FALSE, kernelArgs.kernelBlockName);
-        if ( !g_kernelBlockMappingHandle )
+        g_qtzKernelBlockMappingHandle = OpenFileMapping(KernelBlockAccessRights, FALSE, kernelArgs.kernelBlockName);
+        if ( !g_qtzKernelBlockMappingHandle)
           status = JEM_ERROR_DOES_NOT_EXIST;
         break;
       case QTZ_KERNEL_INIT_CREATE_NEW:
       case QTZ_KERNEL_INIT_OPEN_ALWAYS:
-        g_kernelBlockMappingHandle = CreateFileMapping(
+        g_qtzKernelBlockMappingHandle = CreateFileMapping(
           INVALID_HANDLE_VALUE,
           &kBlockSecurity.attributes,
           PAGE_READWRITE,
@@ -255,7 +253,7 @@ namespace {
           kernelArgs.kernelBlockName
         );
 
-        if ( !g_kernelBlockMappingHandle )
+        if ( !g_qtzKernelBlockMappingHandle)
           status = JEM_ERROR_UNKNOWN;
         else if ( GetLastError() == ERROR_ALREADY_EXISTS ) {
 
@@ -265,8 +263,8 @@ namespace {
           // is effectively completed.
 
           if ( params.kernel_mode == QTZ_KERNEL_INIT_CREATE_NEW ) {
-            CloseHandle(g_kernelBlockMappingHandle);
-            g_kernelBlockMappingHandle = nullptr;
+            CloseHandle(g_qtzKernelBlockMappingHandle);
+            g_qtzKernelBlockMappingHandle = nullptr;
             status = JEM_ERROR_ALREADY_EXISTS;
           }
         }
@@ -293,22 +291,28 @@ namespace {
   }
 }
 
-extern "C" {
-  JEM_api jem_status_t  JEM_stdcall qtz_init(const qtz_init_params_t* params) {
 
-    jem_status_t status = JEM_SUCCESS;
+
+
+
+
+extern "C" {
+  JEM_api qtz_status_t  JEM_stdcall qtz_init(const qtz_init_params_t* params) {
+
+    qtz_status_t status = QTZ_SUCCESS;
 
     if ( g_processIsInitialized.test() )
       return status;
 
-    g_isInitializing.acquire();
+    if ( !g_isInitializing.try_acquire_for(1000 * 500) )
+      return QTZ_ERROR_UNKNOWN;
 
     if ( g_processIsInitialized.test() )
       goto exit;
 
 
     if ( params == nullptr ) [[unlikely]]
-      return JEM_ERROR_INVALID_ARGUMENT;
+      return QTZ_ERROR_INVALID_ARGUMENT;
 
 
 
@@ -317,7 +321,7 @@ extern "C" {
     // ...
 
     if ( !g_addressSpaceIsInitialized ) {
-      if ( (status = initAddressSpace(*params)) != JEM_SUCCESS )
+      if ( (status = initAddressSpace(*params)) != QTZ_SUCCESS )
         goto exit;
       g_addressSpaceIsInitialized = true;
     }
@@ -325,14 +329,14 @@ extern "C" {
     // Initialize process mailbox
 
     if ( !g_mailboxIsInitialized ) {
-      if ( (status = initMailbox(*params)) != JEM_SUCCESS )
+      if ( (status = initMailbox(*params)) != QTZ_SUCCESS )
         goto exit;
       g_mailboxIsInitialized = true;
     }
 
     // Initialize IPC kernel
 
-    if ( !g_kernelIsInitialized ) {
+    /*if ( !g_kernelIsInitialized ) {
       if ( (status = initKernel(*params)) != JEM_SUCCESS )
         goto exit;
       g_kernelIsInitialized = true;
@@ -340,7 +344,17 @@ extern "C" {
 
 
     if ( g_addressSpaceIsInitialized && g_mailboxIsInitialized && g_kernelIsInitialized )
+      g_processIsInitialized.test_and_set();*/
+
+    if ( g_addressSpaceIsInitialized && g_mailboxIsInitialized )
       g_processIsInitialized.test_and_set();
+
+
+
+    atexit([](){
+
+    });
+
 
     exit:
       g_isInitializing.release();
