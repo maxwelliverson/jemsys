@@ -4,7 +4,7 @@
 
 #include "internal.hpp"
 
-qtz_mailbox* g_qtzGlobalMailbox = nullptr;
+
 
 #define AGT_INVALID_GLOBAL_MESSAGE 0xFFFFFFFFu
 
@@ -43,12 +43,12 @@ extern "C" JEM_stdcall qtz_exit_code_t qtz_mailbox_main_thread_proc(void*) {
       case QTZ_ACTION_DISCARD:
         message->discard();
         break;
-        case QTZ_ACTION_NOTIFY_LISTENER:
-          message->notify_listener();
-          break;
-          case QTZ_ACTION_DEFERRED:
-            break;
-          JEM_no_default;
+      case QTZ_ACTION_NOTIFY_LISTENER:
+        message->notify_listener();
+        break;
+      case QTZ_ACTION_DEFERRED:
+        break;
+      JEM_no_default;
     }
     mailbox->discard_request(previousMsg);
     previousMsg = message;

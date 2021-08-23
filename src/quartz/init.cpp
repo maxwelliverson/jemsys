@@ -11,9 +11,19 @@
 #define NOMINMAX
 #include <windows.h>
 
+#include <rpc.h>
+
+
+#pragma comment(lib, "mincore")
+#pragma comment(lib, "Rpcrt4")
+
+
 
 
 using namespace qtz;
+
+
+qtz_mailbox* g_qtzGlobalMailbox = nullptr;
 
 void*        g_qtzProcessAddressSpace = nullptr;
 size_t       g_qtzProcessAddressSpaceSize = 0;
@@ -193,7 +203,44 @@ namespace {
     return QTZ_SUCCESS;
   }
   inline qtz_status_t initMailbox(const qtz_init_params_t& params) noexcept {
-    
+
+    const jem_size_t messageSlotCount = std::bit_ceil(params.message_slot_count);
+    char             fileMappingName[JEM_CACHE_LINE]{};
+    char* nameCursor   = fileMappingName;
+    char* const nameSentinel = fileMappingName + sizeof(fileMappingName);
+
+    UUID mailboxID;
+    RPC_CSTR mailboxNameIDString;
+
+
+    constexpr static char NamePrefix[] = "qtz-mailbox:{";
+
+    std::memcpy(fileMappingName, NamePrefix, sizeof(NamePrefix) - 1);
+    nameCursor += sizeof(NamePrefix) - 1;
+
+    UuidCreate(&mailboxID);
+    UuidToString(&mailboxID, &mailboxNameIDString);
+
+    const size_t idStringLength = strlen((const char*)mailboxNameIDString);
+
+    std::memcpy(nameCursor, (const char*)mailboxNameIDString, idStringLength);
+    nameCursor += idStringLength;
+    *nameCursor = '}';
+    ++nameCursor;
+    *nameCursor = '\0';
+
+    RpcStringFree(&mailboxNameIDString);
+
+    jem_size_t totalFileMappingSize = messageSlotCount * QTZ_REQUEST_SIZE;
+
+    qtz_handle_t fileMapping = CreateFileMapping(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, high_bits_of(totalFileMappingSize), low_bits_of(totalFileMappingSize), fileMappingName);
+
+    void* mailboxMemory = MapViewOfFile3(fileMapping, GetCurrentProcess(), nullptr, 0, totalFileMappingSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE, nullptr, 0);
+
+    g_qtzGlobalMailbox = new (mailboxMemory) qtz_mailbox(messageSlotCount - 1, totalFileMappingSize, fileMappingName);
+
+
+    CreateThread();
   }
   inline jem_status_t initKernel(const qtz_init_params_t& params) noexcept {
 

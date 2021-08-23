@@ -24,6 +24,7 @@
 
 using atomic_u32_t  = std::atomic_uint32_t;
 using atomic_u64_t  = std::atomic_uint64_t;
+using atomic_size_t = std::atomic_size_t;
 using atomic_flag_t = std::atomic_flag;
 
 using jem_semaphore_t        = std::counting_semaphore<>;
@@ -69,7 +70,7 @@ namespace qtz{
 
   class fixed_size_pool{
 
-    using index_t = jem_size_t;
+    using index_t = size_t;
     using block_t = void**;
 
     struct slab {
@@ -78,10 +79,10 @@ namespace qtz{
       slab**  stackPosition;
     };
 
-    inline constexpr static jem_size_t MinimumBlockSize = sizeof(slab);
-    inline constexpr static jem_size_t InitialStackSize = 4;
-    inline constexpr static jem_size_t StackGrowthRate  = 2;
-    inline constexpr static jem_size_t StackAlignment   = JEM_CACHE_LINE;
+    inline constexpr static size_t MinimumBlockSize = sizeof(slab);
+    inline constexpr static size_t InitialStackSize = 4;
+    inline constexpr static size_t StackGrowthRate  = 2;
+    inline constexpr static size_t StackAlignment   = JEM_CACHE_LINE;
 
 
 
@@ -93,8 +94,8 @@ namespace qtz{
       _aligned_free(slab);
     }
 
-    inline block_t lookupBlock(slab* s, jem_size_t blockIndex) const noexcept {
-      return reinterpret_cast<block_t>(reinterpret_cast<jem_u8_t*>(s) + (blockIndex * blockSize));
+    inline block_t lookupBlock(slab* s, size_t blockIndex) const noexcept {
+      return reinterpret_cast<block_t>(reinterpret_cast<char*>(s) + (blockIndex * blockSize));
     }
     inline slab*  lookupSlab(void* block) const noexcept {
       return reinterpret_cast<slab*>(reinterpret_cast<uintptr_t>(block) & slabAlignmentMask);
@@ -116,8 +117,8 @@ namespace qtz{
 
       if ( slabStackHead == slabStackTop ) [[unlikely]] {
         slab** oldStackBase = slabStackBase;
-        jem_size_t oldStackSize = slabStackTop - oldStackBase;
-        jem_size_t newStackSize = oldStackSize * StackGrowthRate;
+        size_t oldStackSize = slabStackTop - oldStackBase;
+        size_t newStackSize = oldStackSize * StackGrowthRate;
         slab** newStackBase = realloc_array(slabStackBase, newStackSize, oldStackSize, StackAlignment);
         if ( slabStackBase != newStackBase ) {
           slabStackBase = newStackBase;
@@ -128,7 +129,6 @@ namespace qtz{
           for ( slab** entry = newStackBase; entry != slabStackHead; ++entry )
             (*entry)->stackPosition = entry;
         }
-
       }
 
       const auto s = slabStackHead;
@@ -141,7 +141,7 @@ namespace qtz{
       (*s)->stackPosition = s;
 
 
-      jem_u32_t i = 1;
+      uint32_t i = 1;
       while (  i < blocksPerSlab ) {
         block_t block = lookupBlock(*s, i);
         *block = lookupBlock(*s, ++i);
@@ -169,8 +169,6 @@ namespace qtz{
       std::swap(a->stackPosition, b->stackPosition);
     }
 
-
-
     inline void removeStackEntry(slab* s) noexcept {
       const auto lastPosition = --slabStackHead;
       if ( s->stackPosition != lastPosition ) {
@@ -181,28 +179,28 @@ namespace qtz{
     }
 
 
-    jem_size_t blockSize;
-    jem_size_t blocksPerSlab;
-    jem_size_t slabAlignment;
-    jem_size_t slabAlignmentMask;
-    slab**     slabStackBase;
-    slab**     slabStackHead;
-    slab**     slabStackTop;
-    slab**     fullStackHead;
-    slab*      allocSlab;
-    slab*      freeSlab;
+    size_t blockSize;
+    size_t blocksPerSlab;
+    slab** slabStackBase;
+    slab** slabStackHead;
+    slab** slabStackTop;
+    slab** fullStackHead;
+    slab*  allocSlab;
+    slab*  freeSlab;
+    size_t slabAlignment;
+    size_t slabAlignmentMask;
 
   public:
-    fixed_size_pool(jem_size_t blockSize, jem_size_t blocksPerSlab) noexcept
+    fixed_size_pool(size_t blockSize, size_t blocksPerSlab) noexcept
         : blockSize(std::max(blockSize, MinimumBlockSize)),
           blocksPerSlab(blocksPerSlab - 1),
-          slabAlignment(std::bit_ceil(this->blockSize * blocksPerSlab)),
-          slabAlignmentMask(~(slabAlignment - 1)),
           slabStackBase(alloc_array<slab*>(InitialStackSize, StackAlignment)),
           slabStackHead(slabStackBase),
           slabStackTop(slabStackBase + InitialStackSize),
           allocSlab(),
-          freeSlab(){
+          freeSlab(),
+          slabAlignment(std::bit_ceil(this->blockSize * blocksPerSlab)),
+          slabAlignmentMask(~(slabAlignment - 1)) {
       makeNewSlab();
     }
 
@@ -212,7 +210,7 @@ namespace qtz{
         --slabStackHead;
       }
 
-      jem_size_t stackSize = slabStackTop - slabStackBase;
+      size_t stackSize = slabStackTop - slabStackBase;
       free_array(slabStackBase, stackSize, StackAlignment);
     }
 
@@ -290,13 +288,28 @@ typedef enum {
 
 
 struct qtz_request {
+
   JEM_cache_aligned
-  jem_size_t                nextSlot;
-  atomic_flag_t             isReady;
-  atomic_flag_t             isDiscarded;
-  qtz_message_kind_t        messageKind;
+  jem_size_t         nextSlot;
+
+  qtz_message_kind_t messageKind;
+  jem_u32_t          queuePriority;
+
+  atomic_flag_t      isReady;
+  atomic_flag_t      isDiscarded;
+
+  qtz_request_t      heapParent;
+  qtz_request_t      heapLeftChild;
+  qtz_request_t      heapRightChild;
+
+  // 16 free bytes
+
+
   JEM_cache_aligned
   char                      payload[QTZ_REQUEST_PAYLOAD_SIZE];
+
+
+
 
   template <typename P>
   inline P* payload_as() const noexcept {
@@ -310,7 +323,9 @@ struct qtz_request {
     if ( isReady.test_and_set(std::memory_order_acq_rel) )
       isReady.notify_all();
   }
+
 };
+
 struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
   using time_point = std::chrono::high_resolution_clock::time_point;
@@ -321,17 +336,23 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
   jem_semaphore_t slotSemaphore;
 
+  // 48 free bytes
+
 
   // Cacheline 1 - Index of a free slot [writer]
   JEM_cache_aligned
 
-  atomic_u32_t nextFreeSlot;
+  atomic_size_t nextFreeSlot;
+
+  // 60 free bytes
 
 
   // Cacheline 2 - End of the queue [writer]
   JEM_cache_aligned
 
-  atomic_u32_t lastQueuedSlot;
+  atomic_size_t lastQueuedSlot;
+
+  // 60 free bytes
 
 
   // Cacheline 3 - Queued message counter [writer,reader]
@@ -340,9 +361,13 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   atomic_u32_t queuedSinceLastCheck;
   jem_u32_t    totalSlotCount;
 
+  // 56 free bytes
+
 
   // Cacheline 4 - Mailbox state [reader]
   JEM_cache_aligned
+
+  qtz_request_t   previousRequest;
 
   jem_u32_t       minQueuedMessages;
   jem_u32_t       maxCurrentDeferred;
@@ -350,15 +375,21 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   atomic_flag_t   shouldCloseMailbox;
   qtz_exit_code_t exitCode;
 
+  // 36 free bytes
 
-  // Cacheline 5:7 - Memory Management [reader]
+
+  // Cacheline 5 - Memory Management [reader]
   JEM_cache_aligned
 
-  jem_size_t    sharedMemorySize;
-  void*         sharedMemoryInitialAddress;
+  qtz::fixed_size_pool mailboxPool;
 
 
+  // 48 free bytes
 
+
+  JEM_cache_aligned
+
+  char fileMappingName[JEM_CACHE_LINE];
 
   // Cacheline 8:10 - Epoch Tracking [reader]
 
@@ -367,18 +398,47 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   alignas(QTZ_REQUEST_SIZE) qtz_request messageSlots[];
 
 
+
+
+  qtz_mailbox(jem_size_t slotCount, jem_size_t mailboxSize, const char fileMappingName[JEM_CACHE_LINE])
+      : slotSemaphore(slotCount),
+        nextFreeSlot(0),
+        lastQueuedSlot(0),
+        queuedSinceLastCheck(0),
+        totalSlotCount(static_cast<jem_u32_t>(slotCount)),
+        minQueuedMessages(0),
+        maxCurrentDeferred(0),
+        releasedSinceLastCheck(0),
+        shouldCloseMailbox(),
+        exitCode(0),
+        mailboxPool(mailboxSize, 255),
+        fileMappingName()
+  {
+    std::memcpy(this->fileMappingName, std::assume_aligned<JEM_CACHE_LINE>(fileMappingName), JEM_CACHE_LINE);
+
+
+  }
+
+
+  inline qtz_request_t get_request(jem_size_t slot) noexcept {
+    return messageSlots + slot;
+  }
+  inline jem_size_t    get_slot(qtz_request_t request) noexcept {
+    return request - messageSlots;
+  }
+
   inline qtz_request_t get_free_request_slot() noexcept {
 
-    jem_u32_t thisSlot = nextFreeSlot.load(std::memory_order_acquire);
-    jem_u32_t nextSlot;
+    jem_size_t thisSlot = nextFreeSlot.load(std::memory_order_acquire);
+    jem_size_t nextSlot;
     qtz_request_t message;
     do {
-      message = messageSlots + thisSlot;
+      message = get_request(thisSlot);
       nextSlot = message->nextSlot;
       // assert(atomic_load(&message->isFree, relaxed));
     } while ( !nextFreeSlot.compare_exchange_weak(thisSlot, nextSlot, std::memory_order_acq_rel) );
 
-    return messageSlots + thisSlot;
+    return message;
   }
   inline qtz_request_t acquire_free_request_slot() noexcept {
     slotSemaphore.acquire();
@@ -400,26 +460,25 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
     return get_free_request_slot();
   }
   inline void          release_request_slot(qtz_request_t message) noexcept {
-    const jem_u32_t thisSlot = message - messageSlots;
-    jem_u32_t newNextSlot = nextFreeSlot.load(std::memory_order_acquire);
+    const jem_size_t thisSlot = get_slot(message);
+    jem_size_t newNextSlot = nextFreeSlot.load(std::memory_order_acquire);
     do {
       message->nextSlot = newNextSlot;
     } while( !nextFreeSlot.compare_exchange_weak(newNextSlot, thisSlot) );
     slotSemaphore.release();
   }
   inline void          enqueue_request(qtz_request_t message) noexcept {
-    const jem_u32_t slot = message - messageSlots;
-    jem_u32_t u32LastQueuedSlot = lastQueuedSlot.load(std::memory_order_acquire);
+    const jem_size_t slot = get_slot(message);
+    jem_size_t prevLastQueuedSlot = lastQueuedSlot.load(std::memory_order_acquire);
     do {
       message->nextSlot = lastQueuedSlot;
-    } while ( !lastQueuedSlot.compare_exchange_weak(u32LastQueuedSlot, slot) );
+    } while ( !lastQueuedSlot.compare_exchange_weak(prevLastQueuedSlot, slot) );
     queuedSinceLastCheck.fetch_add(1, std::memory_order_release);
     queuedSinceLastCheck.notify_one();
   }
-  inline qtz_request_t wait_on_queued_request(qtz_request_t prev) noexcept {
+  inline void          wait_on_queued_request(qtz_request_t prev) noexcept {
     queuedSinceLastCheck.wait(0, std::memory_order_acquire);
     minQueuedMessages = queuedSinceLastCheck.exchange(0, std::memory_order_release);
-    return messageSlots + prev->nextSlot;
   }
   inline qtz_request_t acquire_first_queued_request() noexcept {
     queuedSinceLastCheck.wait(0, std::memory_order_acquire);
@@ -430,11 +489,9 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   inline qtz_request_t acquire_next_queued_request(qtz_request_t prev) noexcept {
     qtz_request_t message;
     if ( minQueuedMessages == 0 )
-      message = wait_on_queued_request(prev);
-    else
-      message = messageSlots + prev->nextSlot;
+      wait_on_queued_request(prev);
     --minQueuedMessages;
-    return message;
+    return get_request(prev->nextSlot);
   }
   inline void          discard_request(qtz_request_t message) noexcept {
     if ( atomic_flag_test_and_set(&message->isDiscarded) ) {
