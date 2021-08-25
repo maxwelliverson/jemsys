@@ -264,6 +264,7 @@ using qtz_qtz_handle_tt    = int;
 
 
 typedef enum {
+  GLOBAL_MESSAGE_KIND_NOOP,
   GLOBAL_MESSAGE_KIND_ALLOC_PAGES,
   GLOBAL_MESSAGE_KIND_FREE_PAGES,
   GLOBAL_MESSAGE_KIND_ALLOCATE_MAILBOX,
@@ -287,28 +288,31 @@ typedef enum {
 
 
 
+
 struct qtz_request {
 
   JEM_cache_aligned
-  jem_size_t         nextSlot;
+  jem_size_t          nextSlot;
+  jem_size_t          thisSlot;
 
-  qtz_message_kind_t messageKind;
-  jem_u32_t          queuePriority;
+  qtz_message_kind_t  messageKind;
+  jem_u32_t           queuePriority;
 
-  atomic_flag_t      isReady;
-  atomic_flag_t      isDiscarded;
+  atomic_flag_t       isReady;
+  atomic_flag_t       isDiscarded;
 
-  qtz_request_t      heapParent;
-  qtz_request_t      heapLeftChild;
-  qtz_request_t      heapRightChild;
-
-  // 16 free bytes
+  // 32 free bytes
 
 
   JEM_cache_aligned
   char                      payload[QTZ_REQUEST_PAYLOAD_SIZE];
 
 
+
+  void init(jem_size_t slot) noexcept {
+    nextSlot = slot + 1;
+    thisSlot = slot;
+  }
 
 
   template <typename P>
@@ -323,6 +327,94 @@ struct qtz_request {
     if ( isReady.test_and_set(std::memory_order_acq_rel) )
       isReady.notify_all();
   }
+
+};
+
+class request_priority_queue{
+  jem_size_t     indexMask;
+  jem_size_t     queueHeadIndex;
+  jem_size_t     queueSize;
+  qtz_request_t* entryArray;
+
+  JEM_forceinline static jem_size_t parent(jem_size_t entry) noexcept {
+    return entry >> 1;
+  }
+  JEM_forceinline static jem_size_t left(jem_size_t entry) noexcept {
+    return entry << 1;
+  }
+  JEM_forceinline static jem_size_t right(jem_size_t entry) noexcept {
+    return (entry << 1) + 1;
+  }
+
+  JEM_forceinline qtz_request_t& lookup(jem_size_t i) const noexcept {
+    return const_cast<qtz_request_t&>(entryArray[indexMask & (queueHeadIndex + i)]);
+  }
+
+  JEM_forceinline bool is_less_than(jem_size_t a, jem_size_t b) const noexcept {
+    return lookup(a)->queuePriority < lookup(b)->queuePriority;
+  }
+  JEM_forceinline void exchange(jem_size_t a, jem_size_t b) noexcept {
+    std::swap(lookup(a), lookup(b));
+  }
+
+
+  inline void heapify(jem_size_t i) noexcept {
+    jem_size_t l = left(i);
+    jem_size_t r = right(i);
+    jem_size_t smallest;
+
+    if ( l > queueSize )
+      return;
+
+    qtz_request_t& i_ = lookup(i);
+    qtz_request_t& l_ = lookup(l);
+
+    if ( r > queueSize ) {
+      if ( l_->queuePriority < i_->queuePriority )
+        std::swap(l_, i_);
+      return;
+    }
+
+    qtz_request_t& r_ = lookup(r);
+
+    qtz_request_t& s_ = l_->queuePriority < r_->queuePriority ? l_ : r_;
+
+
+    if ( s_->queuePriority < i_->queuePriority ) {
+      jem_size_t s = l_->queuePriority < r_->queuePriority ? l : r;
+      std::swap(s_, i_);
+      heapify(s);
+    }
+
+
+    /*smallest = (l <= queueSize && is_less_than(l, i)) ? l : i;
+    if ( r <= queueSize && is_less_than(r, smallest))
+      smallest = r;
+
+    if ( smallest != i ) {
+      heapify(smallest);
+    }*/
+  }
+
+  inline void build_heap() noexcept {
+    for ( jem_size_t i = parent(queueSize); i > 0; --i )
+      heapify(i);
+  }
+
+public:
+
+  explicit request_priority_queue(jem_size_t maxSize) noexcept {
+    jem_size_t actualArraySize = std::bit_ceil(maxSize);
+    indexMask = actualArraySize - 1;
+    queueHeadIndex = 0;
+    queueSize = 0;
+    entryArray = new qtz_request_t[actualArraySize];
+  }
+
+  ~request_priority_queue() {
+    delete[] entryArray;
+  }
+
 
 };
 
@@ -344,7 +436,7 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
   atomic_size_t nextFreeSlot;
 
-  // 60 free bytes
+  // 56 free bytes
 
 
   // Cacheline 2 - End of the queue [writer]
@@ -352,7 +444,7 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
   atomic_size_t lastQueuedSlot;
 
-  // 60 free bytes
+  // 56 free bytes
 
 
   // Cacheline 3 - Queued message counter [writer,reader]
@@ -368,6 +460,8 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   JEM_cache_aligned
 
   qtz_request_t   previousRequest;
+  qtz_request_t   heapHead;
+  jem_size_t      heapSize;
 
   jem_u32_t       minQueuedMessages;
   jem_u32_t       maxCurrentDeferred;
@@ -375,7 +469,7 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   atomic_flag_t   shouldCloseMailbox;
   qtz_exit_code_t exitCode;
 
-  // 36 free bytes
+  // 20 free bytes
 
 
   // Cacheline 5 - Memory Management [reader]
@@ -401,11 +495,13 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
 
   qtz_mailbox(jem_size_t slotCount, jem_size_t mailboxSize, const char fileMappingName[JEM_CACHE_LINE])
-      : slotSemaphore(slotCount),
+      : slotSemaphore(static_cast<jem_ptrdiff_t>(slotCount) - 1),
         nextFreeSlot(0),
         lastQueuedSlot(0),
         queuedSinceLastCheck(0),
         totalSlotCount(static_cast<jem_u32_t>(slotCount)),
+        previousRequest(nullptr),
+        heapHead(nullptr),
         minQueuedMessages(0),
         maxCurrentDeferred(0),
         releasedSinceLastCheck(0),
@@ -416,15 +512,57 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   {
     std::memcpy(this->fileMappingName, std::assume_aligned<JEM_CACHE_LINE>(fileMappingName), JEM_CACHE_LINE);
 
+    for ( jem_size_t i = 0; i < slotCount; ++i )
+      messageSlots[i].init(i);
+  }
 
+  inline qtz_request_t do_heap_insert_below(qtz_request_t req, qtz_request_t parent) noexcept {
+
+  }
+  inline void do_heap_insert(qtz_request_t req) noexcept {
+    if ( heapHead == nullptr ) {
+      heapHead = req;
+      return;
+    }
+
+    heapHead = do_heap_insert_below(req, heapHead);
+  }
+  inline void heap_insert_n(qtz_request_t req, jem_size_t n) noexcept {
+
+    assert(n > 0);
+
+    qtz_request_t entry = req;
+
+    loop_start:
+    do_heap_insert(entry);
+    if ( --n != 0 ) {
+      entry = get_request(entry->nextSlot);
+      goto loop_start;
+    }
+
+    heapSize += n;
+  }
+  inline void heap_insert(qtz_request_t req) noexcept {
+    do_heap_insert(req);
+    ++heapSize;
+  }
+  inline qtz_request_t heap_pop() noexcept {
+    qtz_request_t result = heapHead;
+
+
+
+
+
+    return result;
   }
 
 
-  inline qtz_request_t get_request(jem_size_t slot) noexcept {
-    return messageSlots + slot;
+  inline qtz_request_t     get_request(jem_size_t slot) const noexcept {
+    assert(slot < totalSlotCount);
+    return const_cast<qtz_request_t>(messageSlots + slot);
   }
-  inline jem_size_t    get_slot(qtz_request_t request) noexcept {
-    return request - messageSlots;
+  inline static jem_size_t get_slot(qtz_request_t request) noexcept {
+    return request->thisSlot;
   }
 
   inline qtz_request_t get_free_request_slot() noexcept {
@@ -433,10 +571,10 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
     jem_size_t nextSlot;
     qtz_request_t message;
     do {
-      message = get_request(thisSlot);
+      message  = get_request(thisSlot);
       nextSlot = message->nextSlot;
       // assert(atomic_load(&message->isFree, relaxed));
-    } while ( !nextFreeSlot.compare_exchange_weak(thisSlot, nextSlot, std::memory_order_acq_rel) );
+    } while ( !nextFreeSlot.compare_exchange_weak(thisSlot, nextSlot) );
 
     return message;
   }
@@ -467,6 +605,22 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
     } while( !nextFreeSlot.compare_exchange_weak(newNextSlot, thisSlot) );
     slotSemaphore.release();
   }
+
+  inline qtz_request_t acquire_first_queued_request() const noexcept {
+    return get_request(0);
+  }
+  inline qtz_request_t acquire_next_queued_request(qtz_request_t prev) noexcept {
+    qtz_request_t message;
+    if ( minQueuedMessages == 0 ) {
+      queuedSinceLastCheck.wait(0, std::memory_order_acquire);
+      minQueuedMessages = queuedSinceLastCheck.exchange(0, std::memory_order_release);
+    }
+    --minQueuedMessages;
+    message = get_request(prev->nextSlot);
+
+  }
+
+
   inline void          enqueue_request(qtz_request_t message) noexcept {
     const jem_size_t slot = get_slot(message);
     jem_size_t prevLastQueuedSlot = lastQueuedSlot.load(std::memory_order_acquire);
@@ -475,23 +629,6 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
     } while ( !lastQueuedSlot.compare_exchange_weak(prevLastQueuedSlot, slot) );
     queuedSinceLastCheck.fetch_add(1, std::memory_order_release);
     queuedSinceLastCheck.notify_one();
-  }
-  inline void          wait_on_queued_request(qtz_request_t prev) noexcept {
-    queuedSinceLastCheck.wait(0, std::memory_order_acquire);
-    minQueuedMessages = queuedSinceLastCheck.exchange(0, std::memory_order_release);
-  }
-  inline qtz_request_t acquire_first_queued_request() noexcept {
-    queuedSinceLastCheck.wait(0, std::memory_order_acquire);
-    minQueuedMessages = queuedSinceLastCheck.exchange(0, std::memory_order_release);
-    --minQueuedMessages;
-    return messageSlots;
-  }
-  inline qtz_request_t acquire_next_queued_request(qtz_request_t prev) noexcept {
-    qtz_request_t message;
-    if ( minQueuedMessages == 0 )
-      wait_on_queued_request(prev);
-    --minQueuedMessages;
-    return get_request(prev->nextSlot);
   }
   inline void          discard_request(qtz_request_t message) noexcept {
     if ( atomic_flag_test_and_set(&message->isDiscarded) ) {
@@ -505,6 +642,7 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
 
 
+  qtz_message_action_t proc_noop(qtz_request_t request) noexcept;
   qtz_message_action_t proc_alloc_pages(qtz_request_t request) noexcept;
   qtz_message_action_t proc_free_pages(qtz_request_t request) noexcept;
   qtz_message_action_t proc_alloc_mailbox(qtz_request_t request) noexcept;

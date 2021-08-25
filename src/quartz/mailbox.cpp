@@ -17,6 +17,7 @@ extern "C" JEM_stdcall qtz_exit_code_t qtz_mailbox_main_thread_proc(void*) {
   using PFN_request_proc = qtz_message_action_t(qtz_mailbox::*)(qtz_request_t) noexcept;
 
   constexpr static PFN_request_proc global_dispatch_table[] = {
+    &qtz_mailbox::proc_noop,
     &qtz_mailbox::proc_alloc_pages,
     &qtz_mailbox::proc_free_pages,
     &qtz_mailbox::proc_alloc_mailbox,
