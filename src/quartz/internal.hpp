@@ -331,6 +331,7 @@ struct qtz_request {
 };
 
 class request_priority_queue{
+
   jem_size_t     indexMask;
   jem_size_t     queueHeadIndex;
   jem_size_t     queueSize;
@@ -401,6 +402,181 @@ class request_priority_queue{
       heapify(i);
   }
 
+  inline void append_n(const qtz_request_t* requests, jem_size_t request_count) noexcept {
+
+    /**
+     *     ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___
+     *    |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+     *    |   |   |   |   |   |   |   |   |   | 2 | 3 | 5 | 7 | 4 |   |   |
+     *    |___|___|___|___|___|___|___|___|___|___|___|___|___|___|___|___|
+     *      0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+     *
+     *  - queueHeadIndex = 8
+     *  - queueSize      = 5
+     *  - indexMask      = 0xF
+     *
+     *
+     *     ___ ___ ___ ___ ___
+     *    |   |   |   |   |   |
+     *    | 7 | 1 | 2 | 6 | 1 |
+     *    |___|___|___|___|___|
+     *
+     *  - request_count = 5
+     *
+     *  ::nextEndIndex       => 18
+     *  ::actualNextEndIndex => 2
+     *
+     *
+     *
+     *     ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___
+     *    |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+     *    | 2 | 6 | 1 |   |   |   |   |   |   | 2 | 3 | 5 | 7 | 4 | 7 | 1 |
+     *    |___|___|___|___|___|___|___|___|___|___|___|___|___|___|___|___|
+     *      0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+     *
+     *
+     *  - queueHeadIndex = 8
+     *  - queueSize      = 10
+     *  - indexMask      = 0xF
+     *
+     * */
+
+    size_t nextEndIndex = queueHeadIndex + queueSize + request_count;
+    size_t actualNextEndIndex = nextEndIndex & indexMask;
+
+    if ( actualNextEndIndex == nextEndIndex || actualNextEndIndex == 0 ) [[likely]] {
+      std::memcpy(&lookup(queueSize + 1), requests, request_count * sizeof(void*));
+    }
+    else {
+      size_t distanceUntilEnd = nextEndIndex - actualNextEndIndex;
+      std::memcpy(&lookup(queueSize + 1), requests, distanceUntilEnd * request_count);
+      std::memcpy(entryArray, requests + distanceUntilEnd, actualNextEndIndex * sizeof(void*));
+    }
+    queueSize += request_count;
+  }
+
+  inline void rebalance_after_pop() noexcept {
+
+
+    /*
+     * Example:
+     *
+     *                                     A
+     *                                   ⟋   ⟍
+     *                                 ⟋       ⟍
+     *                               ⟋           ⟍
+     *                             ⟋               ⟍
+     *                           ⟋                   ⟍
+     *                         ⟋                       ⟍
+     *                       ⟋                           ⟍
+     *                     B                                C
+     *                   ⟋   ⟍                           ⟋   ⟍
+     *                 ⟋       ⟍                       ⟋       ⟍
+     *               ⟋           ⟍                   ⟋           ⟍
+     *             D               E               F                G
+     *            / \             / \             / \              / \
+     *           /   \           /   \           /   \            /   \
+     *          /     \         /     \         /     \          /     \
+     *         H       I       J       K       L       M        N       O
+     *        / \     / \     / \     / \     / \     /
+     *       /   \   /   \   /   \   /   \   /   \   /
+     *      P     Q R     S T     U V     W X     Y Z
+     *
+     *
+     *      Order:
+     *
+     *      N, G
+     *      P, H, D, B, A
+     *      R, I
+     *      T, J, E
+     *      V, K
+     *      X, L, F, C
+     *      Z, M
+     *
+     * */
+
+
+
+    jem_size_t i = parent(queueSize);
+    i |= 0x1;
+    ++i;
+
+    assert( i % 2 == 0);
+    assert( i * 2 > queueSize);
+
+    for ( ; i <= queueSize; i += 2) {
+
+      // for each even indexed node in the second half of the array,
+      // ie. for every left leaf node,
+
+      size_t j = i;
+      do {
+
+        // for every parent node until one is a right child (odd indexed)
+
+        size_t node  = j;
+        qtz_request_t* p = &lookup(parent(node));
+        qtz_request_t* c;
+
+        do {
+
+          // bubble sort lol
+
+          c = &lookup(node);
+
+          if ( (*p)->queuePriority < (*c)->queuePriority )
+            break;
+
+          std::swap(*p, *c);
+
+          p = c;
+          node *= 2;
+
+        } while (node <= i);
+
+        j = parent(j);
+
+      } while ( !(j & 0x1) );
+
+    }
+  }
+  inline void rebalance_after_insert() noexcept {
+
+    qtz_request_t* node = &lookup(queueSize);
+
+    for ( jem_size_t i = parent(queueSize); i > 0; i = parent(i)) {
+      qtz_request_t* papi = &lookup(i);
+      if ( (*node)->queuePriority >= (*papi)->queuePriority )
+        break;
+      std::swap(*node, *papi);
+      node = papi;
+    }
+
+  }
+
+  bool is_valid_heap_subtree(jem_size_t i) const noexcept {
+
+    if ( i * 2 > queueSize )
+      return true;
+
+
+    jem_size_t    l = left(i);
+    jem_size_t    r = right(i);
+    qtz_request_t node = lookup(i);
+    qtz_request_t l_node = lookup(l);
+    qtz_request_t r_node = lookup(r);
+
+    bool result = node->queuePriority <= l_node->queuePriority;
+
+    if ( l == queueSize )
+      return result;
+
+    return result &&
+           node->queuePriority <= r_node->queuePriority &&
+           is_valid_heap_subtree(l) &&
+           is_valid_heap_subtree(r);
+  }
+
 public:
 
   explicit request_priority_queue(jem_size_t maxSize) noexcept {
@@ -416,6 +592,46 @@ public:
   }
 
 
+
+  qtz_request_t peek() const noexcept {
+    assert( not empty() );
+    return lookup(1);
+  }
+  qtz_request_t pop() noexcept {
+    auto req = peek();
+    queueHeadIndex = (queueHeadIndex + 1) & indexMask;
+    queueSize -= 1;
+    rebalance_after_pop();
+    return req;
+  }
+
+  void insert(qtz_request_t request) noexcept {
+    lookup(++queueSize) = request;
+    rebalance_after_insert();
+  }
+  void insert_n(const qtz_request_t* requests, jem_size_t request_count) noexcept {
+    switch (request_count) {
+      case 0:
+        return;
+      case 1:
+        insert(*requests);
+        return;
+      default:
+        append_n(requests, request_count);
+        build_heap();
+    }
+  }
+
+  jem_size_t size() const noexcept {
+    return queueSize;
+  }
+  bool empty() const noexcept {
+    return !queueSize;
+  }
+
+  bool is_valid_heap() const noexcept {
+    return is_valid_heap_subtree(1);
+  }
 };
 
 struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
@@ -476,6 +692,7 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   JEM_cache_aligned
 
   qtz::fixed_size_pool mailboxPool;
+  request_priority_queue messagePriorityQueue;
 
 
   // 48 free bytes
@@ -508,52 +725,13 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
         shouldCloseMailbox(),
         exitCode(0),
         mailboxPool(mailboxSize, 255),
+        messagePriorityQueue(slotCount),
         fileMappingName()
   {
     std::memcpy(this->fileMappingName, std::assume_aligned<JEM_CACHE_LINE>(fileMappingName), JEM_CACHE_LINE);
 
     for ( jem_size_t i = 0; i < slotCount; ++i )
       messageSlots[i].init(i);
-  }
-
-  inline qtz_request_t do_heap_insert_below(qtz_request_t req, qtz_request_t parent) noexcept {
-
-  }
-  inline void do_heap_insert(qtz_request_t req) noexcept {
-    if ( heapHead == nullptr ) {
-      heapHead = req;
-      return;
-    }
-
-    heapHead = do_heap_insert_below(req, heapHead);
-  }
-  inline void heap_insert_n(qtz_request_t req, jem_size_t n) noexcept {
-
-    assert(n > 0);
-
-    qtz_request_t entry = req;
-
-    loop_start:
-    do_heap_insert(entry);
-    if ( --n != 0 ) {
-      entry = get_request(entry->nextSlot);
-      goto loop_start;
-    }
-
-    heapSize += n;
-  }
-  inline void heap_insert(qtz_request_t req) noexcept {
-    do_heap_insert(req);
-    ++heapSize;
-  }
-  inline qtz_request_t heap_pop() noexcept {
-    qtz_request_t result = heapHead;
-
-
-
-
-
-    return result;
   }
 
 
@@ -681,7 +859,7 @@ extern qtz_pid_t    g_qtzKernelProcessId;
 
 
 
-extern "C" JEM_stdcall qtz_exit_code_t qtz_mailbox_main_thread_proc(void *params);
+extern "C" qtz_exit_code_t JEM_stdcall qtz_mailbox_main_thread_proc(void *params);
 
 
 
