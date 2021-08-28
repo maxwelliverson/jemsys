@@ -8,6 +8,8 @@
 #include <quartz/init.h>
 #include "kernel.hpp"
 
+
+#if defined(_WIN32)
 #define NOMINMAX
 #include <windows.h>
 
@@ -16,6 +18,9 @@
 
 #pragma comment(lib, "mincore")
 #pragma comment(lib, "Rpcrt4")
+#else
+#include <pthread.h>
+#endif
 
 
 
@@ -29,19 +34,31 @@ void*        g_qtzProcessAddressSpace = nullptr;
 size_t       g_qtzProcessAddressSpaceSize = 0;
 
 
-qtz_handle_t g_qtzProcessInboxFileMapping = nullptr;
+qtz_handle_t g_qtzProcessInboxFileMapping = QTZ_NULL_HANDLE;
 size_t       g_qtzProcessInboxFileMappingBytes = 0;
 
-qtz_handle_t g_qtzMailboxThreadHandle = nullptr;
+qtz_handle_t g_qtzMailboxThreadHandle = QTZ_NULL_HANDLE;
 qtz_tid_t    g_qtzMailboxThreadId = 0;
 
-qtz_handle_t g_qtzKernelCreationMutex = nullptr;
-qtz_handle_t g_qtzKernelBlockMappingHandle = nullptr;
+qtz_handle_t g_qtzKernelCreationMutex = QTZ_NULL_HANDLE;
+qtz_handle_t g_qtzKernelBlockMappingHandle = QTZ_NULL_HANDLE;
 
-qtz_handle_t g_qtzKernelProcessHandle = nullptr;
+qtz_handle_t g_qtzKernelProcessHandle = QTZ_NULL_HANDLE;
 qtz_pid_t    g_qtzKernelProcessId = 0;
 
 namespace {
+
+  inline constexpr jem_size_t KernelMemoryBlockSize = (0x1ULL << 26);
+  inline constexpr jem_size_t KernelExecutableBufferSize = 32;
+  inline constexpr jem_size_t AddressSpaceSize = (0x1ULL << 36);
+
+  atomic_flag_t      g_processIsInitialized{};
+  binary_semaphore_t g_isInitializing{1};
+
+  bool     g_addressSpaceIsInitialized{false};
+  bool     g_mailboxIsInitialized{false};
+  bool     g_mailboxThreadIsInitialized{false};
+  bool     g_kernelIsInitialized{false};
 
   /**
    *
@@ -61,6 +78,7 @@ namespace {
    * */
 
 
+#if defined(_WIN32)
   JEM_forceinline DWORD high_bits_of(jem_u64_t x) noexcept {
     return static_cast<DWORD>((0xFFFF'FFFF'0000'0000ULL & x) >> 32);
   }
@@ -68,9 +86,7 @@ namespace {
     return static_cast<DWORD>(0x0000'0000'FFFF'FFFFULL & x);
   }
 
-  inline constexpr jem_size_t KernelMemoryBlockSize = (0x1ULL << 26);
-  inline constexpr jem_size_t KernelExecutableBufferSize = 32;
-  inline constexpr jem_size_t AddressSpaceSize = (0x1ULL << 36);
+
 
 
   struct security_descriptor {
@@ -79,13 +95,7 @@ namespace {
   };
 
 
-  atomic_flag_t      g_processIsInitialized{};
-  binary_semaphore_t g_isInitializing{1};
 
-  bool     g_addressSpaceIsInitialized{false};
-  bool     g_mailboxIsInitialized{false};
-  bool     g_mailboxThreadIsInitialized{false};
-  bool     g_kernelIsInitialized{false};
 
 
 
@@ -336,6 +346,17 @@ namespace {
 
     return status;
   }
+#else
+
+  inline qtz_status_t initAddressSpace(const qtz_init_params_t& params) noexcept {
+
+  }
+  inline qtz_status_t initMailbox(const qtz_init_params_t& params) noexcept {
+
+  }
+
+
+#endif
 }
 
 

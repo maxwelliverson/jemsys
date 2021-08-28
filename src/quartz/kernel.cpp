@@ -13,6 +13,10 @@
 #include <unordered_map>
 #include <charconv>
 #include <mutex>
+#include <memory>
+#include <optional>
+#include <cstdlib>
+#include <cstring>
 
 namespace {
 
@@ -128,13 +132,13 @@ namespace {
     args = static_cast<init_kernel_args*>(malloc(sizeof(init_kernel_args) + procNameLength + 1));
 
     args->srcProcNameLength = procNameLength;
-    memcpy(args->srcProcName, argv[1], procNameLength + 1 );
+    std::memcpy(args->srcProcName, argv[1], procNameLength + 1 );
 
-    auto [ procIdPtr, procIdErr ]               = std::from_chars(argv[2], argv[2] + strlen(argv[2]), args->srcProcessId);
-    auto [ resultPtr, resultErr ]               = std::from_chars(argv[3], argv[3] + strlen(argv[3]), reinterpret_cast<uintptr_t&>(args->result));
-    auto [ isReadyPtr, isReadyErr ]             = std::from_chars(argv[4], argv[4] + strlen(argv[4]), reinterpret_cast<uintptr_t&>(args->isReady));
-    auto [ kernelAddressPtr, kernelAddressErr ] = std::from_chars(argv[5], argv[5] + strlen(argv[5]), reinterpret_cast<uintptr_t&>(args->kernelInboxAddress));
-    auto [ inboxAddressPtr, inboxAddressErr ]   = std::from_chars(argv[6], argv[6] + strlen(argv[6]), reinterpret_cast<uintptr_t&>(args->inboxAddress));
+    auto [ procIdPtr, procIdErr ]               = std::from_chars(argv[2], argv[2] + std::strlen(argv[2]), args->srcProcessId);
+    auto [ resultPtr, resultErr ]               = std::from_chars(argv[3], argv[3] + std::strlen(argv[3]), reinterpret_cast<uintptr_t&>(args->result));
+    auto [ isReadyPtr, isReadyErr ]             = std::from_chars(argv[4], argv[4] + std::strlen(argv[4]), reinterpret_cast<uintptr_t&>(args->isReady));
+    auto [ kernelAddressPtr, kernelAddressErr ] = std::from_chars(argv[5], argv[5] + std::strlen(argv[5]), reinterpret_cast<uintptr_t&>(args->kernelInboxAddress));
+    auto [ inboxAddressPtr, inboxAddressErr ]   = std::from_chars(argv[6], argv[6] + std::strlen(argv[6]), reinterpret_cast<uintptr_t&>(args->inboxAddress));
 
 
 

@@ -17,8 +17,10 @@
 #include <ranges>
 #include <mutex>
 #include <shared_mutex>
+#include <cstring>
+#include <memory>
 
-#include <intrin.h>
+
 
 
 
@@ -54,15 +56,27 @@ namespace qtz{
 
   template <typename T>
   inline T* alloc_array(jem_size_t arraySize, jem_size_t alignment) noexcept {
+#if defined(_WIN32)
     return static_cast<T*>( _aligned_malloc(arraySize * sizeof(T), std::max(alignof(T), alignment)) );
+#else
+    return static_cast<T*>( std::aligned_alloc(arraySize * sizeof(T), std::max(alignof(T), alignment)) );
+#endif
+
   }
   template <typename T>
   inline T* realloc_array(T* array, jem_size_t newArraySize, jem_size_t oldArraySize, jem_size_t alignment) noexcept {
+#if defined(_WIN32)
     return static_cast<T*>(_aligned_realloc(array, newArraySize * sizeof(T), std::max(alignof(T), alignment)));
+#else
+#endif
   }
   template <typename T>
   inline void free_array(T* array, jem_size_t arraySize, jem_size_t alignment) noexcept {
+#if defined(_WIN32)
     _aligned_free(array);
+#else
+    free(array);
+#endif
   }
 
 
@@ -88,10 +102,10 @@ namespace qtz{
 
 
     inline slab* alloc_slab() const noexcept {
-      return static_cast<slab*>(_aligned_malloc(slabAlignment, slabAlignment));
+      return static_cast<slab*>(std::aligned_alloc(slabAlignment, slabAlignment));
     }
     inline void free_slab(slab* slab) const noexcept {
-      _aligned_free(slab);
+      std::free(slab);
     }
 
     inline block_t lookupBlock(slab* s, size_t blockIndex) const noexcept {
@@ -257,7 +271,7 @@ using qtz_handle_t = void*;
 using qtz_exit_code_t = int;
 using qtz_pid_t       = int;
 using qtz_tid_t       = int;
-using qtz_qtz_handle_tt    = int;
+using qtz_handle_t    = int;
 #endif
 
 
@@ -659,6 +673,11 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 };
 
 
+#if defined(_WIN32)
+#define QTZ_NULL_HANDLE nullptr
+#else
+#define QTZ_NULL_HANDLE 0
+#endif
 
 extern qtz_mailbox* g_qtzGlobalMailbox;
 extern void*        g_qtzProcessAddressSpace;
