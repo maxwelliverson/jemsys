@@ -10,11 +10,56 @@
 
 
 
+qtz_message_action_t qtz_mailbox::proc_noop(qtz_request_t request) noexcept {
+  return QTZ_ACTION_DISCARD;
+}
+qtz_message_action_t qtz_mailbox::proc_alloc_pages(qtz_request_t request) noexcept {
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_free_pages(qtz_request_t request) noexcept {
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+
+qtz_message_action_t qtz_mailbox::proc_alloc_mailbox(qtz_request_t request) noexcept {
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_free_mailbox(qtz_request_t request) noexcept {
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+
+
+qtz_message_action_t qtz_mailbox::proc_open_ipc_link(qtz_request_t request) noexcept {
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_close_ipc_link(qtz_request_t request) noexcept {
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_send_ipc_message(qtz_request_t request) noexcept {
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_open_deputy(qtz_request_t request) noexcept {
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_close_deputy(qtz_request_t request) noexcept {
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_attach_thread(qtz_request_t request) noexcept {
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_detach_thread(qtz_request_t request) noexcept {
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_register_agent(qtz_request_t request) noexcept {
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_unregister_agent(qtz_request_t request) noexcept {
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
 
 
 extern "C" JEM_stdcall qtz_exit_code_t qtz_mailbox_main_thread_proc(void*) {
 
-  using PFN_request_proc = qtz_message_action_t(qtz_mailbox::*)(qtz_request_t) noexcept;
+  /*using PFN_request_proc = qtz_message_action_t(qtz_mailbox::*)(qtz_request_t) noexcept;
 
   constexpr static PFN_request_proc global_dispatch_table[] = {
     &qtz_mailbox::proc_noop,
@@ -31,9 +76,9 @@ extern "C" JEM_stdcall qtz_exit_code_t qtz_mailbox_main_thread_proc(void*) {
     &qtz_mailbox::proc_detach_thread,
     &qtz_mailbox::proc_register_agent,
     &qtz_mailbox::proc_unregister_agent
-  };
+  };*/
 
-  qtz_request_t previousMsg = nullptr;
+  /*qtz_request_t previousMsg = nullptr;
   const auto    mailbox     = g_qtzGlobalMailbox;
 
 
@@ -45,7 +90,7 @@ extern "C" JEM_stdcall qtz_exit_code_t qtz_mailbox_main_thread_proc(void*) {
         message->discard();
         break;
       case QTZ_ACTION_NOTIFY_LISTENER:
-        message->notify_listener();
+        message->finalize_and_return();
         break;
       case QTZ_ACTION_DEFERRED:
         break;
@@ -57,5 +102,14 @@ extern "C" JEM_stdcall qtz_exit_code_t qtz_mailbox_main_thread_proc(void*) {
       return mailbox->exitCode;
     }
     message = mailbox->acquire_next_queued_request(previousMsg);
+  }*/
+
+  const auto    mailbox     = g_qtzGlobalMailbox;
+
+  for (;;) {
+    mailbox->process_next_message();
+    if ( mailbox->should_close() ) {
+      return mailbox->exitCode;
+    }
   }
 }

@@ -275,7 +275,14 @@ using qtz_handle_t    = int;
 #endif
 
 
-
+enum {
+  QTZ_MESSAGE_IS_READY      = 0x1,
+  QTZ_MESSAGE_IS_DISCARDED  = 0x2,
+  QTZ_MESSAGE_NOT_PRESERVED = 0x4,
+  QTZ_MESSAGE_IS_FINALIZED  = 0x8,
+  QTZ_MESSAGE_ALL_FLAGS     = 0xF,
+  QTZ_MESSAGE_PRESERVE       = (QTZ_MESSAGE_ALL_FLAGS ^ QTZ_MESSAGE_NOT_PRESERVED)
+};
 
 typedef enum {
   GLOBAL_MESSAGE_KIND_NOOP,
@@ -299,21 +306,43 @@ typedef enum {
   QTZ_ACTION_NOTIFY_LISTENER
 } qtz_message_action_t;
 
+namespace qtz {
+  struct alloc_pages_request{
 
+  };
+  struct free_pages_request{
+
+  };
+  struct alloc_mailbox_request{
+
+  };
+  struct free_mailbox_request{
+
+  };
+
+}
 
 
 
 struct qtz_request {
 
+  inline constexpr static jem_u32_t DiscardedDeathFlags = QTZ_MESSAGE_NOT_PRESERVED | QTZ_MESSAGE_IS_DISCARDED;
+  inline constexpr static jem_u32_t FinalizedDeathFlags = QTZ_MESSAGE_NOT_PRESERVED | QTZ_MESSAGE_IS_FINALIZED;
+  inline constexpr static jem_u32_t FinalizedAndDiscardedFlags = DiscardedDeathFlags ^ FinalizedDeathFlags;
+
   JEM_cache_aligned
-  jem_size_t          nextSlot;
-  jem_size_t          thisSlot;
+  jem_size_t           nextSlot;
+  jem_size_t           thisSlot;
 
-  qtz_message_kind_t  messageKind;
-  jem_u32_t           queuePriority;
+  qtz_message_kind_t   messageKind;
+  jem_u32_t            queuePriority;
 
-  atomic_flag_t       isReady;
+  /*atomic_flag_t       isReady;
   atomic_flag_t       isDiscarded;
+*/
+  atomic_u32_t         flags;
+  qtz_message_action_t action;
+  bool                 readyToDie;
 
   // 32 free bytes
 
@@ -326,6 +355,7 @@ struct qtz_request {
   void init(jem_size_t slot) noexcept {
     nextSlot = slot + 1;
     thisSlot = slot;
+    flags.store(QTZ_MESSAGE_NOT_PRESERVED);
   }
 
 
@@ -334,17 +364,40 @@ struct qtz_request {
     return static_cast<P*>(payload);
   }
 
-  void discard() noexcept {
-    isDiscarded.test_and_set();
+
+
+  bool is_discarded() const noexcept {
+    return flags.load() & QTZ_MESSAGE_IS_DISCARDED;
   }
-  void notify_listener() noexcept {
-    if ( isReady.test_and_set(std::memory_order_acq_rel) )
-      isReady.notify_all();
+  bool is_ready_to_die() const noexcept {
+    return readyToDie;
+  }
+
+  void finalize() noexcept {
+    jem_u32_t oldFlags = flags.fetch_or(QTZ_MESSAGE_IS_FINALIZED);
+    readyToDie = (oldFlags & DiscardedDeathFlags) == DiscardedDeathFlags;
+  }
+  void discard() noexcept {
+    readyToDie = (flags.fetch_or(QTZ_MESSAGE_IS_DISCARDED) & FinalizedDeathFlags) == FinalizedDeathFlags;
+  }
+  void finalize_and_return() noexcept {
+    jem_u32_t oldFlags = flags.fetch_or(QTZ_MESSAGE_IS_READY | QTZ_MESSAGE_IS_FINALIZED);
+    readyToDie = (oldFlags & DiscardedDeathFlags) == DiscardedDeathFlags;
+    if ( !(oldFlags & QTZ_MESSAGE_IS_DISCARDED) )
+      flags.notify_all();
+  }
+  void lock() noexcept {
+    flags.fetch_and(QTZ_MESSAGE_PRESERVE);
+  }
+  void unlock() noexcept {
+    jem_u32_t oldFlags = flags.fetch_or(QTZ_MESSAGE_NOT_PRESERVED);
+    readyToDie = (oldFlags & FinalizedAndDiscardedFlags) == FinalizedAndDiscardedFlags;
   }
 
 };
 
 class request_priority_queue{
+
   jem_size_t     indexMask;
   jem_size_t     queueHeadIndex;
   jem_size_t     queueSize;
@@ -415,6 +468,181 @@ class request_priority_queue{
       heapify(i);
   }
 
+  inline void append_n(const qtz_request_t* requests, jem_size_t request_count) noexcept {
+
+    /**
+     *     ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___
+     *    |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+     *    |   |   |   |   |   |   |   |   |   | 2 | 3 | 5 | 7 | 4 |   |   |
+     *    |___|___|___|___|___|___|___|___|___|___|___|___|___|___|___|___|
+     *      0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+     *
+     *  - queueHeadIndex = 8
+     *  - queueSize      = 5
+     *  - indexMask      = 0xF
+     *
+     *
+     *     ___ ___ ___ ___ ___
+     *    |   |   |   |   |   |
+     *    | 7 | 1 | 2 | 6 | 1 |
+     *    |___|___|___|___|___|
+     *
+     *  - request_count = 5
+     *
+     *  ::nextEndIndex       => 18
+     *  ::actualNextEndIndex => 2
+     *
+     *
+     *
+     *     ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___ ___
+     *    |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+     *    | 2 | 6 | 1 |   |   |   |   |   |   | 2 | 3 | 5 | 7 | 4 | 7 | 1 |
+     *    |___|___|___|___|___|___|___|___|___|___|___|___|___|___|___|___|
+     *      0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+     *
+     *
+     *  - queueHeadIndex = 8
+     *  - queueSize      = 10
+     *  - indexMask      = 0xF
+     *
+     * */
+
+    size_t nextEndIndex = queueHeadIndex + queueSize + request_count;
+    size_t actualNextEndIndex = nextEndIndex & indexMask;
+
+    if ( actualNextEndIndex == nextEndIndex || actualNextEndIndex == 0 ) [[likely]] {
+      std::memcpy(&lookup(queueSize + 1), requests, request_count * sizeof(void*));
+    }
+    else {
+      size_t distanceUntilEnd = nextEndIndex - actualNextEndIndex;
+      std::memcpy(&lookup(queueSize + 1), requests, distanceUntilEnd * request_count);
+      std::memcpy(entryArray, requests + distanceUntilEnd, actualNextEndIndex * sizeof(void*));
+    }
+    queueSize += request_count;
+  }
+
+  inline void rebalance_after_pop() noexcept {
+
+
+    /*
+     * Example:
+     *
+     *                                     A
+     *                                   ⟋   ⟍
+     *                                 ⟋       ⟍
+     *                               ⟋           ⟍
+     *                             ⟋               ⟍
+     *                           ⟋                   ⟍
+     *                         ⟋                       ⟍
+     *                       ⟋                           ⟍
+     *                     B                                C
+     *                   ⟋   ⟍                           ⟋   ⟍
+     *                 ⟋       ⟍                       ⟋       ⟍
+     *               ⟋           ⟍                   ⟋           ⟍
+     *             D               E               F                G
+     *            / \             / \             / \              / \
+     *           /   \           /   \           /   \            /   \
+     *          /     \         /     \         /     \          /     \
+     *         H       I       J       K       L       M        N       O
+     *        / \     / \     / \     / \     / \     /
+     *       /   \   /   \   /   \   /   \   /   \   /
+     *      P     Q R     S T     U V     W X     Y Z
+     *
+     *
+     *      Order:
+     *
+     *      N, G
+     *      P, H, D, B, A
+     *      R, I
+     *      T, J, E
+     *      V, K
+     *      X, L, F, C
+     *      Z, M
+     *
+     * */
+
+
+
+    jem_size_t i = parent(queueSize);
+    i |= 0x1;
+    ++i;
+
+    assert( i % 2 == 0);
+    assert( i * 2 > queueSize);
+
+    for ( ; i <= queueSize; i += 2) {
+
+      // for each even indexed node in the second half of the array,
+      // ie. for every left leaf node,
+
+      size_t j = i;
+      do {
+
+        // for every parent node until one is a right child (odd indexed)
+
+        size_t node  = j;
+        qtz_request_t* p = &lookup(parent(node));
+        qtz_request_t* c;
+
+        do {
+
+          // bubble sort lol
+
+          c = &lookup(node);
+
+          if ( (*p)->queuePriority < (*c)->queuePriority )
+            break;
+
+          std::swap(*p, *c);
+
+          p = c;
+          node *= 2;
+
+        } while (node <= i);
+
+        j = parent(j);
+
+      } while ( !(j & 0x1) );
+
+    }
+  }
+  inline void rebalance_after_insert() noexcept {
+
+    qtz_request_t* node = &lookup(queueSize);
+
+    for ( jem_size_t i = parent(queueSize); i > 0; i = parent(i)) {
+      qtz_request_t* papi = &lookup(i);
+      if ( (*node)->queuePriority >= (*papi)->queuePriority )
+        break;
+      std::swap(*node, *papi);
+      node = papi;
+    }
+
+  }
+
+  bool is_valid_heap_subtree(jem_size_t i) const noexcept {
+
+    if ( i * 2 > queueSize )
+      return true;
+
+
+    jem_size_t    l = left(i);
+    jem_size_t    r = right(i);
+    qtz_request_t node = lookup(i);
+    qtz_request_t l_node = lookup(l);
+    qtz_request_t r_node = lookup(r);
+
+    bool result = node->queuePriority <= l_node->queuePriority;
+
+    if ( l == queueSize )
+      return result;
+
+    return result &&
+           node->queuePriority <= r_node->queuePriority &&
+           is_valid_heap_subtree(l) &&
+           is_valid_heap_subtree(r);
+  }
+
 public:
 
   explicit request_priority_queue(jem_size_t maxSize) noexcept {
@@ -430,6 +658,46 @@ public:
   }
 
 
+
+  qtz_request_t peek() const noexcept {
+    assert( not empty() );
+    return lookup(1);
+  }
+  qtz_request_t pop() noexcept {
+    auto req = peek();
+    queueHeadIndex = (queueHeadIndex + 1) & indexMask;
+    queueSize -= 1;
+    rebalance_after_pop();
+    return req;
+  }
+
+  void insert(qtz_request_t request) noexcept {
+    lookup(++queueSize) = request;
+    rebalance_after_insert();
+  }
+  void insert_n(const qtz_request_t* requests, jem_size_t request_count) noexcept {
+    switch (request_count) {
+      case 0:
+        return;
+      case 1:
+        insert(*requests);
+        return;
+      default:
+        append_n(requests, request_count);
+        build_heap();
+    }
+  }
+
+  jem_size_t size() const noexcept {
+    return queueSize;
+  }
+  bool empty() const noexcept {
+    return !queueSize;
+  }
+
+  bool is_valid_heap() const noexcept {
+    return is_valid_heap_subtree(1);
+  }
 };
 
 struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
@@ -474,9 +742,6 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   JEM_cache_aligned
 
   qtz_request_t   previousRequest;
-  qtz_request_t   heapHead;
-  jem_size_t      heapSize;
-
   jem_u32_t       minQueuedMessages;
   jem_u32_t       maxCurrentDeferred;
   jem_u32_t       releasedSinceLastCheck;
@@ -489,7 +754,8 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   // Cacheline 5 - Memory Management [reader]
   JEM_cache_aligned
 
-  qtz::fixed_size_pool mailboxPool;
+  qtz::fixed_size_pool   mailboxPool;
+  request_priority_queue messagePriorityQueue;
 
 
   // 48 free bytes
@@ -515,59 +781,19 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
         queuedSinceLastCheck(0),
         totalSlotCount(static_cast<jem_u32_t>(slotCount)),
         previousRequest(nullptr),
-        heapHead(nullptr),
         minQueuedMessages(0),
         maxCurrentDeferred(0),
         releasedSinceLastCheck(0),
         shouldCloseMailbox(),
         exitCode(0),
         mailboxPool(mailboxSize, 255),
+        messagePriorityQueue(slotCount),
         fileMappingName()
   {
     std::memcpy(this->fileMappingName, std::assume_aligned<JEM_CACHE_LINE>(fileMappingName), JEM_CACHE_LINE);
 
     for ( jem_size_t i = 0; i < slotCount; ++i )
       messageSlots[i].init(i);
-  }
-
-  inline qtz_request_t do_heap_insert_below(qtz_request_t req, qtz_request_t parent) noexcept {
-
-  }
-  inline void do_heap_insert(qtz_request_t req) noexcept {
-    if ( heapHead == nullptr ) {
-      heapHead = req;
-      return;
-    }
-
-    heapHead = do_heap_insert_below(req, heapHead);
-  }
-  inline void heap_insert_n(qtz_request_t req, jem_size_t n) noexcept {
-
-    assert(n > 0);
-
-    qtz_request_t entry = req;
-
-    loop_start:
-    do_heap_insert(entry);
-    if ( --n != 0 ) {
-      entry = get_request(entry->nextSlot);
-      goto loop_start;
-    }
-
-    heapSize += n;
-  }
-  inline void heap_insert(qtz_request_t req) noexcept {
-    do_heap_insert(req);
-    ++heapSize;
-  }
-  inline qtz_request_t heap_pop() noexcept {
-    qtz_request_t result = heapHead;
-
-
-
-
-
-    return result;
   }
 
 
@@ -623,15 +849,25 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   inline qtz_request_t acquire_first_queued_request() const noexcept {
     return get_request(0);
   }
-  inline qtz_request_t acquire_next_queued_request(qtz_request_t prev) noexcept {
-    qtz_request_t message;
-    if ( minQueuedMessages == 0 ) {
-      queuedSinceLastCheck.wait(0, std::memory_order_acquire);
-      minQueuedMessages = queuedSinceLastCheck.exchange(0, std::memory_order_release);
-    }
-    --minQueuedMessages;
-    message = get_request(prev->nextSlot);
+  inline qtz_request_t acquire_next_queued_request() noexcept {
+    queuedSinceLastCheck.wait(0, std::memory_order_acquire);
+    qtz_request_t message = get_request(previousRequest->nextSlot);
 
+    auto minQueued = queuedSinceLastCheck.exchange(0);
+    if ( minQueued == 1 ) {
+      replace_previous(message);
+      if ( messagePriorityQueue.empty() )
+        return message;
+      messagePriorityQueue.insert(message);
+    }
+    else {
+      for (auto n = minQueued - 1; n > 0; --n) {
+        message = get_request(message->nextSlot);
+        messagePriorityQueue.insert(message);
+      }
+      replace_previous(message);
+    }
+    return messagePriorityQueue.pop();
   }
 
 
@@ -645,15 +881,63 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
     queuedSinceLastCheck.notify_one();
   }
   inline void          discard_request(qtz_request_t message) noexcept {
-    if ( atomic_flag_test_and_set(&message->isDiscarded) ) {
+    message->discard();
+    if ( message->is_ready_to_die() )
       release_request_slot(message);
-    }
   }
 
   inline bool          should_close() const noexcept {
     return shouldCloseMailbox.test();
   }
 
+  inline void          replace_previous(qtz_request_t message) noexcept {
+    message->lock();
+    previousRequest->unlock();
+    if ( previousRequest->is_ready_to_die() )
+      release_request_slot(previousRequest);
+    previousRequest = message;
+  }
+
+
+  void process_next_message() noexcept {
+
+    using PFN_request_proc = qtz_message_action_t(qtz_mailbox::*)(qtz_request_t) noexcept;
+
+    constexpr static PFN_request_proc global_dispatch_table[] = {
+      &qtz_mailbox::proc_noop,
+      &qtz_mailbox::proc_alloc_pages,
+      &qtz_mailbox::proc_free_pages,
+      &qtz_mailbox::proc_alloc_mailbox,
+      &qtz_mailbox::proc_free_mailbox,
+      &qtz_mailbox::proc_open_ipc_link,
+      &qtz_mailbox::proc_close_ipc_link,
+      &qtz_mailbox::proc_send_ipc_message,
+      &qtz_mailbox::proc_open_deputy,
+      &qtz_mailbox::proc_close_deputy,
+      &qtz_mailbox::proc_attach_thread,
+      &qtz_mailbox::proc_detach_thread,
+      &qtz_mailbox::proc_register_agent,
+      &qtz_mailbox::proc_unregister_agent
+    };
+
+    auto message = acquire_next_queued_request();
+
+    if ( message->is_discarded() )
+      return;
+
+    switch ( (this->*(global_dispatch_table[message->messageKind]))(message) ) {
+      case QTZ_ACTION_DISCARD:
+        message->discard();
+        break;
+      case QTZ_ACTION_NOTIFY_LISTENER:
+        message->finalize_and_return();
+        break;
+      case QTZ_ACTION_DEFERRED:
+        message->finalize();
+        break;
+        JEM_no_default;
+    }
+  }
 
 
   qtz_message_action_t proc_noop(qtz_request_t request) noexcept;
@@ -700,7 +984,7 @@ extern qtz_pid_t    g_qtzKernelProcessId;
 
 
 
-extern "C" JEM_stdcall qtz_exit_code_t qtz_mailbox_main_thread_proc(void *params);
+extern "C" qtz_exit_code_t JEM_stdcall qtz_mailbox_main_thread_proc(void *params);
 
 
 
