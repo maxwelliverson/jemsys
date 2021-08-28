@@ -9,12 +9,17 @@
 
 JEM_begin_c_namespace
 
+
+#define QTZ_KERNEL_VERSION_MOST_RECENT ((jem_u32_t)-1)
+#define QTZ_DEFAULT_MODULE ((qtz_module_t)nullptr)
+#define QTZ_GLOBAL_MODULE_ID ((qtz_local_id_t)0)
+
 typedef jem_u32_t                  qtz_local_id_t;
 typedef jem_u64_t                  qtz_global_id_t;
 
 typedef struct qtz_request*        qtz_request_t;
 typedef struct qtz_process*        qtz_process_t;
-
+typedef struct qtz_error*          qtz_error_t;
 typedef struct qtz_module*         qtz_module_t;
 
 
@@ -36,6 +41,12 @@ typedef enum {
   QTZ_KERNEL_INIT_CREATE_NEW,
   QTZ_KERNEL_INIT_OPEN_EXISTING
 } qtz_kernel_init_mode_t;
+typedef enum {
+  QTZ_SEND_MUST_CHECK_RESULT = 0x100,
+  QTZ_SEND_CANCEL_ON_DISCARD = 0x200,
+  QTZ_SEND_IGNORE_ERRORS     = 0x400
+} qtz_send_flag_bits_t;
+typedef jem_flags32_t qtz_send_flags_t;
 
 
 typedef struct {
@@ -49,15 +60,19 @@ typedef struct {
 } qtz_init_params_t;
 
 
-extern const jem_u32_t qtz_page_size;
+extern const jem_u32_t     qtz_page_size;
 
 
 
 JEM_api qtz_status_t JEM_stdcall qtz_init(const qtz_init_params_t* params);
 
 
+
+JEM_api qtz_request_t JEM_stdcall qtz_send(qtz_local_id_t messageId, const void* messageBuffer) JEM_noexcept;
+JEM_api qtz_request_t JEM_stdcall qtz_send_ex(qtz_process_t process, qtz_global_id_t messageId, const void* messageBuffer, qtz_send_flags_t flags) JEM_noexcept;
+
 JEM_api qtz_status_t JEM_stdcall qtz_request_status(qtz_request_t message);
-JEM_api void         JEM_stdcall qtz_request_wait(qtz_request_t message);
+JEM_api qtz_status_t JEM_stdcall qtz_request_wait(qtz_request_t message, jem_u64_t timeout_us);
 JEM_api void         JEM_stdcall qtz_request_discard(qtz_request_t message);
 
 

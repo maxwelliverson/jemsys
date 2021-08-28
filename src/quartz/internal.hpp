@@ -19,6 +19,7 @@
 #include <shared_mutex>
 #include <cstring>
 #include <memory>
+#include <cstdlib>
 
 
 
@@ -44,6 +45,8 @@ typedef jem_u64_t jem_bitmap_field_t;
 #define QTZ_REQUEST_SIZE 512
 #define QTZ_REQUEST_PAYLOAD_SIZE QTZ_REQUEST_SIZE - JEM_CACHE_LINE
 
+#define QTZ_NAME_MAX_LENGTH (2*JEM_CACHE_LINE)
+
 
 
 /*typedef struct jem_global_message{
@@ -61,14 +64,6 @@ namespace qtz{
 #else
     return static_cast<T*>( std::aligned_alloc(arraySize * sizeof(T), std::max(alignof(T), alignment)) );
 #endif
-
-  }
-  template <typename T>
-  inline T* realloc_array(T* array, jem_size_t newArraySize, jem_size_t oldArraySize, jem_size_t alignment) noexcept {
-#if defined(_WIN32)
-    return static_cast<T*>(_aligned_realloc(array, newArraySize * sizeof(T), std::max(alignof(T), alignment)));
-#else
-#endif
   }
   template <typename T>
   inline void free_array(T* array, jem_size_t arraySize, jem_size_t alignment) noexcept {
@@ -78,6 +73,18 @@ namespace qtz{
     free(array);
 #endif
   }
+  template <typename T>
+  inline T* realloc_array(T* array, jem_size_t newArraySize, jem_size_t oldArraySize, jem_size_t alignment) noexcept {
+#if defined(_WIN32)
+    return static_cast<T*>(_aligned_realloc(array, newArraySize * sizeof(T), std::max(alignof(T), alignment)));
+#else
+    auto newArray = alloc_array<T>(newArraySize, alignment);
+    std::memcpy(newArray, array, oldArraySize * sizeof(T));
+    free_array(array, oldArraySize, alignment);
+    return newArray;
+#endif
+  }
+
 
 
 
@@ -102,10 +109,18 @@ namespace qtz{
 
 
     inline slab* alloc_slab() const noexcept {
+#if defined(_WIN32)
+      return static_cast<slab*>(_aligned_malloc(slabAlignment, slabAlignment));
+#else
       return static_cast<slab*>(std::aligned_alloc(slabAlignment, slabAlignment));
+#endif
     }
     inline void free_slab(slab* slab) const noexcept {
+#if defined(_WIN32)
+      _aligned_free(slab);
+#else
       std::free(slab);
+#endif
     }
 
     inline block_t lookupBlock(slab* s, size_t blockIndex) const noexcept {
@@ -314,10 +329,15 @@ namespace qtz {
 
   };
   struct alloc_mailbox_request{
+    void** memory;
+    char   name[QTZ_NAME_MAX_LENGTH];
+    bool   isShared;
 
   };
   struct free_mailbox_request{
-
+    void* memory;
+    char  name[QTZ_NAME_MAX_LENGTH];
+    bool  isShared;
   };
 
 }
