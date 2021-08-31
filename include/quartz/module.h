@@ -51,7 +51,17 @@ typedef enum {
   QTZ_MODULE_FUNCTION_KIND_ALIAS
 } qtz_module_function_kind_t;
 typedef enum {
-
+  QTZ_MODULE_ABI_ITANIUM,
+  QTZ_MODULE_ABI_MSVC_x86,
+  QTZ_MODULE_ABI_MSVC_x64,
+#if JEM_64bit
+  QTZ_MODULE_ABI_MSVC = QTZ_MODULE_ABI_MSVC_x64,
+#else
+  QTZ_MODULE_ABI_MSVC = QTZ_MODULE_ABI_MSVC_x86,
+#endif
+} qtz_module_abi_t;
+typedef enum {
+  QTZ_MODULE_CALLING_CONVENTION_CDECL
 } qtz_module_calling_convention_t;
 
 
@@ -111,6 +121,17 @@ typedef struct qtz_platform_constants_t {
   jem_size_t vi_member_function_pointer_alignment;
 } qtz_platform_constants_t;
 
+typedef struct qtz_module_type_t {
+  qtz_local_id_t               local_id;
+  qtz_global_id_t              global_id;
+  const qtz_type_descriptor_t* descriptor;
+} qtz_module_type_t;
+typedef struct qtz_module_function_t {
+  qtz_local_id_t                   local_id;
+  qtz_global_id_t                  global_id;
+  const qtz_function_descriptor_t* descriptor;
+} qtz_module_function_t;
+
 
 struct qtz_type_descriptor_t {
   qtz_type_kind_t kind;
@@ -167,8 +188,6 @@ struct qtz_type_descriptor_t {
   };
 };
 
-
-typedef struct qtz_module_entry*    qtz_module_entry_t;
 typedef struct qtz_module_builder*  qtz_module_builder_t;
 
 
@@ -177,23 +196,23 @@ typedef struct qtz_module_builder*  qtz_module_builder_t;
 } qtz_module_builder_params_t;*/
 
 
-JEM_api qtz_status_t JEM_stdcall qtz_load_module(qtz_module_t* pModule, const char* path);
-JEM_api qtz_status_t JEM_stdcall qtz_save_module(qtz_module_t module, const char* path);
 
-
-JEM_api void         JEM_stdcall qtz_module_add_functions(qtz_module_builder_t moduleBuilder, const qtz_function_descriptor_t* pFunctions, jem_size_t functionCount);
-JEM_api void         JEM_stdcall qtz_module_add_types(qtz_module_builder_t moduleBuilder, const qtz_type_descriptor_t* pTypes, jem_size_t typeCount);
-JEM_api void         JEM_stdcall qtz_module_add_dependencies(qtz_module_builder_t moduleBuilder, const qtz_module_t* pDependencies, jem_size_t dependencyCount);
-
-
-
-
-JEM_api qtz_status_t JEM_stdcall qtz_build_module(qtz_module_t* pModule, qtz_module_builder_t builder);
-
-JEM_api void         JEM_stdcall qtz_close_module(qtz_module_t module);
 
 JEM_api qtz_request_t JEM_stdcall qtz_open_module_builder(qtz_module_builder_t* pModuleBuilder);
+JEM_api void          JEM_stdcall qtz_module_add_functions(qtz_module_builder_t moduleBuilder, const qtz_function_descriptor_t* pFunctions, jem_size_t functionCount);
+JEM_api void          JEM_stdcall qtz_module_add_types(qtz_module_builder_t moduleBuilder, const qtz_type_descriptor_t* pTypes, jem_size_t typeCount);
+JEM_api void          JEM_stdcall qtz_module_add_dependencies(qtz_module_builder_t moduleBuilder, const qtz_module_t* pDependencies, jem_size_t dependencyCount);
 
+
+
+
+JEM_api qtz_status_t  JEM_stdcall qtz_build_module(qtz_module_t* pModule, qtz_module_builder_t builder);
+JEM_api void          JEM_stdcall qtz_close_module(qtz_module_t module);
+JEM_api qtz_status_t  JEM_stdcall qtz_load_module(qtz_module_t* pModule, const char* path);
+JEM_api qtz_status_t  JEM_stdcall qtz_save_module(qtz_module_t module, const char* path);
+
+JEM_api qtz_status_t  JEM_stdcall qtz_module_enumerate_types(qtz_module_t module, qtz_type_descriptor_t* types, jem_size_t* typeCount) JEM_noexcept;
+JEM_api qtz_status_t  JEM_stdcall qtz_module_enumerate_functions(qtz_module_t module, qtz_function_descriptor_t* functions, jem_size_t* functionCount) JEM_noexcept;
 
 
 

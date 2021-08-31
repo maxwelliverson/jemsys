@@ -13,6 +13,8 @@ add_library(jemsys.agate src/agate/mailbox.cpp src/agate/deputy.cpp src/agate/sp
 target_include_directories(jemsys.agate PUBLIC include src)
 add_library(jemsys.opal src/opal/agent.cpp)
 target_include_directories(jemsys.opal PUBLIC include src)
+add_library(jemsys.silica src/silica.cpp)
+target_include_directories(jemsys.silica PUBLIC include src)
 
 add_executable(jemsys.quartz.kernel src/quartz/kernel.cpp)
 target_include_directories(jemsys.quartz.kernel PUBLIC include src)
