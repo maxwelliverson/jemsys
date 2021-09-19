@@ -23,6 +23,11 @@
 #endif
 
 
+#if !defined(_WIN32)
+using DWORD = unsigned;
+#endif
+
+
 
 
 using namespace qtz;
@@ -46,11 +51,15 @@ qtz_handle_t g_qtzKernelBlockMappingHandle = QTZ_NULL_HANDLE;
 qtz_handle_t g_qtzKernelProcessHandle = QTZ_NULL_HANDLE;
 qtz_pid_t    g_qtzKernelProcessId = 0;
 
+kernel_control_block* qtz::g_kernelBlock = nullptr;
+
 namespace {
 
   inline constexpr jem_size_t KernelMemoryBlockSize = (0x1ULL << 26);
   inline constexpr jem_size_t KernelExecutableBufferSize = 32;
   inline constexpr jem_size_t AddressSpaceSize = (0x1ULL << 36);
+  inline constexpr jem_size_t MailboxStackSize = 0;
+  inline constexpr DWORD      MailboxThreadFlags = 0;
 
   atomic_flag_t      g_processIsInitialized{};
   binary_semaphore_t g_isInitializing{1};
@@ -98,12 +107,6 @@ namespace {
 
 
 
-
-  kernel_control_block* g_qtzKernelControlBlock;
-
-
-
-
   inline const char* allocKernelBlockName(const char* accessCode) noexcept;
   inline void        freeKernelBlockName(const char* nameString) noexcept;
 
@@ -131,9 +134,15 @@ namespace {
     descriptor.attributes.lpSecurityDescriptor = nullptr;
     descriptor.attributes.nLength = sizeof(descriptor.attributes);
   }
+  inline void initMailboxThreadSACL(security_descriptor& descriptor) noexcept {
+    descriptor.attributes.bInheritHandle = false;
+    descriptor.attributes.lpSecurityDescriptor = nullptr;
+    descriptor.attributes.nLength = sizeof(descriptor.attributes);
+  }
   inline void destroyKernelProcSACL(const security_descriptor& descriptor) noexcept { }
   inline void destroyKernelThreadSACL(const security_descriptor& descriptor) noexcept { }
   inline void destroyKernelBlockSACL(const security_descriptor& descriptor) noexcept { }
+  inline void destroyMailboxThreadSACL(const security_descriptor& descriptor) noexcept { }
 
 
 
@@ -170,8 +179,8 @@ namespace {
                         nullptr,
                         &procInfo) ) {
       status = JEM_ERROR_UNKNOWN;
-      g_qtzKernelControlBlock->state.store(kernel_process_launch_failed);
-      g_qtzKernelControlBlock->state.notify_one();
+      g_kernelBlock->state.store(kernel_process_launch_failed);
+      g_kernelBlock->state.notify_one();
     }
 
     free(argBuffer);
@@ -218,8 +227,9 @@ namespace {
     char             fileMappingName[JEM_CACHE_LINE]{};
     char* nameCursor   = fileMappingName;
     char* const nameSentinel = fileMappingName + sizeof(fileMappingName);
+    security_descriptor threadSecDesc{};
 
-    UUID mailboxID;
+    UUID     mailboxID;
     RPC_CSTR mailboxNameIDString;
 
 
@@ -250,7 +260,20 @@ namespace {
     g_qtzGlobalMailbox = new (mailboxMemory) qtz_mailbox(messageSlotCount - 1, totalFileMappingSize, fileMappingName);
 
 
-    CreateThread();
+    initMailboxThreadSACL(threadSecDesc);
+
+
+    g_qtzMailboxThreadHandle = CreateThread(&threadSecDesc.attributes, MailboxStackSize, qtz_mailbox_main_thread_proc, nullptr, MailboxThreadFlags, &g_qtzMailboxThreadId);
+
+    if ( !g_qtzMailboxThreadHandle ) {
+      auto error = GetLastError();
+      // TODO: Handle thread creation errors and return appropriate status
+      return QTZ_ERROR_UNKNOWN;
+    }
+
+    destroyMailboxThreadSACL(threadSecDesc);
+
+    return QTZ_SUCCESS;
   }
   inline jem_status_t initKernel(const qtz_init_params_t& params) noexcept {
 
@@ -357,6 +380,11 @@ namespace {
 
 
 #endif
+
+
+  inline void destroyKernel() {
+
+  }
 }
 
 
@@ -419,9 +447,7 @@ extern "C" {
 
 
 
-    atexit([](){
-
-    });
+    atexit(destroyKernel);
 
 
     exit:

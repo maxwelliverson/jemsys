@@ -556,7 +556,7 @@ namespace {
     std::atomic<jem_u8_t> value;
   };
 
-  class atomic_counter_t{
+  /*class atomic_counter_t{
   public:
 
     atomic_counter_t() = default;
@@ -579,7 +579,7 @@ namespace {
 
   private:
     std::atomic<jem_u32_t> value_ = 0;
-  };
+  };*/
 
   class mpsc_counter_t{
 
@@ -599,6 +599,21 @@ namespace {
       }
       sc_value_ -= value;
     }
+
+    JEM_nodiscard jem_u32_t take_all() noexcept {
+      if ( sc_value_ == 0 ) {
+        do {
+          mp_value_.wait(0, std::memory_order_acquire);
+          priv_update();
+        } while ( sc_value_ == 0 );
+      }
+      else {
+        priv_update();
+      }
+      return std::exchange(sc_value_, 0);
+    }
+
+
     JEM_nodiscard bool try_decrease(jem_u32_t value) noexcept {
       if ( sc_value_ < value ) {
         priv_update();
@@ -635,9 +650,8 @@ namespace {
       sc_value_ += mp_value_.exchange(0, std::memory_order_acquire);
     }
 
-
-    jem_u32_t              sc_value_ = 0;
     std::atomic<jem_u32_t> mp_value_ = 0;
+    jem_u32_t              sc_value_ = 0;
   };
 
   using atomic_flags8_t  = atomic_flags<jem_u8_t>;
@@ -652,6 +666,8 @@ namespace {
 
   using atomic_size_t    = std::atomic_size_t;
   using atomic_ptrdiff_t = std::atomic_ptrdiff_t;
+
+
 }
 
 #endif//JEMSYS_ATOMICUTILS_INTERNAL_HPP

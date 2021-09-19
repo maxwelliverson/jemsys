@@ -4,6 +4,8 @@ project(jemsys C CXX)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 
+add_library(jemsys.internal src/ipc.cpp src/dictionary.cpp)
+target_include_directories(jemsys.internal PUBLIC include src)
 add_library(jemsys.internal.ipc src/ipc.cpp)
 target_include_directories(jemsys.internal.ipc PUBLIC include src)
 
@@ -24,7 +26,7 @@ target_include_directories(jemsys.quartz.prioq.TEST PUBLIC include src)
 
 add_library(jemsys library.c include/jemsys.h)
 
-target_link_libraries(jemsys.quartz PUBLIC jemsys.internal.ipc)
-target_link_libraries(jemsys.agate  PUBLIC jemsys.internal.ipc)
-target_link_libraries(jemsys.opal   PUBLIC jemsys.internal.ipc)
+target_link_libraries(jemsys.quartz PUBLIC jemsys.internal)
+target_link_libraries(jemsys.agate  PUBLIC jemsys.internal)
+target_link_libraries(jemsys.opal   PUBLIC jemsys.internal)
 target_link_libraries(jemsys        PUBLIC jemsys.quartz jemsys.agate jemsys.opal)

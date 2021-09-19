@@ -22,16 +22,20 @@
 #include <cstdlib>
 
 
+#include "atomicutils.hpp"
+#include "dictionary.hpp"
 
 
 
-using atomic_u32_t  = std::atomic_uint32_t;
+
+
+/*using atomic_u32_t  = std::atomic_uint32_t;
 using atomic_u64_t  = std::atomic_uint64_t;
 using atomic_size_t = std::atomic_size_t;
 using atomic_flag_t = std::atomic_flag;
 
 using jem_semaphore_t        = std::counting_semaphore<>;
-using jem_binary_semaphore_t = std::binary_semaphore;
+using jem_binary_semaphore_t = std::binary_semaphore;*/
 
 typedef jem_u64_t jem_bitmap_field_t;
 
@@ -46,6 +50,18 @@ typedef jem_u64_t jem_bitmap_field_t;
 #define QTZ_REQUEST_PAYLOAD_SIZE QTZ_REQUEST_SIZE - JEM_CACHE_LINE
 
 #define QTZ_NAME_MAX_LENGTH (2*JEM_CACHE_LINE)
+
+#if JEM_system_windows
+using qtz_exit_code_t = unsigned long;
+using qtz_pid_t = unsigned long;
+using qtz_tid_t = unsigned long;
+using qtz_handle_t = void*;
+#else
+using qtz_exit_code_t = int;
+using qtz_pid_t       = int;
+using qtz_tid_t       = int;
+using qtz_handle_t    = int;
+#endif
 
 
 
@@ -275,19 +291,92 @@ namespace qtz{
       allocSlab = parentSlab;
     }
   };
+
+
+  // TODO: Expand utility of handle_descriptor
+  // TODO: Create handle ownership model?
+  // TODO: Create handle lifetime model
+
+  /*
+   * Every handle has an owner
+   * There exists a root handle
+   * All handles created without explicit owner are owned by the root handle
+   * A handle X can "require" a handle Y
+   * A handle X can "borrow" a handle Y
+   *
+   * A handle that enters an invalid state will notify every handle that has
+   * borrowed or required it.
+   *
+   *
+   * */
+  struct handle_descriptor{
+    void* address;
+    bool  isShared;
+
+  };
+
+
+  /*class memory_placeholder{
+    void*  m_address;
+    size_t m_size;
+  public:
+    memory_placeholder();
+    memory_placeholder(size_t size) noexcept;
+    memory_placeholder(void* addr, size_t size) noexcept : m_address(addr), m_size(size) { }
+    ~memory_placeholder();
+
+    inline size_t size() const noexcept {
+      return m_size;
+    }
+
+    inline bool is_valid() const noexcept {
+      return m_address != nullptr;
+    }
+    inline explicit operator bool() const noexcept {
+      return is_valid();
+    }
+
+    memory_placeholder split() noexcept;
+    memory_placeholder split(size_t size) noexcept;
+
+    bool               coalesce() noexcept;
+    bool               coalesce(memory_placeholder& other) noexcept;
+
+    void*              commit() noexcept;
+    void*              map(qtz_handle_t handle) noexcept;
+
+    static memory_placeholder release(void* addr, size_t size) noexcept;
+    static memory_placeholder unmap(void* addr, size_t size) noexcept;
+  };
+
+  class virtual_allocator{
+
+    void*      addressSpaceInitial;
+    jem_size_t addressSpaceSize;
+
+  protected:
+    inline void*      addr() const noexcept {
+      return addressSpaceInitial;
+    }
+    inline jem_size_t size() const noexcept {
+      return addressSpaceSize;
+    }
+
+  public:
+
+    virtual ~virtual_allocator();
+
+    virtual void* reserve(jem_size_t size) noexcept = 0;
+    virtual void* reserve(jem_size_t size, jem_size_t alignment, jem_size_t offset) noexcept = 0;
+
+
+
+    virtual void  release(void* address, jem_size_t size) noexcept = 0;
+
+  };*/
 }
 
-#if JEM_system_windows
-using qtz_exit_code_t = unsigned long;
-using qtz_pid_t = unsigned long;
-using qtz_tid_t = unsigned long;
-using qtz_handle_t = void*;
-#else
-using qtz_exit_code_t = int;
-using qtz_pid_t       = int;
-using qtz_tid_t       = int;
-using qtz_handle_t    = int;
-#endif
+
 
 
 enum {
@@ -296,7 +385,7 @@ enum {
   QTZ_MESSAGE_NOT_PRESERVED = 0x4,
   QTZ_MESSAGE_IS_FINALIZED  = 0x8,
   QTZ_MESSAGE_ALL_FLAGS     = 0xF,
-  QTZ_MESSAGE_PRESERVE       = (QTZ_MESSAGE_ALL_FLAGS ^ QTZ_MESSAGE_NOT_PRESERVED)
+  QTZ_MESSAGE_PRESERVE      = (QTZ_MESSAGE_ALL_FLAGS ^ QTZ_MESSAGE_NOT_PRESERVED)
 };
 
 typedef enum {
@@ -322,6 +411,7 @@ typedef enum {
 } qtz_message_action_t;
 
 namespace qtz {
+
   struct alloc_pages_request{
 
   };
@@ -332,7 +422,6 @@ namespace qtz {
     void** memory;
     char   name[QTZ_NAME_MAX_LENGTH];
     bool   isShared;
-
   };
   struct free_mailbox_request{
     void* memory;
@@ -360,11 +449,13 @@ struct qtz_request {
   /*atomic_flag_t       isReady;
   atomic_flag_t       isDiscarded;
 */
-  atomic_u32_t         flags;
+  atomic_flags32_t     flags = 0;
   qtz_message_action_t action;
+  qtz_status_t         status;
+
   bool                 readyToDie;
 
-  // 32 free bytes
+  // 27 free bytes
 
 
   JEM_cache_aligned
@@ -375,7 +466,7 @@ struct qtz_request {
   void init(jem_size_t slot) noexcept {
     nextSlot = slot + 1;
     thisSlot = slot;
-    flags.store(QTZ_MESSAGE_NOT_PRESERVED);
+    flags.set(QTZ_MESSAGE_NOT_PRESERVED);
   }
 
 
@@ -387,33 +478,33 @@ struct qtz_request {
 
 
   bool is_discarded() const noexcept {
-    return flags.load() & QTZ_MESSAGE_IS_DISCARDED;
+    return flags.test(QTZ_MESSAGE_IS_DISCARDED);
   }
   bool is_ready_to_die() const noexcept {
     return readyToDie;
   }
 
   void finalize() noexcept {
-    jem_u32_t oldFlags = flags.fetch_or(QTZ_MESSAGE_IS_FINALIZED);
-    readyToDie = (oldFlags & DiscardedDeathFlags) == DiscardedDeathFlags;
+    readyToDie = (flags.fetch_and_set(QTZ_MESSAGE_IS_FINALIZED) & DiscardedDeathFlags) == DiscardedDeathFlags;
   }
   void discard() noexcept {
-    readyToDie = (flags.fetch_or(QTZ_MESSAGE_IS_DISCARDED) & FinalizedDeathFlags) == FinalizedDeathFlags;
+    readyToDie = (flags.fetch_and_set(QTZ_MESSAGE_IS_DISCARDED) & FinalizedDeathFlags) == FinalizedDeathFlags;
   }
   void finalize_and_return() noexcept {
-    jem_u32_t oldFlags = flags.fetch_or(QTZ_MESSAGE_IS_READY | QTZ_MESSAGE_IS_FINALIZED);
+    jem_u32_t oldFlags = flags.fetch_and_set(QTZ_MESSAGE_IS_READY | QTZ_MESSAGE_IS_FINALIZED);
     readyToDie = (oldFlags & DiscardedDeathFlags) == DiscardedDeathFlags;
     if ( !(oldFlags & QTZ_MESSAGE_IS_DISCARDED) )
       flags.notify_all();
   }
   void lock() noexcept {
-    flags.fetch_and(QTZ_MESSAGE_PRESERVE);
+    flags.reset(QTZ_MESSAGE_NOT_PRESERVED);
   }
   void unlock() noexcept {
-    jem_u32_t oldFlags = flags.fetch_or(QTZ_MESSAGE_NOT_PRESERVED);
+    jem_u32_t oldFlags = flags.fetch_and_set(QTZ_MESSAGE_NOT_PRESERVED);
     readyToDie = (oldFlags & FinalizedAndDiscardedFlags) == FinalizedAndDiscardedFlags;
   }
 
+  struct qtz_mailbox* parent_mailbox() const noexcept;
 };
 
 class request_priority_queue{
@@ -728,7 +819,8 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   // Cacheline 0 - Semaphore for claiming slots [writer]
   JEM_cache_aligned
 
-  jem_semaphore_t slotSemaphore;
+  semaphore_t slotSemaphore;
+
 
   // 48 free bytes
 
@@ -754,19 +846,20 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
   atomic_u32_t queuedSinceLastCheck;
   jem_u32_t    totalSlotCount;
+  jem_u8_t     uuid[16];
 
-  // 56 free bytes
+  // 40 free bytes
 
 
   // Cacheline 4 - Mailbox state [reader]
   JEM_cache_aligned
 
-  qtz_request_t   previousRequest;
-  jem_u32_t       minQueuedMessages;
-  jem_u32_t       maxCurrentDeferred;
-  jem_u32_t       releasedSinceLastCheck;
-  atomic_flag_t   shouldCloseMailbox;
-  qtz_exit_code_t exitCode;
+  qtz_request_t    previousRequest;
+  jem_u32_t        minQueuedMessages;
+  jem_u32_t        maxCurrentDeferred;
+  jem_u32_t        releasedSinceLastCheck;
+  std::atomic_flag shouldCloseMailbox;
+  qtz_exit_code_t  exitCode;
 
   // 20 free bytes
 
@@ -777,6 +870,8 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   qtz::fixed_size_pool   mailboxPool;
   request_priority_queue messagePriorityQueue;
 
+  qtz::dictionary<qtz::handle_descriptor> namedHandles;
+
 
   // 48 free bytes
 
@@ -784,8 +879,6 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   JEM_cache_aligned
 
   char fileMappingName[JEM_CACHE_LINE];
-
-  // Cacheline 8:10 - Epoch Tracking [reader]
 
 
   // Message Slots
@@ -847,12 +940,12 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
       return nullptr;
     return get_free_request_slot();
   }
-  inline qtz_request_t try_acquire_free_request_slot_for(duration timeout) noexcept {
-    if ( !slotSemaphore.try_acquire_for(timeout) )
+  inline qtz_request_t try_acquire_free_request_slot_for(jem_u64_t timeout_us) noexcept {
+    if ( !slotSemaphore.try_acquire_for(timeout_us) )
       return nullptr;
     return get_free_request_slot();
   }
-  inline qtz_request_t try_acquire_free_request_slot_until(time_point deadline) noexcept {
+  inline qtz_request_t try_acquire_free_request_slot_until(deadline_t deadline) noexcept {
     if ( !slotSemaphore.try_acquire_until(deadline) )
       return nullptr;
     return get_free_request_slot();
@@ -975,6 +1068,10 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   qtz_message_action_t proc_register_agent(qtz_request_t request) noexcept;
   qtz_message_action_t proc_unregister_agent(qtz_request_t request) noexcept;
 };
+
+struct qtz_mailbox* qtz_request::parent_mailbox() const noexcept {
+  return const_cast<qtz_mailbox*>(reinterpret_cast<const qtz_mailbox*>(this - (thisSlot + 1)));
+}
 
 
 #if defined(_WIN32)

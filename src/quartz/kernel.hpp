@@ -184,6 +184,7 @@ namespace qtz{
     char         mailboxWriteMutexName[32];
   };
 
+  extern kernel_control_block* g_kernelBlock;
 
 
 

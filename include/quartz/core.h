@@ -25,16 +25,23 @@ typedef struct qtz_module*         qtz_module_t;
 
 typedef enum {
   QTZ_SUCCESS,
+  QTZ_NOT_READY,
+  QTZ_DISCARDED,
+  QTZ_ERROR_TIMED_OUT,
   QTZ_ERROR_INTERNAL,
   QTZ_ERROR_UNKNOWN,
   QTZ_ERROR_BAD_SIZE,
   QTZ_ERROR_INVALID_ARGUMENT,
   QTZ_ERROR_BAD_ENCODING_IN_NAME,
   QTZ_ERROR_NAME_TOO_LONG,
+  QTZ_ERROR_NAME_ALREADY_IN_USE,
   QTZ_ERROR_INSUFFICIENT_BUFFER_SIZE,
   QTZ_ERROR_BAD_ALLOC,
   QTZ_ERROR_TOO_MANY_PRODUCERS,
-  QTZ_ERROR_TOO_MANY_CONSUMERS
+  QTZ_ERROR_TOO_MANY_CONSUMERS,
+  QTZ_ERROR_NOT_IMPLEMENTED,
+  QTZ_ERROR_UNSUPPORTED_OPERATION,
+  QTZ_ERROR_IPC_SUPPORT_UNAVAILABLE
 } qtz_status_t;
 typedef enum {
   QTZ_KERNEL_INIT_OPEN_ALWAYS,
@@ -46,6 +53,7 @@ typedef enum {
   QTZ_SEND_CANCEL_ON_DISCARD = 0x200,
   QTZ_SEND_IGNORE_ERRORS     = 0x400
 } qtz_send_flag_bits_t;
+
 typedef jem_flags32_t qtz_send_flags_t;
 
 
@@ -56,25 +64,22 @@ typedef struct {
   jem_size_t             message_slot_count;
   const char*            process_name;
   jem_size_t             module_count;
-  const char* const *    modules;
+  const void*            modules;
 } qtz_init_params_t;
 
 
-extern const jem_u32_t     qtz_page_size;
 
 
 
-JEM_api qtz_status_t JEM_stdcall qtz_init(const qtz_init_params_t* params);
 
+JEM_api qtz_status_t  JEM_stdcall qtz_init(const qtz_init_params_t* params);
 
+JEM_api qtz_status_t  JEM_stdcall qtz_request_status(qtz_request_t message);
+JEM_api qtz_status_t  JEM_stdcall qtz_request_wait(qtz_request_t message, jem_u64_t timeout_us);
+JEM_api void          JEM_stdcall qtz_request_discard(qtz_request_t message);
 
 JEM_api qtz_request_t JEM_stdcall qtz_send(qtz_local_id_t messageId, const void* messageBuffer) JEM_noexcept;
 JEM_api qtz_request_t JEM_stdcall qtz_send_ex(qtz_process_t process, qtz_global_id_t messageId, const void* messageBuffer, qtz_send_flags_t flags) JEM_noexcept;
-
-JEM_api qtz_status_t JEM_stdcall qtz_request_status(qtz_request_t message);
-JEM_api qtz_status_t JEM_stdcall qtz_request_wait(qtz_request_t message, jem_u64_t timeout_us);
-JEM_api void         JEM_stdcall qtz_request_discard(qtz_request_t message);
-
 
 
 JEM_end_c_namespace

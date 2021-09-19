@@ -10,49 +10,106 @@
 
 
 
+
+
+
 qtz_message_action_t qtz_mailbox::proc_noop(qtz_request_t request) noexcept {
   return QTZ_ACTION_DISCARD;
 }
 qtz_message_action_t qtz_mailbox::proc_alloc_pages(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
 qtz_message_action_t qtz_mailbox::proc_free_pages(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
 
 qtz_message_action_t qtz_mailbox::proc_alloc_mailbox(qtz_request_t request) noexcept {
+
+  using dict_iter_t = typename decltype(namedHandles)::iterator;
+
+  auto payload = request->payload_as<qtz::alloc_mailbox_request>();
+  void* mailboxAddress;
+  std::string_view name{ payload->name, std::strlen(payload->name) };
+  dict_iter_t dictEntry;
+
+  if ( payload->isShared ) {
+    request->status = QTZ_ERROR_IPC_SUPPORT_UNAVAILABLE;
+    goto exit;
+  }
+
+  if ( !name.empty() ) {
+    bool isUniqueName;
+    std::tie(dictEntry, isUniqueName) = namedHandles.try_emplace(name);
+    if ( !isUniqueName ) {
+      request->status = QTZ_ERROR_NAME_ALREADY_IN_USE;
+      goto exit;
+    }
+  }
+
+  mailboxAddress = this->mailboxPool.alloc_block();
+
+  if ( !mailboxAddress ) {
+    request->status = QTZ_ERROR_BAD_ALLOC;
+    if ( !name.empty() )
+      namedHandles.erase(dictEntry);
+    goto exit;
+  }
+
+  if ( !name.empty() ) {
+    auto& desc = dictEntry->get();
+    desc.address = mailboxAddress;
+    desc.isShared = payload->isShared;
+  }
+
+  *payload->memory = mailboxAddress;
+  request->status = QTZ_SUCCESS;
+
+
+  exit:
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
+
 qtz_message_action_t qtz_mailbox::proc_free_mailbox(qtz_request_t request) noexcept {
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
 
 
 qtz_message_action_t qtz_mailbox::proc_open_ipc_link(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
 qtz_message_action_t qtz_mailbox::proc_close_ipc_link(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
 qtz_message_action_t qtz_mailbox::proc_send_ipc_message(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
 qtz_message_action_t qtz_mailbox::proc_open_deputy(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
 qtz_message_action_t qtz_mailbox::proc_close_deputy(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
 qtz_message_action_t qtz_mailbox::proc_attach_thread(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
 qtz_message_action_t qtz_mailbox::proc_detach_thread(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
 qtz_message_action_t qtz_mailbox::proc_register_agent(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
 qtz_message_action_t qtz_mailbox::proc_unregister_agent(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
 
@@ -112,4 +169,48 @@ extern "C" JEM_stdcall qtz_exit_code_t qtz_mailbox_main_thread_proc(void*) {
       return mailbox->exitCode;
     }
   }
+}
+
+
+
+extern "C" {
+
+
+JEM_api qtz_status_t  JEM_stdcall qtz_request_status(qtz_request_t message) {
+  auto flags = message->flags.fetch();
+  if ( flags & QTZ_MESSAGE_IS_READY )
+    return message->status;
+  if ( flags & QTZ_MESSAGE_IS_DISCARDED )
+    return QTZ_DISCARDED;
+  return QTZ_NOT_READY;
+}
+JEM_api qtz_status_t  JEM_stdcall qtz_request_wait(qtz_request_t message, jem_u64_t timeout_us) {
+
+  using clock = std::chrono::high_resolution_clock;
+  using duration_t = clock::duration;
+  using time_point_t = clock::time_point;
+
+  auto waitFlags = 0;
+
+  auto deadline = deadline_t::from_timeout_us(timeout_us);
+
+  if ( !message->flags.wait_any_until(QTZ_MESSAGE_IS_READY | QTZ_MESSAGE_IS_DISCARDED, deadline))
+    return QTZ_ERROR_TIMED_OUT;
+  auto result = qtz_request_status(message);
+  qtz_request_discard(message);
+  return result;
+}
+JEM_api void          JEM_stdcall qtz_request_discard(qtz_request_t message) {
+  auto mailbox = message->parent_mailbox();
+  mailbox->discard_request(message);
+}
+
+JEM_api qtz_request_t JEM_stdcall qtz_send(qtz_local_id_t messageId, const void* messageBuffer) JEM_noexcept {
+
+}
+JEM_api qtz_request_t JEM_stdcall qtz_send_ex(qtz_process_t process, qtz_global_id_t messageId, const void* messageBuffer, qtz_send_flags_t flags) JEM_noexcept {
+
+}
+
+
 }
