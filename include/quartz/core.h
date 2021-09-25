@@ -28,17 +28,17 @@ typedef enum {
   QTZ_NOT_READY,
   QTZ_DISCARDED,
   QTZ_ERROR_TIMED_OUT,
+  QTZ_ERROR_NOT_INITIALIZED,
   QTZ_ERROR_INTERNAL,
   QTZ_ERROR_UNKNOWN,
   QTZ_ERROR_BAD_SIZE,
+  QTZ_ERROR_INVALID_KERNEL_VERSION,
   QTZ_ERROR_INVALID_ARGUMENT,
   QTZ_ERROR_BAD_ENCODING_IN_NAME,
   QTZ_ERROR_NAME_TOO_LONG,
   QTZ_ERROR_NAME_ALREADY_IN_USE,
   QTZ_ERROR_INSUFFICIENT_BUFFER_SIZE,
   QTZ_ERROR_BAD_ALLOC,
-  QTZ_ERROR_TOO_MANY_PRODUCERS,
-  QTZ_ERROR_TOO_MANY_CONSUMERS,
   QTZ_ERROR_NOT_IMPLEMENTED,
   QTZ_ERROR_UNSUPPORTED_OPERATION,
   QTZ_ERROR_IPC_SUPPORT_UNAVAILABLE
@@ -79,6 +79,7 @@ JEM_api qtz_status_t  JEM_stdcall qtz_request_wait(qtz_request_t message, jem_u6
 JEM_api void          JEM_stdcall qtz_request_discard(qtz_request_t message);
 
 JEM_api qtz_request_t JEM_stdcall qtz_send(qtz_local_id_t messageId, const void* messageBuffer) JEM_noexcept;
+JEM_api qtz_request_t JEM_stdcall qtz_try_send(qtz_local_id_t messageId, const void* messageBuffer, jem_u64_t us_timeout) JEM_noexcept;
 JEM_api qtz_request_t JEM_stdcall qtz_send_ex(qtz_process_t process, qtz_global_id_t messageId, const void* messageBuffer, qtz_send_flags_t flags) JEM_noexcept;
 
 

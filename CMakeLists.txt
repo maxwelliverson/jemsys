@@ -4,12 +4,12 @@ project(jemsys C CXX)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 
-add_library(jemsys.internal src/ipc.cpp src/dictionary.cpp)
+add_library(jemsys.internal src/ipc.cpp src/dictionary.cpp src/vector.cpp)
 target_include_directories(jemsys.internal PUBLIC include src)
 add_library(jemsys.internal.ipc src/ipc.cpp)
 target_include_directories(jemsys.internal.ipc PUBLIC include src)
 
-add_library(jemsys.quartz src/quartz/mm.cpp src/quartz/init.cpp src/quartz/module.cpp src/quartz/mailbox.cpp)
+add_library(jemsys.quartz src/quartz/mm.cpp src/quartz/init.cpp src/quartz/mailbox.cpp)
 target_include_directories(jemsys.quartz PUBLIC include src)
 add_library(jemsys.agate src/agate/mailbox.cpp src/agate/deputy.cpp src/agate/spsc_mailbox.cpp src/agate/mpsc_mailbox.cpp src/agate/spmc_mailbox.cpp src/agate/mpmc_mailbox.cpp src/agate/message.cpp src/agate/dispatch.cpp src/agate/dispatch/mpsc_mailbox/local.cpp src/agate/handle.cpp src/agate/dispatch/mpsc_mailbox/ipc.cpp src/agate/dispatch/mpsc_mailbox/dynamic_local.cpp src/agate/dispatch/mpsc_mailbox/dynamic_ipc.cpp src/agate/dispatch/private_mailbox/local.cpp src/agate/dispatch/private_mailbox/dynamic_local.cpp)
 target_include_directories(jemsys.agate PUBLIC include src)
@@ -26,7 +26,12 @@ target_include_directories(jemsys.quartz.prioq.TEST PUBLIC include src)
 
 add_library(jemsys library.c include/jemsys.h)
 
+add_executable(TEST.jemsys test/catch.cpp test/quartz/init_test.cpp test/silica/module_builder.cpp)
+target_include_directories(TEST.jemsys PUBLIC include src)
+
+
 target_link_libraries(jemsys.quartz PUBLIC jemsys.internal)
 target_link_libraries(jemsys.agate  PUBLIC jemsys.internal)
 target_link_libraries(jemsys.opal   PUBLIC jemsys.internal)
 target_link_libraries(jemsys        PUBLIC jemsys.quartz jemsys.agate jemsys.opal)
+target_link_libraries(TEST.jemsys   PUBLIC jemsys.internal jemsys.quartz)

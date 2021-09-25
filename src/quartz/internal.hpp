@@ -24,6 +24,7 @@
 
 #include "atomicutils.hpp"
 #include "dictionary.hpp"
+#include "handles.hpp"
 
 
 
@@ -73,225 +74,12 @@ using qtz_handle_t    = int;
 
 namespace qtz{
 
-  template <typename T>
-  inline T* alloc_array(jem_size_t arraySize, jem_size_t alignment) noexcept {
-#if defined(_WIN32)
-    return static_cast<T*>( _aligned_malloc(arraySize * sizeof(T), std::max(alignof(T), alignment)) );
-#else
-    return static_cast<T*>( std::aligned_alloc(arraySize * sizeof(T), std::max(alignof(T), alignment)) );
-#endif
-  }
-  template <typename T>
-  inline void free_array(T* array, jem_size_t arraySize, jem_size_t alignment) noexcept {
-#if defined(_WIN32)
-    _aligned_free(array);
-#else
-    free(array);
-#endif
-  }
-  template <typename T>
-  inline T* realloc_array(T* array, jem_size_t newArraySize, jem_size_t oldArraySize, jem_size_t alignment) noexcept {
-#if defined(_WIN32)
-    return static_cast<T*>(_aligned_realloc(array, newArraySize * sizeof(T), std::max(alignof(T), alignment)));
-#else
-    auto newArray = alloc_array<T>(newArraySize, alignment);
-    std::memcpy(newArray, array, oldArraySize * sizeof(T));
-    free_array(array, oldArraySize, alignment);
-    return newArray;
-#endif
-  }
 
 
 
+  struct handle_descriptor;
 
-
-  class fixed_size_pool{
-
-    using index_t = size_t;
-    using block_t = void**;
-
-    struct slab {
-      index_t availableBlocks;
-      block_t nextFreeBlock;
-      slab**  stackPosition;
-    };
-
-    inline constexpr static size_t MinimumBlockSize = sizeof(slab);
-    inline constexpr static size_t InitialStackSize = 4;
-    inline constexpr static size_t StackGrowthRate  = 2;
-    inline constexpr static size_t StackAlignment   = JEM_CACHE_LINE;
-
-
-
-
-    inline slab* alloc_slab() const noexcept {
-#if defined(_WIN32)
-      return static_cast<slab*>(_aligned_malloc(slabAlignment, slabAlignment));
-#else
-      return static_cast<slab*>(std::aligned_alloc(slabAlignment, slabAlignment));
-#endif
-    }
-    inline void free_slab(slab* slab) const noexcept {
-#if defined(_WIN32)
-      _aligned_free(slab);
-#else
-      std::free(slab);
-#endif
-    }
-
-    inline block_t lookupBlock(slab* s, size_t blockIndex) const noexcept {
-      return reinterpret_cast<block_t>(reinterpret_cast<char*>(s) + (blockIndex * blockSize));
-    }
-    inline slab*  lookupSlab(void* block) const noexcept {
-      return reinterpret_cast<slab*>(reinterpret_cast<uintptr_t>(block) & slabAlignmentMask);
-    }
-
-
-
-    inline bool isEmpty(const slab* s) const noexcept {
-      return s->availableBlocks == blocksPerSlab;
-    }
-    inline static bool isFull(const slab* s) noexcept {
-      return s->availableBlocks == 0;
-    }
-
-
-
-
-    inline void makeNewSlab() noexcept {
-
-      if ( slabStackHead == slabStackTop ) [[unlikely]] {
-        slab** oldStackBase = slabStackBase;
-        size_t oldStackSize = slabStackTop - oldStackBase;
-        size_t newStackSize = oldStackSize * StackGrowthRate;
-        slab** newStackBase = realloc_array(slabStackBase, newStackSize, oldStackSize, StackAlignment);
-        if ( slabStackBase != newStackBase ) {
-          slabStackBase = newStackBase;
-          slabStackTop  = newStackBase + newStackSize;
-          slabStackHead = newStackBase + oldStackSize;
-          fullStackHead = newStackBase + oldStackSize;
-
-          for ( slab** entry = newStackBase; entry != slabStackHead; ++entry )
-            (*entry)->stackPosition = entry;
-        }
-      }
-
-      const auto s = slabStackHead;
-
-      allocSlab = *s;
-
-      *s = alloc_slab();
-      (*s)->availableBlocks = static_cast<jem_u32_t>(blocksPerSlab);
-      (*s)->nextFreeBlock   = lookupBlock(*s, 1);
-      (*s)->stackPosition = s;
-
-
-      uint32_t i = 1;
-      while (  i < blocksPerSlab ) {
-        block_t block = lookupBlock(*s, i);
-        *block = lookupBlock(*s, ++i);
-      }
-
-      ++slabStackHead;
-    }
-
-    inline void findAllocSlab() noexcept {
-      if ( isFull(allocSlab) ) {
-        if (fullStackHead == slabStackHead ) [[unlikely]] {
-          makeNewSlab();
-        }
-        else {
-          if ( allocSlab != *fullStackHead )
-            swapSlabs(allocSlab, *fullStackHead);
-          allocSlab = *++fullStackHead;
-        }
-      }
-    }
-
-
-    inline static void swapSlabs(slab* a, slab* b) noexcept {
-      std::swap(*a->stackPosition, *b->stackPosition);
-      std::swap(a->stackPosition, b->stackPosition);
-    }
-
-    inline void removeStackEntry(slab* s) noexcept {
-      const auto lastPosition = --slabStackHead;
-      if ( s->stackPosition != lastPosition ) {
-        (*lastPosition)->stackPosition = s->stackPosition;
-        std::swap(*s->stackPosition, *lastPosition);
-      }
-      free_slab(*lastPosition);
-    }
-
-
-    size_t blockSize;
-    size_t blocksPerSlab;
-    slab** slabStackBase;
-    slab** slabStackHead;
-    slab** slabStackTop;
-    slab** fullStackHead;
-    slab*  allocSlab;
-    slab*  freeSlab;
-    size_t slabAlignment;
-    size_t slabAlignmentMask;
-
-  public:
-    fixed_size_pool(size_t blockSize, size_t blocksPerSlab) noexcept
-        : blockSize(std::max(blockSize, MinimumBlockSize)),
-          blocksPerSlab(blocksPerSlab - 1),
-          slabStackBase(alloc_array<slab*>(InitialStackSize, StackAlignment)),
-          slabStackHead(slabStackBase),
-          slabStackTop(slabStackBase + InitialStackSize),
-          allocSlab(),
-          freeSlab(),
-          slabAlignment(std::bit_ceil(this->blockSize * blocksPerSlab)),
-          slabAlignmentMask(~(slabAlignment - 1)) {
-      makeNewSlab();
-    }
-
-    ~fixed_size_pool() noexcept {
-      while ( slabStackHead != slabStackBase ) {
-        free_slab(*slabStackHead);
-        --slabStackHead;
-      }
-
-      size_t stackSize = slabStackTop - slabStackBase;
-      free_array(slabStackBase, stackSize, StackAlignment);
-    }
-
-    void* alloc_block() noexcept {
-
-      findAllocSlab();
-
-      block_t block = allocSlab->nextFreeBlock;
-      allocSlab->nextFreeBlock = static_cast<block_t>(*block);
-      --allocSlab->availableBlocks;
-
-      return block;
-
-    }
-    void  free_block(void* block_) noexcept {
-      auto* parentSlab = lookupSlab(block_);
-      auto  block = static_cast<block_t>(block_);
-      *block = parentSlab->nextFreeBlock;
-      parentSlab->nextFreeBlock = block;
-      ++parentSlab->availableBlocks;
-
-      if ( isEmpty(parentSlab) ) {
-        if ( isEmpty(freeSlab) ) [[unlikely]] {
-          removeStackEntry(freeSlab);
-        }
-        freeSlab = parentSlab;
-      }
-      else if (parentSlab->stackPosition < fullStackHead ) [[unlikely]] {
-        --fullStackHead;
-        if ( parentSlab->stackPosition != fullStackHead )
-          swapSlabs(parentSlab, *fullStackHead);
-      }
-      allocSlab = parentSlab;
-    }
-  };
-
+  using handle_info_t = typename jem::dictionary<handle_descriptor>::entry_type*;
 
   // TODO: Expand utility of handle_descriptor
   // TODO: Create handle ownership model?
@@ -311,6 +99,7 @@ namespace qtz{
    * */
   struct handle_descriptor{
     void* address;
+
     bool  isShared;
 
   };
@@ -390,19 +179,30 @@ enum {
 
 typedef enum {
   GLOBAL_MESSAGE_KIND_NOOP,
-  GLOBAL_MESSAGE_KIND_ALLOC_PAGES,
-  GLOBAL_MESSAGE_KIND_FREE_PAGES,
+  GLOBAL_MESSAGE_KIND_1,
+  GLOBAL_MESSAGE_KIND_2,
   GLOBAL_MESSAGE_KIND_ALLOCATE_MAILBOX,
   GLOBAL_MESSAGE_KIND_FREE_MAILBOX,
-  GLOBAL_MESSAGE_KIND_OPEN_IPC_LINK,
-  GLOBAL_MESSAGE_KIND_CLOSE_IPC_LINK,
-  GLOBAL_MESSAGE_KIND_SEND_IPC_MESSAGE,
-  GLOBAL_MESSAGE_KIND_OPEN_DEPUTY,
-  GLOBAL_MESSAGE_KIND_CLOSE_DEPUTY,
-  GLOBAL_MESSAGE_KIND_ATTACH_THREAD,
-  GLOBAL_MESSAGE_KIND_DETACH_THREAD,
-  GLOBAL_MESSAGE_KIND_REGISTER_AGENT,
-  GLOBAL_MESSAGE_KIND_UNREGISTER_AGENT
+  GLOBAL_MESSAGE_KIND_3,
+  GLOBAL_MESSAGE_KIND_4,
+  GLOBAL_MESSAGE_KIND_5,
+  GLOBAL_MESSAGE_KIND_6,
+  GLOBAL_MESSAGE_KIND_7,
+  GLOBAL_MESSAGE_KIND_8,
+  GLOBAL_MESSAGE_KIND_9,
+  GLOBAL_MESSAGE_KIND_10,
+  GLOBAL_MESSAGE_KIND_11,
+  GLOBAL_MESSAGE_KIND_REGISTER_OBJECT,
+  GLOBAL_MESSAGE_KIND_UNREGISTER_OBJECT,
+  GLOBAL_MESSAGE_KIND_LINK_OBJECTS,
+  GLOBAL_MESSAGE_KIND_UNLINK_OBJECTS,
+  GLOBAL_MESSAGE_KIND_OPEN_OBJECT_HANDLE,
+  GLOBAL_MESSAGE_KIND_DESTROY_OBJECT,
+  GLOBAL_MESSAGE_KIND_EXECUTE_CALLBACK,
+  GLOBAL_MESSAGE_KIND_LAST_STATIC,
+  GLOBAL_MESSAGE_KIND_DYNAMIC_BIT    = 0x10000,
+  GLOBAL_MESSAGE_KIND_LOG_MESSAGE,
+  GLOBAL_MESSAGE_KIND_CALLBACK_WITH_BUFFER
 } qtz_message_kind_t;
 typedef enum {
   QTZ_ACTION_DISCARD,
@@ -419,16 +219,28 @@ namespace qtz {
 
   };
   struct alloc_mailbox_request{
-    void** memory;
+    void** handle;
     char   name[QTZ_NAME_MAX_LENGTH];
     bool   isShared;
   };
   struct free_mailbox_request{
-    void* memory;
+    void* handle;
     char  name[QTZ_NAME_MAX_LENGTH];
-    bool  isShared;
+  };
+  struct execute_callback_request{
+    void(*callback)(void*);
+    void* userData;
   };
 
+  struct log_message_request {
+    size_t structLength;
+    char   message[];
+  };
+  struct execute_callback_with_buffer_request{
+    size_t structLength;
+    void(*callback)(void*);
+    char  userData[];
+  };
 }
 
 
@@ -454,6 +266,7 @@ struct qtz_request {
   qtz_status_t         status;
 
   bool                 readyToDie;
+  bool                 isRealMessage;
 
   // 27 free bytes
 
@@ -472,10 +285,13 @@ struct qtz_request {
 
   template <typename P>
   inline P* payload_as() const noexcept {
-    return static_cast<P*>(payload);
+    return (P*)payload;
   }
 
 
+  bool is_real_message() const noexcept {
+    return isRealMessage;
+  }
 
   bool is_discarded() const noexcept {
     return flags.test(QTZ_MESSAGE_IS_DISCARDED);
@@ -867,10 +683,10 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   // Cacheline 5 - Memory Management [reader]
   JEM_cache_aligned
 
-  qtz::fixed_size_pool   mailboxPool;
+  jem::fixed_size_pool   mailboxPool;
   request_priority_queue messagePriorityQueue;
 
-  qtz::dictionary<qtz::handle_descriptor> namedHandles;
+  jem::dictionary<qtz::handle_descriptor> namedHandles;
 
 
   // 48 free bytes
@@ -905,7 +721,7 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   {
     std::memcpy(this->fileMappingName, std::assume_aligned<JEM_CACHE_LINE>(fileMappingName), JEM_CACHE_LINE);
 
-    for ( jem_size_t i = 0; i < slotCount; ++i )
+    for ( jem_size_t i = 0; i < slotCount - 1; ++i )
       messageSlots[i].init(i);
   }
 
@@ -1069,7 +885,7 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   qtz_message_action_t proc_unregister_agent(qtz_request_t request) noexcept;
 };
 
-struct qtz_mailbox* qtz_request::parent_mailbox() const noexcept {
+inline struct qtz_mailbox* qtz_request::parent_mailbox() const noexcept {
   return const_cast<qtz_mailbox*>(reinterpret_cast<const qtz_mailbox*>(this - (thisSlot + 1)));
 }
 

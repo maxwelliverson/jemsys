@@ -7,6 +7,8 @@
 
 #include "offset_ptr.hpp"
 
+#include <span>
+
 namespace ipc{
 
   template <typename T, size_t Extent = std::dynamic_extent>

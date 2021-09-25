@@ -8,6 +8,8 @@
 #include "../quartz/mm.hpp"
 #include "offset_ptr.hpp"
 
+#include <string_view>
+
 namespace ipc{
   class string{
   public:

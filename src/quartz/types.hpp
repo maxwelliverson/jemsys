@@ -10,6 +10,9 @@
 
 #include "mm.hpp"
 
+#include <string_view>
+#include <span>
+
 
 namespace qtz::types{
 
@@ -121,7 +124,7 @@ namespace qtz::types{
   };
 
 
-  static std::string_view allocate_string(std::string_view name) noexcept;
+  static std::string_view allocate_string(std::string_view name) noexcept
   static void*            allocate_array(jem_size_t objectSize, jem_size_t objectCount) noexcept;
   template <typename T>
   inline static T* allocate_array(jem_size_t count) noexcept {
@@ -482,7 +485,7 @@ namespace qtz::types{
       }
 
       for ( jem_size_t i = 0; i < memberCount; ++i ) {
-        const jem_size_t member_alignment = params.members[i].alignment ?: params.members[i].type->alignment;
+        const jem_size_t member_alignment = params.members[i].alignment ? params.members[i].alignment : params.members[i].type->alignment;
         const jem_size_t type_bits        = params.members[i].type->size * CHAR_BIT;
 
         memberPtr[i].name            = allocate_string(params.members[i].name);

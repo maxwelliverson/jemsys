@@ -8,221 +8,18 @@
 
 #include "quartz/core.h"
 
-#include <utility>
+#include "iterator.hpp"
+#include "allocator.hpp"
+
 #include <string_view>
 #include <memory>
-#include <ranges>
 #include <bit>
 
-namespace qtz{
+namespace jem {
 
   struct nothing_t{};
   inline constexpr static nothing_t nothing{};
 
-  template <typename BeginIter, typename EndIter = BeginIter>
-  class range_view{
-  public:
-
-    using iterator = BeginIter;
-    using sentinel = EndIter;
-
-    range_view(const range_view&) = default;
-    range_view(range_view&&) noexcept = default;
-
-    range_view(iterator b, sentinel e) noexcept : begin_(std::move(b)), end_(std::move(e)){}
-    template <typename Rng> requires(std::ranges::range<Rng> && !std::same_as<std::remove_cvref_t<Rng>, range_view>)
-    range_view(Rng&& rng) noexcept
-        : begin_(std::ranges::begin(rng)),
-          end_(std::ranges::end(rng)){}
-
-    JEM_nodiscard iterator begin() const noexcept {
-      return begin_;
-    }
-    JEM_nodiscard sentinel end()   const noexcept {
-      return end_;
-    }
-
-  private:
-    BeginIter begin_;
-    EndIter   end_;
-  };
-
-  template <typename T, typename S>
-  range_view<T, S> make_range(T x, S y) {
-    return range_view<T, S>(std::move(x), std::move(y));
-  }
-  template <typename T, typename S>
-  range_view<T, S> make_range(std::pair<T, S> p) {
-    return range_view<T, S>(std::move(p.first), std::move(p.second));
-  }
-
-
-
-  template <typename DerivedT,
-            typename IteratorCategoryT,
-            typename T,
-            typename DifferenceTypeT = std::ptrdiff_t,
-            typename PointerT = T *,
-            typename ReferenceT = T &>
-  class iterator_facade_base : public std::iterator<IteratorCategoryT, T, DifferenceTypeT, PointerT, ReferenceT> {
-  protected:
-
-    inline constexpr static bool IsRandomAccess  = std::derived_from<IteratorCategoryT, std::random_access_iterator_tag>;
-    inline constexpr static bool IsBidirectional = std::derived_from<IteratorCategoryT, std::bidirectional_iterator_tag>;
-
-    /// A proxy object for computing a reference via indirecting a copy of an
-    /// iterator. This is used in APIs which need to produce a reference via
-    /// indirection but for which the iterator object might be a temporary. The
-    /// proxy preserves the iterator internally and exposes the indirected
-    /// reference via a conversion operator.
-    class reference_proxy {
-      friend iterator_facade_base;
-
-      DerivedT I;
-
-      reference_proxy(DerivedT I) : I(std::move(I)) {}
-
-    public:
-      operator ReferenceT() const { return *I; }
-    };
-
-    using derived_type = DerivedT;
-
-  public:
-
-    using iterator_category = IteratorCategoryT;
-    using value_type        = T;
-    using difference_type   = DifferenceTypeT;
-    using pointer           = PointerT;
-    using reference         = ReferenceT;
-
-
-
-    derived_type operator+(difference_type n) const requires(IsRandomAccess)  {
-      static_assert(std::is_base_of<iterator_facade_base, derived_type>::value,
-                    "Must pass the derived type to this template!");
-      derived_type tmp = *static_cast<const derived_type *>(this);
-      tmp += n;
-      return tmp;
-    }
-    friend derived_type operator+(difference_type n, const derived_type &i) requires(IsRandomAccess) {
-      return i + n;
-    }
-    derived_type operator-(difference_type n) const requires(IsRandomAccess) {
-      derived_type tmp = *static_cast<const derived_type *>(this);
-      tmp -= n;
-      return tmp;
-    }
-
-    derived_type& operator++() {
-      return static_cast<derived_type *>(this)->operator+=(1);
-    }
-    derived_type operator++(int) {
-      derived_type tmp = *static_cast<derived_type *>(this);
-      ++*static_cast<derived_type *>(this);
-      return tmp;
-    }
-    derived_type &operator--()   requires(IsBidirectional) {
-      static_assert(
-        IsBidirectional,
-        "The decrement operator is only defined for bidirectional iterators.");
-      return static_cast<derived_type *>(this)->operator-=(1);
-    }
-    derived_type operator--(int) requires(IsBidirectional) {
-      static_assert(
-        IsBidirectional,
-        "The decrement operator is only defined for bidirectional iterators.");
-      derived_type tmp = *static_cast<derived_type *>(this);
-      --*static_cast<derived_type *>(this);
-      return tmp;
-    }
-
-
-    PointerT operator->() { return std::addressof(static_cast<derived_type *>(this)->operator*()); }
-    PointerT operator->() const { return std::addressof(static_cast<const derived_type *>(this)->operator*()); }
-    reference_proxy operator[](difference_type n) requires(IsRandomAccess) { return reference_proxy(static_cast<derived_type *>(this)->operator+(n)); }
-    reference_proxy operator[](difference_type n) const requires(IsRandomAccess) { return reference_proxy(static_cast<const derived_type *>(this)->operator+(n)); }
-  };
-
-  /// CRTP base class for adapting an iterator to a different type.
-  ///
-  /// This class can be used through CRTP to adapt one iterator into another.
-  /// Typically this is done through providing in the derived class a custom \c
-  /// operator* implementation. Other methods can be overridden as well.
-  template <
-    typename DerivedT,
-    typename WrappedIteratorT,
-    typename IteratorCategoryT = typename std::iterator_traits<WrappedIteratorT>::iterator_category,
-    typename T                 = std::iter_value_t<WrappedIteratorT>,
-    typename DifferenceTypeT   = std::iter_difference_t<WrappedIteratorT>,
-    typename PointerT          = std::conditional_t<std::same_as<std::remove_cvref_t<T>, std::remove_cvref_t<std::iter_value_t<WrappedIteratorT>>>, typename std::iterator_traits<WrappedIteratorT>::pointer, T*>,
-    typename ReferenceT        = std::conditional_t<std::same_as<std::remove_cvref_t<T>, std::remove_cvref_t<std::iter_value_t<WrappedIteratorT>>>, std::iter_reference_t<WrappedIteratorT>, T&>>
-  class iterator_adaptor_base : public iterator_facade_base<DerivedT, IteratorCategoryT, T, DifferenceTypeT, PointerT, ReferenceT> {
-    using BaseT = typename iterator_adaptor_base::iterator_facade_base;
-
-  protected:
-    WrappedIteratorT I;
-
-    iterator_adaptor_base() = default;
-
-    explicit iterator_adaptor_base(WrappedIteratorT u) : I(std::move(u)) {
-      static_assert(std::is_base_of<iterator_adaptor_base, DerivedT>::value,
-                    "Must pass the derived type to this template!");
-    }
-
-    const WrappedIteratorT &wrapped() const { return I; }
-
-  public:
-    using difference_type = DifferenceTypeT;
-
-    DerivedT &operator+=(difference_type n) {
-      static_assert(
-        BaseT::IsRandomAccess,
-        "The '+=' operator is only defined for random access iterators.");
-      I += n;
-      return *static_cast<DerivedT *>(this);
-    }
-    DerivedT &operator-=(difference_type n) {
-      static_assert(
-        BaseT::IsRandomAccess,
-        "The '-=' operator is only defined for random access iterators.");
-      I -= n;
-      return *static_cast<DerivedT *>(this);
-    }
-    using BaseT::operator-;
-    difference_type operator-(const DerivedT &RHS) const {
-      static_assert(
-        BaseT::IsRandomAccess,
-        "The '-' operator is only defined for random access iterators.");
-      return I - RHS.I;
-    }
-
-    // We have to explicitly provide ++ and -- rather than letting the facade
-    // forward to += because WrappedIteratorT might not support +=.
-    using BaseT::operator++;
-    DerivedT &operator++() {
-      ++I;
-      return *static_cast<DerivedT *>(this);
-    }
-    using BaseT::operator--;
-    DerivedT &operator--() {
-      static_assert(
-        BaseT::IsBidirectional,
-        "The decrement operator is only defined for bidirectional iterators.");
-      --I;
-      return *static_cast<DerivedT *>(this);
-    }
-
-    bool operator==(const DerivedT &RHS) const { return I == RHS.I; }
-    bool operator<(const DerivedT &RHS) const {
-      static_assert(
-        BaseT::IsRandomAccess,
-        "Relational operators are only defined for random access iterators.");
-      return I < RHS.I;
-    }
-
-    ReferenceT operator*() const { return *I; }
-  };
 
 
 
@@ -413,14 +210,14 @@ namespace qtz{
 
   template<typename Val>
   class dictionary_entry final : public impl::dictionary_entry_storage<Val> {
-    
-    static dictionary_entry* alloc(jem_size_t keySize) noexcept {
-      return static_cast<dictionary_entry*>(_aligned_malloc(sizeof(dictionary_entry) + keySize + 1, alignof(dictionary_entry)));
+
+    static size_t allocSize(size_t keySize) noexcept {
+      return sizeof(dictionary_entry) + keySize + 1;
     }
-    static void dealloc(dictionary_entry* mem) noexcept {
-      _aligned_free(mem);
+    static size_t allocAlign() noexcept {
+      return alignof(dictionary_entry);
     }
-    
+
   public:
     using impl::dictionary_entry_storage<Val>::dictionary_entry_storage;
 
@@ -437,17 +234,17 @@ namespace qtz{
 
     /// Create a dictionary_entry for the specified key construct the value using
     /// \p InitiVals.
-    template <typename... Args>
-    static dictionary_entry* create(std::string_view key, Args&& ...args) {
+    template <typename Alloc, typename... Args>
+    static dictionary_entry* create(Alloc& allocator, std::string_view key, Args&& ...args) {
       size_t keyLength = key.length();
       
 
-      auto *newItem = alloc(keyLength);
+      auto newMemory = allocator.allocate(allocSize(keyLength), allocAlign());
       
-      assert(newItem && "Unhandled \"out of memory\" error");
+      assert(newMemory && "Unhandled \"out of memory\" error");
 
       // Construct the value.
-      new (newItem) dictionary_entry(keyLength, std::forward<Args>(args)...);
+      auto *newItem = new (newMemory) dictionary_entry(keyLength, std::forward<Args>(args)...);
 
       // Copy the string information.
       auto strBuffer = const_cast<char*>(newItem->get_key_data());
@@ -466,30 +263,42 @@ namespace qtz{
 
     /// Destroy - Destroy this dictionary_entry, releasing memory back to the
     /// specified allocator.
-    void destroy() {
+    template <typename Alloc>
+    void destroy(Alloc& allocator) {
+      size_t size = allocSize(this->get_key_length());
       // Free memory referenced by the item.
       this->~dictionary_entry();
-      dealloc(this);
+      allocator.deallocate(this, size, allocAlign());
     }
   };
 
 
 
-  template <typename T>
-  class dictionary : public impl::dictionary{
+  template <typename T, typename EntryAllocator = default_allocator>
+  class dictionary : public impl::dictionary, private EntryAllocator {
+
+    using entry_allocator_t = EntryAllocator;
+
+    entry_allocator_t& get_allocator() const noexcept {
+      return const_cast<entry_allocator_t&>(static_cast<const entry_allocator_t&>(*this));
+    }
 
   public:
     using entry_type = dictionary_entry<T>;
 
-    dictionary() noexcept : impl::dictionary(static_cast<jem_u32_t>(sizeof(entry_type))) {}
+    dictionary() noexcept
+        : impl::dictionary(static_cast<jem_u32_t>(sizeof(entry_type))),
+          entry_allocator_t() {}
 
     explicit dictionary(jem_u32_t InitialSize)
-        : impl::dictionary(static_cast<jem_u32_t>(sizeof(entry_type))) {
+        : impl::dictionary(static_cast<jem_u32_t>(sizeof(entry_type))),
+          entry_allocator_t()  {
       explicit_init(InitialSize);
     }
 
     dictionary(std::initializer_list<std::pair<std::string_view, T>> List)
-        : impl::dictionary(static_cast<jem_u32_t>(sizeof(entry_type))){
+        : impl::dictionary(static_cast<jem_u32_t>(sizeof(entry_type))),
+          entry_allocator_t()  {
       explicit_init(List.size());
       for (const auto &P : List) {
         insert(P);
@@ -497,10 +306,12 @@ namespace qtz{
     }
 
     dictionary(dictionary &&RHS) noexcept
-        : impl::dictionary(std::move(RHS)){}
+        : impl::dictionary(std::move(RHS)),
+          entry_allocator_t(std::move(RHS.get_allocator()))  {}
 
     dictionary(const dictionary &RHS)
-        : impl::dictionary(static_cast<jem_u32_t>(sizeof(entry_type))){
+        : impl::dictionary(static_cast<jem_u32_t>(sizeof(entry_type))),
+          entry_allocator_t(RHS.get_allocator()) {
       if (RHS.empty())
         return;
 
@@ -521,6 +332,7 @@ namespace qtz{
         }
 
         TheTable[I] = entry_type::create(
+          get_allocator(),
           static_cast<entry_type *>(Bucket)->key(),
           static_cast<entry_type *>(Bucket)->getValue());
         HashTable[I] = RHSHashTable[I];
@@ -529,6 +341,7 @@ namespace qtz{
 
     dictionary& operator=(dictionary&& RHS) noexcept {
       impl::dictionary::swap(RHS);
+      std::swap(get_allocator(), RHS.get_allocator());
       return *this;
     }
 
@@ -540,7 +353,7 @@ namespace qtz{
         for (unsigned I = 0, E = NumBuckets; I != E; ++I) {
           impl::dictionary_entry_base *Bucket = TheTable[I];
           if (Bucket && Bucket != get_tombstone_val()) {
-            static_cast<entry_type *>(Bucket)->destroy();
+            static_cast<entry_type *>(Bucket)->destroy(get_allocator());
           }
         }
       }
@@ -598,9 +411,15 @@ namespace qtz{
     /// count - Return 1 if the element is in the map, 0 otherwise.
     JEM_nodiscard size_type count(std::string_view Key) const { return find(Key) == end() ? 0 : 1; }
 
+
+
     template<typename InputTy>
     JEM_nodiscard size_type count(const dictionary_entry<InputTy>& entry) const {
       return count(entry.key());
+    }
+
+    JEM_nodiscard bool contains(std::string_view key) const noexcept {
+      return find(key) != end();
     }
 
     /// equal - check whether both of the containers are equal.
@@ -634,7 +453,7 @@ namespace qtz{
         --NumTombstones;
       Bucket = KeyValue;
       ++NumItems;
-      VK_assert(NumItems + NumTombstones <= NumBuckets);
+      assert(NumItems + NumTombstones <= NumBuckets);
 
       rehash_table();
       return true;
@@ -672,7 +491,7 @@ namespace qtz{
 
       if (Bucket == get_tombstone_val())
         --NumTombstones;
-      Bucket = entry_type::create(Key, std::forward<ArgsTy>(Args)...);
+      Bucket = entry_type::create(get_allocator(), Key, std::forward<ArgsTy>(Args)...);
       ++NumItems;
       assert(NumItems + NumTombstones <= NumBuckets);
 
@@ -690,7 +509,7 @@ namespace qtz{
       for (unsigned I = 0, E = NumBuckets; I != E; ++I) {
         impl::dictionary_entry_base *&Bucket = TheTable[I];
         if (Bucket && Bucket != get_tombstone_val()) {
-          static_cast<entry_type *>(Bucket)->destroy();
+          static_cast<entry_type *>(Bucket)->destroy(get_allocator());
         }
         Bucket = nullptr;
       }
@@ -706,7 +525,7 @@ namespace qtz{
     void erase(iterator I) {
       entry_type &V = *I;
       remove(&V);
-      V.destroy();
+      V.destroy(get_allocator());
     }
 
     bool erase(std::string_view Key) {
@@ -717,9 +536,6 @@ namespace qtz{
       return true;
     }
   };
-
-
-
 
 
 

@@ -4,7 +4,7 @@
 
 #include "dictionary.hpp"
 
-using namespace qtz;
+using namespace jem;
 
 namespace {
   inline constexpr jem_u32_t default_bucket_count = 16;

@@ -61,7 +61,7 @@ namespace {
   inline constexpr jem_size_t MailboxStackSize = 0;
   inline constexpr DWORD      MailboxThreadFlags = 0;
 
-  atomic_flag_t      g_processIsInitialized{};
+  std::atomic_bool   g_processIsInitialized{false};
   binary_semaphore_t g_isInitializing{1};
 
   bool     g_addressSpaceIsInitialized{false};
@@ -255,7 +255,18 @@ namespace {
 
     qtz_handle_t fileMapping = CreateFileMapping(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, high_bits_of(totalFileMappingSize), low_bits_of(totalFileMappingSize), fileMappingName);
 
-    void* mailboxMemory = MapViewOfFile3(fileMapping, GetCurrentProcess(), nullptr, 0, totalFileMappingSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE, nullptr, 0);
+    if ( !fileMapping ) {
+      return QTZ_ERROR_BAD_ALLOC;
+    }
+
+    void* mailboxMemory = MapViewOfFile(fileMapping, FILE_MAP_ALL_ACCESS, 0, 0, totalFileMappingSize);
+    // void* mailboxMemory = MapViewOfFile3(fileMapping, GetCurrentProcess(), nullptr, 0, totalFileMappingSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE, nullptr, 0);
+
+    if ( !mailboxMemory ) {
+      CloseHandle(fileMapping);
+      return QTZ_ERROR_BAD_ALLOC;
+    }
+
 
     g_qtzGlobalMailbox = new (mailboxMemory) qtz_mailbox(messageSlotCount - 1, totalFileMappingSize, fileMappingName);
 
@@ -385,6 +396,15 @@ namespace {
   inline void destroyKernel() {
 
   }
+  inline void destroyMailbox() {
+    /*
+     * Send message to kernel indicating that this process is disconnecting...
+     * */
+
+    g_qtzGlobalMailbox->shouldCloseMailbox.test_and_set();
+
+    // Dump log?
+  }
 }
 
 
@@ -397,13 +417,13 @@ extern "C" {
 
     qtz_status_t status = QTZ_SUCCESS;
 
-    if ( g_processIsInitialized.test() )
+    if ( g_processIsInitialized.load() )
       return status;
 
     if ( !g_isInitializing.try_acquire_for(1000 * 500) )
       return QTZ_ERROR_UNKNOWN;
 
-    if ( g_processIsInitialized.test() )
+    if ( g_processIsInitialized.load() )
       goto exit;
 
 
@@ -443,12 +463,12 @@ extern "C" {
       g_processIsInitialized.test_and_set();*/
 
     if ( g_addressSpaceIsInitialized && g_mailboxIsInitialized )
-      g_processIsInitialized.test_and_set();
+      g_processIsInitialized.store(true);
 
 
 
-    atexit(destroyKernel);
-
+    // atexit(destroyKernel);
+    atexit(destroyMailbox);
 
     exit:
       g_isInitializing.release();

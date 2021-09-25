@@ -26,15 +26,27 @@ typedef enum {
   SLC_SUCCESS,
   SLC_ERROR_INTERNAL,
   SLC_ERROR_UNKNOWN,
-  SLC_ERROR_BAD_SIZE,
-  SLC_ERROR_INVALID_ARGUMENT,
-  SLC_ERROR_BAD_ENCODING_IN_NAME,
-  SLC_ERROR_NAME_TOO_LONG,
-  SLC_ERROR_INSUFFICIENT_BUFFER_SIZE,
-  SLC_ERROR_BAD_ALLOC,
-  SLC_ERROR_TOO_MANY_PRODUCERS,
-  SLC_ERROR_TOO_MANY_CONSUMERS
+  SLC_ERROR_NULL_TYPE,
+  SLC_ERROR_BAD_FLAGS_ON_BASE,
+  SLC_ERROR_INHERIT_FROM_FINAL,
+  SLC_ERROR_INHERIT_FROM_NON_AGGREGATE,
+  SLC_ERROR_INHERIT_FROM_OPAQUE,
+  SLC_ERROR_OPAQUE_INSTANCE,
+  SLC_ERROR_ABSTRACT_INSTANCE,
+  SLC_ERROR_MEMBER_NAME_CLASH
 } slc_status_t;
+
+class status{
+  inline constexpr static size_t StorageSize  = 24;
+  inline constexpr static size_t StorageAlign = 8;
+public:
+
+
+
+private:
+  std::aligned_storage_t<StorageSize, StorageAlign> storage;
+  status_code code;
+};
 
 
 
@@ -314,10 +326,11 @@ struct slc_type_descriptor_t {
 
 
 
-JEM_api void         JEM_stdcall slc_open_module_builder(slc_module_builder_t* pModuleBuilder);
+JEM_api void         JEM_stdcall slc_create_module_builder(slc_module_builder_t* pModuleBuilder);
+JEM_api void         JEM_stdcall slc_destroy_module_builder(slc_module_builder_t moduleBuilder);
 JEM_api void         JEM_stdcall slc_module_add_functions(slc_module_builder_t moduleBuilder, const slc_function_descriptor_t* pFunctions, jem_size_t functionCount);
 JEM_api void         JEM_stdcall slc_module_add_types(slc_module_builder_t moduleBuilder, const slc_type_descriptor_t* pTypes, jem_size_t typeCount);
-JEM_api void         JEM_stdcall slc_module_add_dependencies(slc_module_builder_t moduleBuilder, const slc_module_t* pDependencies, jem_size_t dependencyCount);
+JEM_api void         JEM_stdcall slc_module_add_dependencies(slc_module_builder_t moduleBuilder, const void* pDependencies, jem_size_t dependencyCount);
 
 
 

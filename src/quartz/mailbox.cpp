@@ -63,7 +63,7 @@ qtz_message_action_t qtz_mailbox::proc_alloc_mailbox(qtz_request_t request) noex
     desc.isShared = payload->isShared;
   }
 
-  *payload->memory = mailboxAddress;
+  *payload->handle = mailboxAddress;
   request->status = QTZ_SUCCESS;
 
 
@@ -72,6 +72,12 @@ qtz_message_action_t qtz_mailbox::proc_alloc_mailbox(qtz_request_t request) noex
 }
 
 qtz_message_action_t qtz_mailbox::proc_free_mailbox(qtz_request_t request) noexcept {
+  auto payload = request->payload_as<qtz::free_mailbox_request>();
+
+  auto handleEntry = this->namedHandles.find(payload->name);
+
+
+
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
 
@@ -114,7 +120,35 @@ qtz_message_action_t qtz_mailbox::proc_unregister_agent(qtz_request_t request) n
 }
 
 
-extern "C" JEM_stdcall qtz_exit_code_t qtz_mailbox_main_thread_proc(void*) {
+namespace {
+
+  inline jem_size_t buffer_length(qtz_local_id_t msgId, const void* buffer = nullptr) noexcept {
+    /*if ( msgId & GLOBAL_MESSAGE_KIND_DYNAMIC_BIT )
+      return *static_cast<const size_t*>(buffer);
+
+    static constexpr jem_size_t lengths[] = {
+      0,
+      sizeof(qtz::alloc_pages_request),
+      sizeof(qtz::free_pages_request),
+      sizeof(qtz::alloc_mailbox_request),
+      sizeof(qtz::free_mailbox_request)
+    };
+
+    return lengths[msgId];*/
+    return *static_cast<const size_t*>(buffer);
+  }
+
+  inline void fill_request(qtz_request_t request, qtz_local_id_t msgId, const void* buffer) noexcept {
+    request->isRealMessage = true;
+    request->messageKind = static_cast<qtz_message_kind_t>(msgId);
+
+    if ( msgId != GLOBAL_MESSAGE_KIND_NOOP ) {
+      std::memcpy(request->payload, buffer, buffer_length(msgId, buffer));
+    }
+  }
+}
+
+extern "C" qtz_exit_code_t JEM_stdcall qtz_mailbox_main_thread_proc(void*) {
 
   /*using PFN_request_proc = qtz_message_action_t(qtz_mailbox::*)(qtz_request_t) noexcept;
 
@@ -201,15 +235,60 @@ JEM_api qtz_status_t  JEM_stdcall qtz_request_wait(qtz_request_t message, jem_u6
   return result;
 }
 JEM_api void          JEM_stdcall qtz_request_discard(qtz_request_t message) {
-  auto mailbox = message->parent_mailbox();
-  mailbox->discard_request(message);
+  if ( message->is_real_message() ) [[likely]] {
+    auto mailbox = message->parent_mailbox();
+    mailbox->discard_request(message);
+  }
 }
 
 JEM_api qtz_request_t JEM_stdcall qtz_send(qtz_local_id_t messageId, const void* messageBuffer) JEM_noexcept {
 
+  if ( !g_qtzGlobalMailbox ) [[unlikely]] {
+    return nullptr;
+  }
+
+  auto mailbox = g_qtzGlobalMailbox;
+
+  auto request = mailbox->get_free_request_slot();
+
+  fill_request(request, messageId, messageBuffer);
+
+  mailbox->enqueue_request(request);
+
+  return request;
+}
+JEM_api qtz_request_t JEM_stdcall qtz_try_send(qtz_local_id_t messageId, const void* messageBuffer, jem_u64_t us_timeout) JEM_noexcept {
+
+  qtz_request_t request;
+
+  if ( !g_qtzGlobalMailbox ) [[unlikely]] {
+    return nullptr;
+  }
+
+  auto mailbox = g_qtzGlobalMailbox;
+
+  switch ( us_timeout ) {
+    case JEM_DO_NOT_WAIT:
+      request = mailbox->try_acquire_free_request_slot();
+      break;
+    case JEM_WAIT:
+      request = mailbox->acquire_free_request_slot();
+      break;
+    default:
+      request = mailbox->try_acquire_free_request_slot_for(us_timeout);
+  }
+
+  if ( !request )
+    return nullptr;
+
+  fill_request(request, messageId, messageBuffer);
+
+  mailbox->enqueue_request(request);
+
+  return request;
 }
 JEM_api qtz_request_t JEM_stdcall qtz_send_ex(qtz_process_t process, qtz_global_id_t messageId, const void* messageBuffer, qtz_send_flags_t flags) JEM_noexcept {
-
+  return nullptr;
 }
 
 

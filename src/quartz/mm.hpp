@@ -112,8 +112,8 @@ namespace qtz{
     };
 
 
-    static std::optional<process> create(const char* applicationName, std::string_view commandLineOpts, void* procSecurityDesc, void* threadSecurityDesc, bool inherit, const environment<char>& env) noexcept;
-    static std::optional<process> create(const char* applicationName, std::string_view commandLineOpts, const environment<wchar_t>& env) noexcept;
+    static std::optional<process> create(const char* applicationName, std::string_view commandLineOpts, void* procSecurityDesc, void* threadSecurityDesc, bool inherit/*, const environment<char>& env*/) noexcept;
+    static std::optional<process> create(const char* applicationName, std::string_view commandLineOpts/*, const environment<wchar_t>& env*/) noexcept;
     static std::optional<process> open(id processId, process_permissions_t permissions) noexcept;
 
 
