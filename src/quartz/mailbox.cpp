@@ -18,8 +18,16 @@ qtz_message_action_t qtz_mailbox::proc_noop(qtz_request_t request) noexcept {
   return QTZ_ACTION_DISCARD;
 }
 qtz_message_action_t qtz_mailbox::proc_placeholder1(qtz_request_t request) noexcept {
-  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
-  return QTZ_ACTION_NOTIFY_LISTENER;
+  /*request->status = QTZ_ERROR_NOT_IMPLEMENTED;
+  return QTZ_ACTION_NOTIFY_LISTENER;*/
+  // FIXME: remove dummy implementation lmao
+  struct payload_t{
+    size_t structLength;
+    std::chrono::high_resolution_clock::time_point startTime;
+  };
+  auto payload = request->payload_as<payload_t>();
+  this->startTime = payload->startTime;
+  return QTZ_ACTION_DISCARD;
 }
 qtz_message_action_t qtz_mailbox::proc_placeholder2(qtz_request_t request) noexcept {
   request->status = QTZ_ERROR_NOT_IMPLEMENTED;
@@ -147,7 +155,7 @@ qtz_message_action_t qtz_mailbox::proc_destroy_object(qtz_request_t request) noe
 qtz_message_action_t qtz_mailbox::proc_log_message(qtz_request_t request) noexcept {
   //TODO: Implement a proper logging mechanism
   auto payload = request->payload_as<qtz::log_message_request>();
-  std::cout << "> [[" << request->senderObject << "]]{ \""<< std::string_view(payload->message, payload->structLength - offsetof(qtz::log_message_request, message) - 1) << "\" }\n";
+  std::cout << "> (@" << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - startTime) << ") " << "[[" << request->senderObject << "]]{ \""<< std::string_view(payload->message, payload->structLength - offsetof(qtz::log_message_request, message) - 1) << "\" }\n";
   return QTZ_ACTION_DISCARD;
 }
 qtz_message_action_t qtz_mailbox::proc_execute_callback(qtz_request_t request) noexcept {

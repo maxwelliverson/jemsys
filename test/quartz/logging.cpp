@@ -20,6 +20,7 @@ template <typename ...Args>
 inline void log(std::string_view fmt, Args&& ...args) noexcept {
   thread_local void* threadId = get_thread_id();
   std::string str = std::format(fmt, args...);
+
   size_t length = str.size();
   size_t bufferLength = length + sizeof(size_t) + 1;
   auto buffer = new char[bufferLength];
@@ -33,14 +34,29 @@ inline void execute_ops_on_threads(jem_size_t N) noexcept {
   auto startTime = std::chrono::high_resolution_clock::now();
 
   std::vector<std::thread> threads;
+  std::barrier<>           threadBarrier{(ptrdiff_t)N};
   threads.reserve(N);
 
+  struct payload_t{
+    size_t structLength;
+    std::chrono::high_resolution_clock::time_point startTime;
+  } setTimePayload{
+    .structLength = sizeof(payload_t),
+    .startTime    = startTime
+  };
+
+  qtz_send(nullptr, 1, &setTimePayload, 1, JEM_WAIT);
+
   for ( size_t i = 0; i < N; ++i ) {
-    threads.emplace_back([=]{
+    threads.emplace_back([=](std::barrier<>& barrier){
+
+      barrier.arrive_and_wait();
+
       for ( jem_size_t j = 0; j < N; ++j ) {
         log("thread#{}, msg#{}, @{}", i, j, std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - startTime));
       }
-    });
+
+    }, std::ref(threadBarrier));
   }
 
   for ( auto& thread : threads )
@@ -80,5 +96,5 @@ int main() {
   };
   auto result = qtz_init(&initParams);
 
-  execute_ops_on_threads(10);
+  execute_ops_on_threads(4);
 }
