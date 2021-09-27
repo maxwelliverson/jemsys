@@ -78,9 +78,8 @@ JEM_api qtz_status_t  JEM_stdcall qtz_request_status(qtz_request_t message);
 JEM_api qtz_status_t  JEM_stdcall qtz_request_wait(qtz_request_t message, jem_u64_t timeout_us);
 JEM_api void          JEM_stdcall qtz_request_discard(qtz_request_t message);
 
-JEM_api qtz_request_t JEM_stdcall qtz_send(qtz_local_id_t messageId, const void* messageBuffer) JEM_noexcept;
-JEM_api qtz_request_t JEM_stdcall qtz_try_send(qtz_local_id_t messageId, const void* messageBuffer, jem_u64_t us_timeout) JEM_noexcept;
-JEM_api qtz_request_t JEM_stdcall qtz_send_ex(qtz_process_t process, qtz_global_id_t messageId, const void* messageBuffer, qtz_send_flags_t flags) JEM_noexcept;
+JEM_api qtz_request_t JEM_stdcall qtz_send(void* sender, qtz_local_id_t messageId, const void* messageBuffer, jem_u32_t priority, jem_u64_t us_timeout) JEM_noexcept;
+JEM_api qtz_request_t JEM_stdcall qtz_send_ex(void* sender, qtz_process_t receivingProcess, qtz_local_id_t messageId, const void* messageBuffer,  jem_u32_t priority, qtz_send_flags_t flags, jem_u64_t us_timeout) JEM_noexcept;
 
 
 JEM_end_c_namespace

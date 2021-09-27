@@ -26,12 +26,16 @@ target_include_directories(jemsys.quartz.prioq.TEST PUBLIC include src)
 
 add_library(jemsys library.c include/jemsys.h)
 
-add_executable(TEST.jemsys test/catch.cpp test/quartz/init_test.cpp test/silica/module_builder.cpp)
+add_executable(TEST.quartz.logging test/quartz/logging.cpp)
+target_include_directories(TEST.quartz.logging PUBLIC include src)
+
+add_executable(TEST.jemsys test/catch.cpp test/quartz/init_test.cpp test/silica/module_builder.cpp test/silica/attributes.cpp)
 target_include_directories(TEST.jemsys PUBLIC include src)
 
 
 target_link_libraries(jemsys.quartz PUBLIC jemsys.internal)
 target_link_libraries(jemsys.agate  PUBLIC jemsys.internal)
 target_link_libraries(jemsys.opal   PUBLIC jemsys.internal)
+target_link_libraries(TEST.quartz.logging PUBLIC jemsys.internal jemsys.quartz)
 target_link_libraries(jemsys        PUBLIC jemsys.quartz jemsys.agate jemsys.opal)
-target_link_libraries(TEST.jemsys   PUBLIC jemsys.internal jemsys.quartz)
+target_link_libraries(TEST.jemsys   PUBLIC jemsys.internal jemsys.quartz jemsys.silica)

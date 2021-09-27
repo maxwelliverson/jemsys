@@ -178,31 +178,29 @@ enum {
 };
 
 typedef enum {
-  GLOBAL_MESSAGE_KIND_NOOP,
-  GLOBAL_MESSAGE_KIND_1,
-  GLOBAL_MESSAGE_KIND_2,
-  GLOBAL_MESSAGE_KIND_ALLOCATE_MAILBOX,
-  GLOBAL_MESSAGE_KIND_FREE_MAILBOX,
-  GLOBAL_MESSAGE_KIND_3,
-  GLOBAL_MESSAGE_KIND_4,
-  GLOBAL_MESSAGE_KIND_5,
-  GLOBAL_MESSAGE_KIND_6,
-  GLOBAL_MESSAGE_KIND_7,
-  GLOBAL_MESSAGE_KIND_8,
-  GLOBAL_MESSAGE_KIND_9,
-  GLOBAL_MESSAGE_KIND_10,
-  GLOBAL_MESSAGE_KIND_11,
-  GLOBAL_MESSAGE_KIND_REGISTER_OBJECT,
-  GLOBAL_MESSAGE_KIND_UNREGISTER_OBJECT,
-  GLOBAL_MESSAGE_KIND_LINK_OBJECTS,
-  GLOBAL_MESSAGE_KIND_UNLINK_OBJECTS,
-  GLOBAL_MESSAGE_KIND_OPEN_OBJECT_HANDLE,
-  GLOBAL_MESSAGE_KIND_DESTROY_OBJECT,
-  GLOBAL_MESSAGE_KIND_EXECUTE_CALLBACK,
-  GLOBAL_MESSAGE_KIND_LAST_STATIC,
-  GLOBAL_MESSAGE_KIND_DYNAMIC_BIT    = 0x10000,
-  GLOBAL_MESSAGE_KIND_LOG_MESSAGE,
-  GLOBAL_MESSAGE_KIND_CALLBACK_WITH_BUFFER
+  GLOBAL_MESSAGE_KIND_NOOP                         = 0,
+  GLOBAL_MESSAGE_KIND_1                            = 1,
+  GLOBAL_MESSAGE_KIND_2                            = 2,
+  GLOBAL_MESSAGE_KIND_ALLOCATE_MAILBOX             = 3,
+  GLOBAL_MESSAGE_KIND_FREE_MAILBOX                 = 4,
+  GLOBAL_MESSAGE_KIND_3                            = 5,
+  GLOBAL_MESSAGE_KIND_4                            = 6,
+  GLOBAL_MESSAGE_KIND_5                            = 7,
+  GLOBAL_MESSAGE_KIND_6                            = 8,
+  GLOBAL_MESSAGE_KIND_7                            = 9,
+  GLOBAL_MESSAGE_KIND_8                            = 10,
+  GLOBAL_MESSAGE_KIND_9                            = 11,
+  GLOBAL_MESSAGE_KIND_10                           = 12,
+  GLOBAL_MESSAGE_KIND_11                           = 13,
+  GLOBAL_MESSAGE_KIND_REGISTER_OBJECT              = 14,
+  GLOBAL_MESSAGE_KIND_UNREGISTER_OBJECT            = 15,
+  GLOBAL_MESSAGE_KIND_LINK_OBJECTS                 = 16,
+  GLOBAL_MESSAGE_KIND_UNLINK_OBJECTS               = 17,
+  GLOBAL_MESSAGE_KIND_OPEN_OBJECT_HANDLE           = 18,
+  GLOBAL_MESSAGE_KIND_DESTROY_OBJECT               = 19,
+  GLOBAL_MESSAGE_KIND_LOG_MESSAGE                  = 20,
+  GLOBAL_MESSAGE_KIND_EXECUTE_CALLBACK             = 21,
+  GLOBAL_MESSAGE_KIND_EXECUTE_CALLBACK_WITH_BUFFER = 22
 } qtz_message_kind_t;
 typedef enum {
   QTZ_ACTION_DISCARD,
@@ -211,30 +209,29 @@ typedef enum {
 } qtz_message_action_t;
 
 namespace qtz {
-
-  struct alloc_pages_request{
-
-  };
-  struct free_pages_request{
-
+  struct pause_request {
+    size_t structSize;
   };
   struct alloc_mailbox_request{
+    size_t structSize;
     void** handle;
     char   name[QTZ_NAME_MAX_LENGTH];
     bool   isShared;
   };
   struct free_mailbox_request{
+    size_t structSize;
     void* handle;
     char  name[QTZ_NAME_MAX_LENGTH];
   };
-  struct execute_callback_request{
-    void(*callback)(void*);
-    void* userData;
-  };
-
   struct log_message_request {
+    size_t    structLength;
+    // jem_u64_t timestamp;
+    char      message[];
+  };
+  struct execute_callback_request{
     size_t structLength;
-    char   message[];
+    void(* callback)(void*);
+    void*  userData;
   };
   struct execute_callback_with_buffer_request{
     size_t structLength;
@@ -258,15 +255,15 @@ struct qtz_request {
   qtz_message_kind_t   messageKind;
   jem_u32_t            queuePriority;
 
-  /*atomic_flag_t       isReady;
-  atomic_flag_t       isDiscarded;
-*/
   atomic_flags32_t     flags = 0;
   qtz_message_action_t action;
   qtz_status_t         status;
 
+  void*                senderObject;
+
   bool                 readyToDie;
   bool                 isRealMessage;
+  bool                 fromForeignProcess;
 
   // 27 free bytes
 
@@ -280,6 +277,9 @@ struct qtz_request {
     nextSlot = slot + 1;
     thisSlot = slot;
     flags.set(QTZ_MESSAGE_NOT_PRESERVED);
+    fromForeignProcess = false;
+    readyToDie         = false;
+    isRealMessage      = true;
   }
 
 
@@ -688,6 +688,8 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
   jem::dictionary<qtz::handle_descriptor> namedHandles;
 
+  jem_u32_t defaultPriority;
+
 
   // 48 free bytes
 
@@ -704,11 +706,12 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
 
   qtz_mailbox(jem_size_t slotCount, jem_size_t mailboxSize, const char fileMappingName[JEM_CACHE_LINE])
-      : slotSemaphore(static_cast<jem_ptrdiff_t>(slotCount) - 1),
+      : slotSemaphore(static_cast<jem_ptrdiff_t>(slotCount)),
         nextFreeSlot(0),
         lastQueuedSlot(0),
         queuedSinceLastCheck(0),
         totalSlotCount(static_cast<jem_u32_t>(slotCount)),
+        uuid(),
         previousRequest(nullptr),
         minQueuedMessages(0),
         maxCurrentDeferred(0),
@@ -717,6 +720,8 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
         exitCode(0),
         mailboxPool(mailboxSize, 255),
         messagePriorityQueue(slotCount),
+        namedHandles(),
+        defaultPriority(100),
         fileMappingName()
   {
     std::memcpy(this->fileMappingName, std::assume_aligned<JEM_CACHE_LINE>(fileMappingName), JEM_CACHE_LINE);
@@ -725,7 +730,7 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
       messageSlots[i].init(i);
   }
 
-
+private:
   inline qtz_request_t     get_request(jem_size_t slot) const noexcept {
     assert(slot < totalSlotCount);
     return const_cast<qtz_request_t>(messageSlots + slot);
@@ -747,24 +752,10 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
     return message;
   }
-  inline qtz_request_t acquire_free_request_slot() noexcept {
-    slotSemaphore.acquire();
-    return get_free_request_slot();
-  }
-  inline qtz_request_t try_acquire_free_request_slot() noexcept {
-    if ( !slotSemaphore.try_acquire() )
-      return nullptr;
-    return get_free_request_slot();
-  }
-  inline qtz_request_t try_acquire_free_request_slot_for(jem_u64_t timeout_us) noexcept {
-    if ( !slotSemaphore.try_acquire_for(timeout_us) )
-      return nullptr;
-    return get_free_request_slot();
-  }
-  inline qtz_request_t try_acquire_free_request_slot_until(deadline_t deadline) noexcept {
-    if ( !slotSemaphore.try_acquire_until(deadline) )
-      return nullptr;
-    return get_free_request_slot();
+  inline qtz_request_t get_next_queued_request() const noexcept {
+    if ( previousRequest ) [[likely]]
+      return get_request(previousRequest->nextSlot);
+    return get_request(0);
   }
   inline void          release_request_slot(qtz_request_t message) noexcept {
     const jem_size_t thisSlot = get_slot(message);
@@ -775,27 +766,70 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
     slotSemaphore.release();
   }
 
-  inline qtz_request_t acquire_first_queued_request() const noexcept {
-    return get_request(0);
-  }
-  inline qtz_request_t acquire_next_queued_request() noexcept {
-    queuedSinceLastCheck.wait(0, std::memory_order_acquire);
-    qtz_request_t message = get_request(previousRequest->nextSlot);
+public:
 
-    auto minQueued = queuedSinceLastCheck.exchange(0);
-    if ( minQueued == 1 ) {
-      replace_previous(message);
-      if ( messagePriorityQueue.empty() )
+
+
+
+  inline qtz_request_t acquire_free_slot() noexcept {
+    slotSemaphore.acquire();
+    return get_free_request_slot();
+  }
+  inline qtz_request_t try_acquire_free_slot() noexcept {
+    if ( !slotSemaphore.try_acquire() )
+      return nullptr;
+    return get_free_request_slot();
+  }
+  inline qtz_request_t try_acquire_free_slot_for(jem_u64_t timeout_us) noexcept {
+    if ( !slotSemaphore.try_acquire_for(timeout_us) )
+      return nullptr;
+    return get_free_request_slot();
+  }
+  inline qtz_request_t try_acquire_free_slot_until(deadline_t deadline) noexcept {
+    if ( !slotSemaphore.try_acquire_until(deadline) )
+      return nullptr;
+    return get_free_request_slot();
+  }
+
+
+  inline qtz_request_t acquire_next_queued_request() noexcept {
+
+    if ( messagePriorityQueue.empty() ) {
+      queuedSinceLastCheck.wait(0, std::memory_order_acquire);
+
+      qtz_request_t message = get_next_queued_request();
+
+      auto minQueued = queuedSinceLastCheck.exchange(0);
+      assert(minQueued != 0);
+      if ( minQueued == 1 ) {
+        replace_previous(message);
         return message;
-      messagePriorityQueue.insert(message);
+      }
+      else {
+        messagePriorityQueue.insert(message);
+        for (auto n = minQueued - 1; n > 0; --n) {
+          message = get_request(message->nextSlot);
+          messagePriorityQueue.insert(message);
+        }
+        replace_previous(message);
+      }
     }
     else {
-      for (auto n = minQueued - 1; n > 0; --n) {
-        message = get_request(message->nextSlot);
+
+      auto minQueued = queuedSinceLastCheck.exchange(0);
+
+      if ( minQueued > 0 ) {
+        qtz_request_t message = get_next_queued_request();
         messagePriorityQueue.insert(message);
+        for (auto n = minQueued - 1; n > 0; --n) {
+          message = get_request(message->nextSlot);
+          messagePriorityQueue.insert(message);
+        }
+        replace_previous(message);
       }
-      replace_previous(message);
     }
+
+
     return messagePriorityQueue.pop();
   }
 
@@ -804,8 +838,9 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
     const jem_size_t slot = get_slot(message);
     jem_size_t prevLastQueuedSlot = lastQueuedSlot.load(std::memory_order_acquire);
     do {
-      message->nextSlot = lastQueuedSlot;
+      //message->nextSlot = lastQueuedSlot;
     } while ( !lastQueuedSlot.compare_exchange_weak(prevLastQueuedSlot, slot) );
+    get_request(prevLastQueuedSlot)->nextSlot = slot;
     queuedSinceLastCheck.fetch_add(1, std::memory_order_release);
     queuedSinceLastCheck.notify_one();
   }
@@ -821,9 +856,11 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
   inline void          replace_previous(qtz_request_t message) noexcept {
     message->lock();
-    previousRequest->unlock();
-    if ( previousRequest->is_ready_to_die() )
-      release_request_slot(previousRequest);
+    if ( previousRequest ) [[likely]] {
+      previousRequest->unlock();
+      if ( previousRequest->is_ready_to_die() )
+        release_request_slot(previousRequest);
+    }
     previousRequest = message;
   }
 
@@ -834,19 +871,28 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
     constexpr static PFN_request_proc global_dispatch_table[] = {
       &qtz_mailbox::proc_noop,
-      &qtz_mailbox::proc_alloc_pages,
-      &qtz_mailbox::proc_free_pages,
+      &qtz_mailbox::proc_placeholder1,
+      &qtz_mailbox::proc_placeholder2,
       &qtz_mailbox::proc_alloc_mailbox,
       &qtz_mailbox::proc_free_mailbox,
-      &qtz_mailbox::proc_open_ipc_link,
-      &qtz_mailbox::proc_close_ipc_link,
-      &qtz_mailbox::proc_send_ipc_message,
-      &qtz_mailbox::proc_open_deputy,
-      &qtz_mailbox::proc_close_deputy,
-      &qtz_mailbox::proc_attach_thread,
-      &qtz_mailbox::proc_detach_thread,
-      &qtz_mailbox::proc_register_agent,
-      &qtz_mailbox::proc_unregister_agent
+      &qtz_mailbox::proc_placeholder3,
+      &qtz_mailbox::proc_placeholder4,
+      &qtz_mailbox::proc_placeholder5,
+      &qtz_mailbox::proc_placeholder6,
+      &qtz_mailbox::proc_placeholder7,
+      &qtz_mailbox::proc_placeholder8,
+      &qtz_mailbox::proc_placeholder9,
+      &qtz_mailbox::proc_placeholder10,
+      &qtz_mailbox::proc_placeholder11,
+      &qtz_mailbox::proc_register_object,
+      &qtz_mailbox::proc_unregister_object,
+      &qtz_mailbox::proc_link_objects,
+      &qtz_mailbox::proc_unlink_objects,
+      &qtz_mailbox::proc_open_object_handle,
+      &qtz_mailbox::proc_destroy_object,
+      &qtz_mailbox::proc_log_message,
+      &qtz_mailbox::proc_execute_callback,
+      &qtz_mailbox::proc_execute_callback_with_buffer
     };
 
     auto message = acquire_next_queued_request();
@@ -856,6 +902,7 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
     switch ( (this->*(global_dispatch_table[message->messageKind]))(message) ) {
       case QTZ_ACTION_DISCARD:
+        // FIXME: Messages are not being properly discarded :(
         message->discard();
         break;
       case QTZ_ACTION_NOTIFY_LISTENER:
@@ -869,20 +916,58 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   }
 
 
+  /*
+   * GLOBAL_MESSAGE_KIND_NOOP,
+GLOBAL_MESSAGE_KIND_1,
+GLOBAL_MESSAGE_KIND_2,
+GLOBAL_MESSAGE_KIND_ALLOCATE_MAILBOX,
+GLOBAL_MESSAGE_KIND_FREE_MAILBOX,
+GLOBAL_MESSAGE_KIND_3,
+GLOBAL_MESSAGE_KIND_4,
+GLOBAL_MESSAGE_KIND_5,
+GLOBAL_MESSAGE_KIND_6,
+GLOBAL_MESSAGE_KIND_7,
+GLOBAL_MESSAGE_KIND_8,
+GLOBAL_MESSAGE_KIND_9,
+GLOBAL_MESSAGE_KIND_10,
+GLOBAL_MESSAGE_KIND_11,
+GLOBAL_MESSAGE_KIND_REGISTER_OBJECT,
+GLOBAL_MESSAGE_KIND_UNREGISTER_OBJECT,
+GLOBAL_MESSAGE_KIND_LINK_OBJECTS,
+GLOBAL_MESSAGE_KIND_UNLINK_OBJECTS,
+GLOBAL_MESSAGE_KIND_OPEN_OBJECT_HANDLE,
+GLOBAL_MESSAGE_KIND_DESTROY_OBJECT,
+GLOBAL_MESSAGE_KIND_LOG_MESSAGE,
+GLOBAL_MESSAGE_KIND_EXECUTE_CALLBACK,
+GLOBAL_MESSAGE_KIND_EXECUTE_CALLBACK_WITH_BUFFER
+   *
+   * */
+
+
   qtz_message_action_t proc_noop(qtz_request_t request) noexcept;
-  qtz_message_action_t proc_alloc_pages(qtz_request_t request) noexcept;
-  qtz_message_action_t proc_free_pages(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_placeholder1(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_placeholder2(qtz_request_t request) noexcept;
   qtz_message_action_t proc_alloc_mailbox(qtz_request_t request) noexcept;
   qtz_message_action_t proc_free_mailbox(qtz_request_t request) noexcept;
-  qtz_message_action_t proc_open_ipc_link(qtz_request_t request) noexcept;
-  qtz_message_action_t proc_close_ipc_link(qtz_request_t request) noexcept;
-  qtz_message_action_t proc_send_ipc_message(qtz_request_t request) noexcept;
-  qtz_message_action_t proc_open_deputy(qtz_request_t request) noexcept;
-  qtz_message_action_t proc_close_deputy(qtz_request_t request) noexcept;
-  qtz_message_action_t proc_attach_thread(qtz_request_t request) noexcept;
-  qtz_message_action_t proc_detach_thread(qtz_request_t request) noexcept;
-  qtz_message_action_t proc_register_agent(qtz_request_t request) noexcept;
-  qtz_message_action_t proc_unregister_agent(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_placeholder3(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_placeholder4(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_placeholder5(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_placeholder6(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_placeholder7(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_placeholder8(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_placeholder9(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_placeholder10(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_placeholder11(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_register_object(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_unregister_object(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_link_objects(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_unlink_objects(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_open_object_handle(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_destroy_object(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_log_message(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_execute_callback(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_execute_callback_with_buffer(qtz_request_t request) noexcept;
+
 };
 
 inline struct qtz_mailbox* qtz_request::parent_mailbox() const noexcept {

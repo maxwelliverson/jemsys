@@ -5,6 +5,7 @@
 #include "internal.hpp"
 
 
+#include <iostream>
 
 #define AGT_INVALID_GLOBAL_MESSAGE 0xFFFFFFFFu
 
@@ -16,11 +17,11 @@
 qtz_message_action_t qtz_mailbox::proc_noop(qtz_request_t request) noexcept {
   return QTZ_ACTION_DISCARD;
 }
-qtz_message_action_t qtz_mailbox::proc_alloc_pages(qtz_request_t request) noexcept {
+qtz_message_action_t qtz_mailbox::proc_placeholder1(qtz_request_t request) noexcept {
   request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
-qtz_message_action_t qtz_mailbox::proc_free_pages(qtz_request_t request) noexcept {
+qtz_message_action_t qtz_mailbox::proc_placeholder2(qtz_request_t request) noexcept {
   request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
@@ -82,68 +83,111 @@ qtz_message_action_t qtz_mailbox::proc_free_mailbox(qtz_request_t request) noexc
 }
 
 
-qtz_message_action_t qtz_mailbox::proc_open_ipc_link(qtz_request_t request) noexcept {
+qtz_message_action_t qtz_mailbox::proc_placeholder3(qtz_request_t request) noexcept {
   request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
-qtz_message_action_t qtz_mailbox::proc_close_ipc_link(qtz_request_t request) noexcept {
+qtz_message_action_t qtz_mailbox::proc_placeholder4(qtz_request_t request) noexcept {
   request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
-qtz_message_action_t qtz_mailbox::proc_send_ipc_message(qtz_request_t request) noexcept {
+qtz_message_action_t qtz_mailbox::proc_placeholder5(qtz_request_t request) noexcept {
   request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
-qtz_message_action_t qtz_mailbox::proc_open_deputy(qtz_request_t request) noexcept {
+qtz_message_action_t qtz_mailbox::proc_placeholder6(qtz_request_t request) noexcept {
   request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
-qtz_message_action_t qtz_mailbox::proc_close_deputy(qtz_request_t request) noexcept {
+qtz_message_action_t qtz_mailbox::proc_placeholder7(qtz_request_t request) noexcept {
   request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
-qtz_message_action_t qtz_mailbox::proc_attach_thread(qtz_request_t request) noexcept {
+qtz_message_action_t qtz_mailbox::proc_placeholder8(qtz_request_t request) noexcept {
   request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
-qtz_message_action_t qtz_mailbox::proc_detach_thread(qtz_request_t request) noexcept {
+qtz_message_action_t qtz_mailbox::proc_placeholder9(qtz_request_t request) noexcept {
   request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
-qtz_message_action_t qtz_mailbox::proc_register_agent(qtz_request_t request) noexcept {
+qtz_message_action_t qtz_mailbox::proc_placeholder10(qtz_request_t request) noexcept {
   request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
-qtz_message_action_t qtz_mailbox::proc_unregister_agent(qtz_request_t request) noexcept {
+qtz_message_action_t qtz_mailbox::proc_placeholder11(qtz_request_t request) noexcept {
   request->status = QTZ_ERROR_NOT_IMPLEMENTED;
   return QTZ_ACTION_NOTIFY_LISTENER;
+}
+
+qtz_message_action_t qtz_mailbox::proc_register_object(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_unregister_object(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_link_objects(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_unlink_objects(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_open_object_handle(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_destroy_object(qtz_request_t request) noexcept {
+  request->status = QTZ_ERROR_NOT_IMPLEMENTED;
+  return QTZ_ACTION_NOTIFY_LISTENER;
+}
+qtz_message_action_t qtz_mailbox::proc_log_message(qtz_request_t request) noexcept {
+  //TODO: Implement a proper logging mechanism
+  auto payload = request->payload_as<qtz::log_message_request>();
+  std::cout << "> [[" << request->senderObject << "]]{ \""<< std::string_view(payload->message, payload->structLength - offsetof(qtz::log_message_request, message) - 1) << "\" }\n";
+  return QTZ_ACTION_DISCARD;
+}
+qtz_message_action_t qtz_mailbox::proc_execute_callback(qtz_request_t request) noexcept {
+  auto payload = request->payload_as<qtz::execute_callback_request>();
+  assert( payload->structLength == sizeof(qtz::execute_callback_request) );
+  payload->callback(payload->userData);
+  return QTZ_ACTION_DISCARD;
+}
+qtz_message_action_t qtz_mailbox::proc_execute_callback_with_buffer(qtz_request_t request) noexcept {
+  auto payload = request->payload_as<qtz::execute_callback_with_buffer_request>();
+  payload->callback(payload->userData);
+  return QTZ_ACTION_DISCARD;
 }
 
 
 namespace {
+  inline void fill_request(qtz_request_t request, qtz_local_id_t msgId, jem_u32_t priority, const void* buffer) noexcept {
 
-  inline jem_size_t buffer_length(qtz_local_id_t msgId, const void* buffer = nullptr) noexcept {
-    /*if ( msgId & GLOBAL_MESSAGE_KIND_DYNAMIC_BIT )
-      return *static_cast<const size_t*>(buffer);
-
-    static constexpr jem_size_t lengths[] = {
-      0,
-      sizeof(qtz::alloc_pages_request),
-      sizeof(qtz::free_pages_request),
-      sizeof(qtz::alloc_mailbox_request),
-      sizeof(qtz::free_mailbox_request)
-    };
-
-    return lengths[msgId];*/
-    return *static_cast<const size_t*>(buffer);
-  }
-
-  inline void fill_request(qtz_request_t request, qtz_local_id_t msgId, const void* buffer) noexcept {
-    request->isRealMessage = true;
     request->messageKind = static_cast<qtz_message_kind_t>(msgId);
 
+    if ( priority == 0 ) [[likely]]
+      request->queuePriority = g_qtzGlobalMailbox->defaultPriority;
+    else
+      request->queuePriority = priority;
+
     if ( msgId != GLOBAL_MESSAGE_KIND_NOOP ) {
-      std::memcpy(request->payload, buffer, buffer_length(msgId, buffer));
+      std::memcpy(request->payload, buffer, *static_cast<const size_t*>(buffer));
+    }
+  }
+
+  inline qtz_request_t get_request(qtz_mailbox* mailbox, jem_u64_t us_timeout) noexcept {
+    switch ( us_timeout ) {
+      case JEM_DO_NOT_WAIT:
+        return mailbox->try_acquire_free_slot();
+        break;
+      case JEM_WAIT:
+        return mailbox->acquire_free_slot();
+        break;
+      default:
+        return mailbox->try_acquire_free_slot_for(us_timeout);
     }
   }
 }
@@ -241,24 +285,7 @@ JEM_api void          JEM_stdcall qtz_request_discard(qtz_request_t message) {
   }
 }
 
-JEM_api qtz_request_t JEM_stdcall qtz_send(qtz_local_id_t messageId, const void* messageBuffer) JEM_noexcept {
-
-  if ( !g_qtzGlobalMailbox ) [[unlikely]] {
-    return nullptr;
-  }
-
-  auto mailbox = g_qtzGlobalMailbox;
-
-  auto request = mailbox->get_free_request_slot();
-
-  fill_request(request, messageId, messageBuffer);
-
-  mailbox->enqueue_request(request);
-
-  return request;
-}
-JEM_api qtz_request_t JEM_stdcall qtz_try_send(qtz_local_id_t messageId, const void* messageBuffer, jem_u64_t us_timeout) JEM_noexcept {
-
+JEM_api qtz_request_t JEM_stdcall qtz_send(void* sender, qtz_local_id_t messageId, const void* messageBuffer, jem_u32_t priority, jem_u64_t us_timeout) JEM_noexcept {
   qtz_request_t request;
 
   if ( !g_qtzGlobalMailbox ) [[unlikely]] {
@@ -267,29 +294,39 @@ JEM_api qtz_request_t JEM_stdcall qtz_try_send(qtz_local_id_t messageId, const v
 
   auto mailbox = g_qtzGlobalMailbox;
 
-  switch ( us_timeout ) {
-    case JEM_DO_NOT_WAIT:
-      request = mailbox->try_acquire_free_request_slot();
-      break;
-    case JEM_WAIT:
-      request = mailbox->acquire_free_request_slot();
-      break;
-    default:
-      request = mailbox->try_acquire_free_request_slot_for(us_timeout);
-  }
+  request = get_request(mailbox, us_timeout);
 
   if ( !request )
     return nullptr;
 
-  fill_request(request, messageId, messageBuffer);
+  fill_request(request, messageId, priority, messageBuffer);
+  request->senderObject = sender;
 
   mailbox->enqueue_request(request);
 
   return request;
 }
-JEM_api qtz_request_t JEM_stdcall qtz_send_ex(qtz_process_t process, qtz_global_id_t messageId, const void* messageBuffer, qtz_send_flags_t flags) JEM_noexcept {
-  return nullptr;
-}
+JEM_api qtz_request_t JEM_stdcall qtz_send_ex(void* sender, qtz_process_t process, qtz_local_id_t messageId, const void* messageBuffer,  jem_u32_t priority, qtz_send_flags_t flags, jem_u64_t us_timeout) JEM_noexcept {
 
+  auto mailbox = (qtz_mailbox*)process;
+
+  qtz_request_t request;
+
+  request = get_request(mailbox, us_timeout);
+
+  if ( !request )
+    return nullptr;
+
+  fill_request(request, messageId, priority, messageBuffer);
+  request->senderObject = sender;
+  request->flags.set(flags);
+
+  if ( mailbox != g_qtzGlobalMailbox )
+    request->fromForeignProcess = true;
+
+  mailbox->enqueue_request(request);
+
+  return request;
+}
 
 }

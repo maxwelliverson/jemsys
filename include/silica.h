@@ -36,7 +36,7 @@ typedef enum {
   SLC_ERROR_MEMBER_NAME_CLASH
 } slc_status_t;
 
-class status{
+/*class status{
   inline constexpr static size_t StorageSize  = 24;
   inline constexpr static size_t StorageAlign = 8;
 public:
@@ -46,7 +46,7 @@ public:
 private:
   std::aligned_storage_t<StorageSize, StorageAlign> storage;
   status_code code;
-};
+};*/
 
 
 
@@ -103,6 +103,11 @@ SLC_ABI_MSVC = SLC_ABI_MSVC_x64,
 SLC_ABI_MSVC = SLC_ABI_MSVC_x86,
 #endif
 } slc_abi_t;
+typedef enum {
+  SLC_LITTLE_ENDIAN,
+  SLC_BIG_ENDIAN,
+  SLC_NATIVE_ENDIAN = SLC_LITTLE_ENDIAN
+} slc_endianness_t;
 typedef enum {
   SLC_CALLCONV_CDECL
 } slc_calling_convention_t;
@@ -333,7 +338,7 @@ JEM_api void         JEM_stdcall slc_module_add_types(slc_module_builder_t modul
 JEM_api void         JEM_stdcall slc_module_add_dependencies(slc_module_builder_t moduleBuilder, const void* pDependencies, jem_size_t dependencyCount);
 
 
-
+JEM_api void         JEM_stdcall slc_module_query_attributes(slc_module_t module, size_t moduleCount, const slc_attribute_t* attributes, size_t* results);
 
 JEM_api slc_status_t JEM_stdcall slc_build_module(slc_module_t* pModule, slc_module_builder_t builder);
 JEM_api void         JEM_stdcall slc_close_module(slc_module_t module);

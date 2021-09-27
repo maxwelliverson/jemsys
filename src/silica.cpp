@@ -52,7 +52,8 @@ struct slc_module_builder {
 };
 struct slc_module {
   jem_u32_t  magicNumber; // 0x05111CA0
-  slc_abi_t  abi;
+  alignas(size_t) slc_abi_t  abi;
+  alignas(size_t) slc_endianness_t endianness;
   jem_size_t pointer_size;
   jem_size_t pointer_alignment;
   jem_size_t si_member_pointer_size;
@@ -74,7 +75,7 @@ struct slc_module {
   jem_size_t functionOffset;
   jem_size_t typeOffset;
   jem_size_t textOffset;
-  char       data[];
+  char       data[1];
 };
 
 }
@@ -111,10 +112,16 @@ namespace {
   };
 
 
-  class slc_type{
+  inline size_t alignToVirtualPage(size_t size) noexcept {
+    static constexpr size_t VirtualPageSize = 1ULL << 16;
+    return ((size - 1) | (VirtualPageSize - 1)) + 1;
+  }
+
+
+  /*class slc_type{
   public:
     virtual
-  };
+  };*/
 }
 
 extern "C" {
@@ -155,15 +162,20 @@ extern "C" {
 
     // ...
 
-    size_t moduleSize;
+    // TODO: Define implementation of slc_build_module
+    size_t moduleSize = sizeof(slc_module);
 
     // ...
 
-    void* moduleMemory = VirtualAlloc2(INVALID_HANDLE_VALUE, nullptr, moduleSize, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READ, nullptr, 0);
+    void* moduleMemory = VirtualAlloc2(INVALID_HANDLE_VALUE, nullptr, alignToVirtualPage(moduleSize), MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE, nullptr, 0);
 
-    slc_module_t module = new (moduleMemory) slc_module{
+    if ( !moduleMemory )
+      return SLC_ERROR_INTERNAL;
+
+    auto module = new (moduleMemory) slc_module {
       .magicNumber                          = 0x05111CA0,
       .abi                                  = SLC_ABI_MSVC,
+      .endianness                           = SLC_NATIVE_ENDIAN,
       .pointer_size                         = sizeof(void*),
       .pointer_alignment                    = alignof(void*),
       .si_member_pointer_size               = sizeof(int impl::S::*),
@@ -189,25 +201,48 @@ extern "C" {
 
     // ...
 
+    DWORD prevProt;
+    VirtualProtect(module, moduleSize, PAGE_EXECUTE_READ, &prevProt);
 
     *pModule = module;
 
+    return SLC_SUCCESS;
   }
   JEM_api void         JEM_stdcall slc_close_module(slc_module_t module) {
-
+    if ( module ) {
+      DWORD prevProt;
+      void* moduleMemory = module;
+      size_t moduleSize  = module->totalModuleSize;
+      VirtualProtect(module, moduleSize, PAGE_READWRITE, &prevProt);
+      module->~slc_module();
+      VirtualFree(module, 0/*alignToVirtualPage(moduleSize)*/, MEM_RELEASE);
+    }
   }
   JEM_api slc_status_t JEM_stdcall slc_load_module(slc_module_t* pModule, const char* path) {
-
+    return SLC_ERROR_UNKNOWN;
   }
   JEM_api slc_status_t JEM_stdcall slc_save_module(slc_module_t module, const char* path) {
-    Ope
+    //Ope
+    return SLC_ERROR_UNKNOWN;
+  }
+
+  JEM_api void         JEM_stdcall slc_module_query_attributes(slc_module_t module, size_t moduleCount, const slc_attribute_t* attributes, size_t* results) {
+
+    if ( moduleCount != 0 ) {
+      assert( attributes != nullptr );
+      assert( results != nullptr );
+      assert( module != nullptr );
+    }
+
+    for ( size_t i = 0; i < moduleCount; ++i )
+      results[i] = ((size_t*)(&module->abi))[attributes[i]];
   }
 
   JEM_api slc_status_t JEM_stdcall slc_module_enumerate_types(slc_module_t module, slc_type_entry_t* types, jem_size_t* typeCount) JEM_noexcept {
-
+    return SLC_ERROR_UNKNOWN;
   }
   JEM_api slc_status_t JEM_stdcall slc_module_enumerate_functions(slc_module_t module, slc_function_entry_t* functions, jem_size_t* functionCount) JEM_noexcept {
-
+    return SLC_ERROR_UNKNOWN;
   }
 
 
