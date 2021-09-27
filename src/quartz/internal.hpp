@@ -660,9 +660,12 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   // Cacheline 3 - Queued message counter [writer,reader]
   JEM_cache_aligned
 
-  atomic_u32_t queuedSinceLastCheck;
-  jem_u32_t    totalSlotCount;
-  jem_u8_t     uuid[16];
+  // atomic_u32_t queuedSinceLastCheck;
+  mpsc_counter_t queuedMessages;
+  jem_u8_t       uuid[16];
+  jem_u32_t      totalSlotCount;
+
+  std::chrono::high_resolution_clock::time_point startTime;
 
   // 40 free bytes
 
@@ -671,7 +674,6 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   JEM_cache_aligned
 
   qtz_request_t    previousRequest;
-  jem_u32_t        minQueuedMessages;
   jem_u32_t        maxCurrentDeferred;
   jem_u32_t        releasedSinceLastCheck;
   std::atomic_flag shouldCloseMailbox;
@@ -709,11 +711,10 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
       : slotSemaphore(static_cast<jem_ptrdiff_t>(slotCount)),
         nextFreeSlot(0),
         lastQueuedSlot(0),
-        queuedSinceLastCheck(0),
         totalSlotCount(static_cast<jem_u32_t>(slotCount)),
+        queuedMessages(),
         uuid(),
         previousRequest(nullptr),
-        minQueuedMessages(0),
         maxCurrentDeferred(0),
         releasedSinceLastCheck(0),
         shouldCloseMailbox(),
@@ -765,6 +766,15 @@ private:
     } while( !nextFreeSlot.compare_exchange_weak(newNextSlot, thisSlot) );
     slotSemaphore.release();
   }
+  inline void          replace_previous(qtz_request_t message) noexcept {
+    message->lock();
+    if ( previousRequest ) [[likely]] {
+      previousRequest->unlock();
+      if ( previousRequest->is_ready_to_die() )
+        release_request_slot(previousRequest);
+    }
+    previousRequest = message;
+  }
 
 public:
 
@@ -794,8 +804,14 @@ public:
 
   inline qtz_request_t acquire_next_queued_request() noexcept {
 
-    if ( messagePriorityQueue.empty() ) {
-      queuedSinceLastCheck.wait(0, std::memory_order_acquire);
+    queuedMessages.decrease(1);
+    auto nextRequest = get_next_queued_request();
+    replace_previous(nextRequest);
+    return nextRequest;
+
+
+    /*if ( messagePriorityQueue.empty() ) {
+
 
       qtz_request_t message = get_next_queued_request();
 
@@ -830,19 +846,21 @@ public:
     }
 
 
-    return messagePriorityQueue.pop();
+    return messagePriorityQueue.pop();*/
   }
 
 
   inline void          enqueue_request(qtz_request_t message) noexcept {
     const jem_size_t slot = get_slot(message);
-    jem_size_t prevLastQueuedSlot = lastQueuedSlot.load(std::memory_order_acquire);
+    jem_size_t prevLastQueuedSlot = lastQueuedSlot.exchange(slot);
+    /*jem_size_t prevLastQueuedSlot = lastQueuedSlot.load(std::memory_order_acquire);
     do {
       //message->nextSlot = lastQueuedSlot;
-    } while ( !lastQueuedSlot.compare_exchange_weak(prevLastQueuedSlot, slot) );
+    } while ( !lastQueuedSlot.compare_exchange_weak(prevLastQueuedSlot, slot) );*/
     get_request(prevLastQueuedSlot)->nextSlot = slot;
-    queuedSinceLastCheck.fetch_add(1, std::memory_order_release);
-    queuedSinceLastCheck.notify_one();
+    queuedMessages.increase(1);
+    /*queuedSinceLastCheck.fetch_add(1, std::memory_order_release);
+    queuedSinceLastCheck.notify_one();*/
   }
   inline void          discard_request(qtz_request_t message) noexcept {
     message->discard();
@@ -854,15 +872,7 @@ public:
     return shouldCloseMailbox.test();
   }
 
-  inline void          replace_previous(qtz_request_t message) noexcept {
-    message->lock();
-    if ( previousRequest ) [[likely]] {
-      previousRequest->unlock();
-      if ( previousRequest->is_ready_to_die() )
-        release_request_slot(previousRequest);
-    }
-    previousRequest = message;
-  }
+
 
 
   void process_next_message() noexcept {
