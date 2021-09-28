@@ -20,6 +20,8 @@
 #include <cstring>
 #include <memory>
 #include <cstdlib>
+#include <vector>
+#include <charconv>
 
 
 #include "atomicutils.hpp"
@@ -179,7 +181,7 @@ enum {
 
 typedef enum {
   GLOBAL_MESSAGE_KIND_NOOP                         = 0,
-  GLOBAL_MESSAGE_KIND_1                            = 1,
+  GLOBAL_MESSAGE_KIND_KILL                         = 1,
   GLOBAL_MESSAGE_KIND_2                            = 2,
   GLOBAL_MESSAGE_KIND_ALLOCATE_MAILBOX             = 3,
   GLOBAL_MESSAGE_KIND_FREE_MAILBOX                 = 4,
@@ -209,6 +211,10 @@ typedef enum {
 } qtz_message_action_t;
 
 namespace qtz {
+  struct kill_request {
+    size_t          structLength;
+    qtz_exit_code_t exitCode;
+  };
   struct pause_request {
     size_t structSize;
   };
@@ -238,6 +244,565 @@ namespace qtz {
     void(*callback)(void*);
     char  userData[];
   };
+
+  class async_buffered_output_log {
+    struct buffer{
+      buffer*       next;
+      size_t        bytesToWrite;
+      char*         data;
+    };
+    /*struct shared_data{
+      std::atomic<buffer*> poolHead;
+      mpsc_counter_t       queuedBuffers;
+      semaphore_t          bufferTokens;
+      binary_semaphore_t   isKill;
+
+      buffer*              currentBuffer;
+    };*/
+
+    size_t               bufferSize;
+    size_t               totalBufferCount;
+    buffer*              bufferArray;
+    std::counting_semaphore<> poolTokens;
+    mpsc_counter_t       queuedBuffers;
+    buffer*              currentBuffer;
+    std::atomic<buffer*> bufferListHead;
+    buffer*              queueTail;
+    std::jthread         asyncThread;
+    char*                currentCursor;
+    char*                currentBufferEnd;
+    // shared_data*         shared;
+
+    inline static constexpr size_t DefaultBufferSize  = 256;
+    inline static constexpr size_t DefaultBufferCount = 4;
+
+    void push_to_queue() noexcept {
+
+      currentBuffer->bytesToWrite = currentCursor - currentBuffer->data;
+
+      buffer* oldHead   = acquire_from_pool();
+      buffer* oldBuffer = std::exchange(currentBuffer, oldHead);
+      currentCursor     = oldHead->data;
+      currentBufferEnd  = currentCursor + bufferSize;
+
+      queueTail->next = oldBuffer;
+      queueTail = oldBuffer;
+      queuedBuffers.increase(1);
+    }
+
+    void pop_from_queue(buffer*& prev) noexcept {
+      queuedBuffers.decrease(1);
+      auto result = prev->next;
+      release_to_pool(prev);
+      prev = result;
+    }
+    bool try_pop_from_queue(buffer*& prev) noexcept {
+      if (!queuedBuffers.try_decrease(1))
+        return false;
+      auto result = prev->next;
+      release_to_pool(prev);
+      prev = result;
+      return true;
+    }
+    bool try_pop_from_queue_for(buffer*& prev, jem_u64_t us_timeout) noexcept {
+      if (!queuedBuffers.try_decrease_for(1, us_timeout))
+        return false;
+      auto result = prev->next;
+      release_to_pool(prev);
+      prev = result;
+      return true;
+    }
+
+    buffer* acquire_from_pool() noexcept {
+      poolTokens.acquire();
+
+      buffer* oldHead = bufferListHead.load();
+      assert( oldHead != nullptr );
+
+
+      buffer* nextBuffer;
+      do {
+        nextBuffer = oldHead->next;
+      } while( !bufferListHead.compare_exchange_weak(oldHead, nextBuffer) );
+
+      return oldHead;
+    }
+    void    release_to_pool(buffer* buf) noexcept {
+      buffer* currListHead = bufferListHead.load();
+
+      do {
+        buf->next = currListHead;
+      } while( !bufferListHead.compare_exchange_weak(currListHead, buf) );
+
+      poolTokens.release();
+    }
+
+
+
+
+    /*void thread_proc() noexcept {
+      DWORD handleCount     = (DWORD)totalBufferCount;
+      DWORD bufSize         = (DWORD)bufferSize;
+      size_t bufCount       = totalBufferCount;
+      HANDLE cout           = GetStdHandle(STD_OUTPUT_HANDLE);
+      buffer* bufArray      = bufferArray;
+      const HANDLE* handles = eventHandles;
+      binary_semaphore_t* killSwitch = this->isKill;
+      bool isPostMortem     = false;
+      std::vector<size_t> signalledIndices;
+
+      signalledIndices.reserve(bufCount);
+
+      while ( !isPostMortem ) {
+
+        auto waitResult = WaitForMultipleObjects(handleCount, handles, false, 100);
+        if ( waitResult == WAIT_TIMEOUT ) {
+          if ( killSwitch->try_acquire() ) {
+            isPostMortem = true;
+            waitResult = WaitForMultipleObjects(handleCount, handles, false, 0);
+            if ( waitResult == WAIT_TIMEOUT )
+              continue;
+          }
+          else
+            continue;
+        }
+        signalledIndices.push_back(waitResult - WAIT_OBJECT_0);
+        for (;;) {
+          auto result = WaitForMultipleObjects(handleCount, handles, false, 0);
+          if ( result == WAIT_TIMEOUT )
+            break;
+          signalledIndices.push_back(result - WAIT_OBJECT_0);
+        }
+
+        for ( size_t index : signalledIndices ) {
+          buffer* signalledBuffer = bufArray + index;
+          DWORD   totalBytes      = signalledBuffer->bytesToWrite;
+          DWORD   numberOfBytesWritten = 0;
+          while (!WriteFile(cout, signalledBuffer->data + numberOfBytesWritten, totalBytes, &numberOfBytesWritten, nullptr)) {
+            totalBytes -= numberOfBytesWritten;
+          }
+          push_clean_buffer(signalledBuffer);
+        }
+
+        signalledIndices.clear();
+
+      }
+
+      delete killSwitch;
+
+      for ( buffer& buf : std::span{ bufArray, bufCount}) {
+        delete[] buf.data;
+        CloseHandle(buf.eventHandle);
+      }
+      delete[] bufArray;
+      delete[] handles;
+    }*/
+
+    static void print_buffer(void* handle, buffer* buf) noexcept {
+      unsigned long numberOfBytesWritten = 0;
+      unsigned long totalBytes = buf->bytesToWrite;
+      while (!WriteFile(handle, buf->data + numberOfBytesWritten, totalBytes, &numberOfBytesWritten, nullptr)) {
+        totalBytes -= numberOfBytesWritten;
+      }
+    }
+
+    static void thread_proc(std::stop_token self, async_buffered_output_log& log, buffer* buffers) noexcept {
+      buffer* buf          = buffers;
+      HANDLE  StdOut       = GetStdHandle(STD_OUTPUT_HANDLE);
+      bool    isPostMortem = false;
+
+
+      while ( !isPostMortem ) {
+        if ( !log.try_pop_from_queue_for(buf, 100'000) ) {
+          if ( self.stop_requested() )
+            isPostMortem = true;
+          continue;
+        }
+        print_buffer(StdOut, buf);
+      }
+      while (log.try_pop_from_queue(buf)) {
+        print_buffer(StdOut, buf);
+      }
+
+      for ( buffer& b : std::span{ log.bufferArray, log.totalBufferCount })
+        delete[] b.data;
+      delete[] log.bufferArray;
+    }
+
+    void initialize() noexcept {
+
+      bufferArray      = new buffer[totalBufferCount];
+
+      buffer* lastBuffer = nullptr;
+
+      for ( size_t i = totalBufferCount - 1; i > 0; --i ) {
+
+        buffer* thisBuf = bufferArray + i;
+
+        thisBuf->next = lastBuffer;
+        thisBuf->data = new char[bufferSize];
+        thisBuf->bytesToWrite = bufferSize;
+        lastBuffer = thisBuf;
+      }
+
+      currentBuffer    = lastBuffer;
+      currentCursor    = currentBuffer->data;
+      currentBufferEnd = currentCursor + bufferSize;
+
+      bufferListHead.store(lastBuffer->next);
+
+
+      bufferArray->data = new char[bufferSize];
+      queueTail = bufferArray;
+
+      asyncThread = std::jthread{
+        &async_buffered_output_log::thread_proc,
+        std::ref(*this),
+        bufferArray
+      };
+    }
+
+    static const void* get_size_next_line(const void* bytes, size_t& maxSize) noexcept {
+      const void* pos = memchr(bytes, '\n', maxSize);
+      if ( pos != nullptr ) {
+        maxSize = (const char*)pos - (const char*)bytes;
+        return (const char*)pos + 1;
+      }
+      return (const char*)bytes + maxSize;
+    }
+
+    template <typename T>
+    void write_number(T value) noexcept {
+      auto&& [newCursor, errorCode] = std::to_chars(currentCursor, currentBufferEnd, value);
+      if ( errorCode == std::errc::value_too_large ) [[unlikely]] {
+        assert( newCursor == currentBufferEnd );
+        push_to_queue();
+        write_number(value); // tail call
+      }
+      else
+        currentCursor = newCursor;
+
+      assert( currentCursor <= currentBufferEnd );
+    }
+    void write_bytes(const void* bytes, size_t byteCount) noexcept {
+
+      /*size_t remainingAvailableSize = currentBufferEnd - currentCursor;
+
+      const void* newLinePos
+
+      size_t remainingSize = byteCount;
+      size_t sizeToWrite = remainingAvailableSize;
+      const char* bytePos = (const char*)get_size_next_line(bytes, sizeToWrite);
+      std::memcpy(currentCursor, bytes, sizeToWrite);
+      remainingSize -= sizeToWrite;
+      while (remainingSize > 0) {
+        push_to_queue();
+        sizeToWrite = std::min(remainingSize, bufferSize);
+        const char* nextPos = (const char*)get_size_next_line(bytePos, sizeToWrite);
+        std::memcpy(currentCursor, bytePos, sizeToWrite);
+        bytePos = nextPos;
+        remainingSize -= sizeToWrite;
+        currentCursor += sizeToWrite;
+      }
+      *//*if ( byteCount <= remainingAvailableSize ) {
+        const char* bytePos = (const char*)get_size_next_line(bytes, sizeToWrite);
+        std::memcpy(currentCursor, bytes, byteCount);
+        currentCursor += byteCount;
+      }
+      else {
+
+      }*//*
+      assert( currentCursor <= currentBufferEnd );*/
+
+      std::memcpy(currentCursor, bytes, byteCount);
+      currentCursor += byteCount;
+      assert( currentCursor <= currentBufferEnd );
+    }
+    void write_nt_string(const char* string) noexcept {
+      write_bytes(string, std::strlen(string));
+      assert( currentCursor <= currentBufferEnd );
+      /*int r = strcpy_s(currentCursor, currentBufferEnd - currentCursor, string);
+      if ( r != 0 ) {
+        size_t remainingSize = strlen(string);
+        const char* stringPos = string;
+        do {
+          cycle_next_buffer();
+          size_t sizeToWrite = std::min(remainingSize, bufferSize);
+          remainingSize -= sizeToWrite;
+          std::memcpy(currentCursor, stringPos, sizeToWrite);
+          stringPos += sizeToWrite;
+        } while( remainingSize > 0 );
+      }*/
+    }
+    void write_char(char c) noexcept {
+      if ( c == '\n' ) {
+        push_to_queue();
+        return;
+      }
+
+      if ( currentCursor == currentBufferEnd ) [[unlikely]]
+        push_to_queue();
+      *currentCursor++ = c;
+      assert( currentCursor <= currentBufferEnd );
+    }
+
+    template <typename T>
+    void write_hex_number(T value) noexcept {
+      auto&& [newCursor, errorCode] = std::to_chars(currentCursor, currentBufferEnd, value, 16);
+      if ( errorCode == std::errc::value_too_large ) [[unlikely]] {
+        assert( newCursor == currentBufferEnd );
+        push_to_queue();
+        write_hex_number(value); // tail call
+      }
+      else
+        currentCursor = newCursor;
+
+      assert( currentCursor <= currentBufferEnd );
+    }
+
+  public:
+
+    async_buffered_output_log() noexcept
+        : async_buffered_output_log(DefaultBufferSize, DefaultBufferCount){}
+    async_buffered_output_log(size_t bufSize, size_t bufCount) noexcept
+        : bufferSize(bufSize),
+          totalBufferCount(bufCount),
+          bufferArray(nullptr),
+          poolTokens((ptrdiff_t)bufCount - 2),
+          currentBuffer(nullptr),
+          currentCursor(nullptr),
+          currentBufferEnd(nullptr)
+    {
+      assert(bufCount > 2);
+      initialize();
+    }
+
+    ~async_buffered_output_log() {
+      push_to_queue();
+    }
+
+
+    async_buffered_output_log& write(std::chrono::microseconds us) noexcept {
+      write_number(us.count());
+      return this->write("us");
+    }
+    /*async_buffered_output_log& write(std::span<std::byte> bytes) noexcept {
+      write_bytes(bytes.data(), bytes.size());
+      return *this;
+    }
+    async_buffered_output_log& write(std::span<const std::byte> bytes) noexcept {
+      write_bytes(bytes.data(), bytes.size());
+      return *this;
+    }*/
+    async_buffered_output_log& write(std::string_view sv) noexcept {
+      write_bytes(sv.data(), sv.size());
+      return *this;
+    }
+    async_buffered_output_log& write(char c) noexcept {
+      write_char(c);
+      return *this;
+    }
+    template <size_t N>
+    async_buffered_output_log& write(const char (&str)[N]) noexcept {
+      write_bytes(str, N - 1);
+      return *this;
+    }
+    template <std::integral T>
+    async_buffered_output_log& write(T value) noexcept {
+      write_number(value);
+      return *this;
+    }
+    template <std::floating_point T>
+    async_buffered_output_log& write(T value) noexcept {
+      write_number(value);
+      return *this;
+    }
+    /*async_buffered_output_log& write(const char* string) noexcept {
+      write_nt_string(string);
+      return *this;
+    }*/
+    template <std::integral T>
+    async_buffered_output_log& write_hex(T value) noexcept {
+      write_hex_number(value);
+      return *this;
+    }
+
+
+    void flush() noexcept {
+      push_to_queue();
+    }
+    void newline() noexcept {
+      *currentCursor++ = '\n';
+      size_t remainingSpace = currentBufferEnd - currentCursor;
+      if ( remainingSpace >= bufferSize / 4 )
+        push_to_queue();
+      /*if ( remainingSpace >= bufferSize / 4 )
+        *currentCursor++ = '\n';
+      else {
+        *currentCursor++ = 'X';
+        push_to_queue();
+      }*/
+    }
+  };
+
+  class big_buffered_log {
+    char*              buffer;
+    size_t             bufferSize;
+    size_t             charsWritten;
+    size_t             flushLimit;
+    char*              cursor;
+    char* volatile     printCursor;
+    std::atomic<char*> printBufferEnd;
+
+    std::counting_semaphore<> chunksReady{(ptrdiff_t)0};
+
+    std::jthread asyncThread;
+
+
+    static void thread_proc(std::stop_token parent, big_buffered_log& log) noexcept {
+      bool shouldStop = false;
+      char* localPrintCursor = log.printCursor;
+      HANDLE StdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+      while( !shouldStop ) {
+        log.printBufferEnd.wait(localPrintCursor);
+        // localPrintCursor = log.printCursor;
+        unsigned long numberOfBytesWritten = 0;
+        char* printBufEnd = log.printBufferEnd.load();
+        if ( parent.stop_requested() )
+          shouldStop = true;
+        if ( printBufEnd == nullptr )
+          continue;
+        if ( printBufEnd < localPrintCursor ) {
+          localPrintCursor -= log.bufferSize;
+        }
+        unsigned long totalBytes = printBufEnd - localPrintCursor;
+        if ( totalBytes != 0 ) {
+          WriteFile(StdOut, localPrintCursor, totalBytes - 1, &numberOfBytesWritten, nullptr);
+          localPrintCursor += numberOfBytesWritten;
+          if ( numberOfBytesWritten == totalBytes - 1 )
+            ++localPrintCursor;
+        }
+        log.printCursor = localPrintCursor;
+      }
+
+      BOOL unmapResultOne = UnmapViewOfFile(log.buffer);
+      BOOL unmapResultTwo = UnmapViewOfFile(log.buffer + log.bufferSize);
+      assert( unmapResultOne == TRUE );
+      assert( unmapResultTwo == TRUE );
+    }
+
+    void raw_write_char(char c) noexcept {
+      *cursor++ = c;
+      ++charsWritten;
+    }
+    void raw_write_string(const char* str, size_t n) noexcept {
+      std::memcpy(cursor, str, n);
+      charsWritten += n;
+      cursor += n;
+    }
+    template <std::integral I>
+    void raw_write_integer(I i, int base = 10) noexcept {
+      char* bufferEnd = printCursor;
+      if ( bufferEnd <= cursor )
+        bufferEnd += bufferSize;
+      auto [newCursor, err] = std::to_chars(cursor, bufferEnd, i, base);
+      assert( err != std::errc::value_too_large );
+      if ( err == std::errc{} ) {
+        charsWritten += (newCursor - cursor);
+        cursor = newCursor;
+      }
+    }
+
+    void normalize() noexcept {
+      if ( charsWritten >= flushLimit )
+        flush();
+      if ( cursor >= buffer + bufferSize )
+        cursor -= bufferSize;
+    }
+
+  public:
+    big_buffered_log(size_t size) {
+      assert( size != 0 );
+      bufferSize = ((JEM_VIRTUAL_PAGE_SIZE - 1) | (size - 1)) + 1;
+      void* placeholderOne = VirtualAlloc2(nullptr, nullptr, bufferSize * 2, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, nullptr, 0);
+      void* placeholderTwo = (char*)placeholderOne + bufferSize;
+      auto splitResult = VirtualFree(placeholderOne, bufferSize, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER);
+      assert(splitResult == TRUE);
+      auto memHandle = CreateFileMapping(nullptr, nullptr, PAGE_READWRITE, 0, (DWORD)bufferSize, nullptr);
+      assert(memHandle != nullptr);
+      auto pOne = MapViewOfFile3(memHandle, nullptr, placeholderOne, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
+      auto pTwo = MapViewOfFile3(memHandle, nullptr, placeholderTwo, 0, bufferSize, MEM_REPLACE_PLACEHOLDER, PAGE_READWRITE, nullptr, 0);
+      assert(pOne == placeholderOne);
+      assert(pTwo == placeholderTwo);
+      buffer = (char*)pOne;
+      cursor = buffer;
+      printCursor = cursor;
+      printBufferEnd.store(cursor);
+      charsWritten = 0;
+      flushLimit = (bufferSize / 4);
+      asyncThread = std::jthread{&big_buffered_log::thread_proc, std::ref(*this)};
+    }
+    ~big_buffered_log() {
+      if ( charsWritten > 0 )
+        flush();
+      else {
+        printBufferEnd.store(nullptr);
+        printBufferEnd.notify_one();
+      }
+    }
+
+    big_buffered_log& write(std::string_view sv) noexcept {
+      if ( !sv.empty() ) {
+        raw_write_string(sv.data(), sv.size());
+        normalize();
+      }
+      return *this;
+    }
+    template <size_t N>
+    big_buffered_log& write(const char (&string_literal)[N]) noexcept {
+      size_t n = N;
+      if ( string_literal[N - 1] == '\0' )
+        n -= 1;
+      raw_write_string(string_literal, n);
+      normalize();
+      return *this;
+    }
+    template <std::integral I>
+    big_buffered_log& write(I i) noexcept {
+      raw_write_integer(i);
+      normalize();
+      return *this;
+    }
+
+    big_buffered_log& write(const std::chrono::microseconds& us) noexcept {
+      constexpr static decltype(auto) UsString = "us";
+      raw_write_integer(us.count());
+      raw_write_string(UsString, sizeof(UsString) - 1);
+      normalize();
+      return *this;
+    }
+
+    template <std::integral I>
+    big_buffered_log& write_hex(I i) noexcept {
+      raw_write_integer(i, 16);
+      normalize();
+      return *this;
+    }
+
+
+    void flush() noexcept {
+      raw_write_char('\n');
+      charsWritten = 0;
+      printBufferEnd.store(cursor);
+      printBufferEnd.notify_one();
+    }
+
+    void newline() noexcept {
+      flush();
+    }
+  };
+
+  static_assert(sizeof(async_buffered_output_log) > sizeof(big_buffered_log));
 }
 
 
@@ -662,10 +1227,14 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
   // atomic_u32_t queuedSinceLastCheck;
   mpsc_counter_t queuedMessages;
-  jem_u8_t       uuid[16];
+  // jem_u8_t       uuid[16];
   jem_u32_t      totalSlotCount;
-
+  jem_u32_t        defaultPriority;
+  qtz_exit_code_t  exitCode;
   std::chrono::high_resolution_clock::time_point startTime;
+  qtz_request_t    killRequest;
+  std::atomic_flag shouldCloseMailbox;
+  qtz_request_t    previousRequest;
 
   // 40 free bytes
 
@@ -673,24 +1242,31 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   // Cacheline 4 - Mailbox state [reader]
   JEM_cache_aligned
 
-  qtz_request_t    previousRequest;
-  jem_u32_t        maxCurrentDeferred;
-  jem_u32_t        releasedSinceLastCheck;
-  std::atomic_flag shouldCloseMailbox;
-  qtz_exit_code_t  exitCode;
+
+  // qtz::async_buffered_output_log log;
+  qtz::big_buffered_log          log;
+  jem::fixed_size_pool           mailboxPool;
+
+  // jem_u32_t        maxCurrentDeferred;
+  // jem_u32_t        releasedSinceLastCheck;
+
+
+
 
   // 20 free bytes
 
 
   // Cacheline 5 - Memory Management [reader]
-  JEM_cache_aligned
+  // JEM_cache_aligned
 
-  jem::fixed_size_pool   mailboxPool;
-  request_priority_queue messagePriorityQueue;
 
-  jem::dictionary<qtz::handle_descriptor> namedHandles;
+  // request_priority_queue messagePriorityQueue;
 
-  jem_u32_t defaultPriority;
+  // jem::dictionary<qtz::handle_descriptor> namedHandles;
+
+
+
+
 
 
   // 48 free bytes
@@ -713,16 +1289,18 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
         lastQueuedSlot(0),
         totalSlotCount(static_cast<jem_u32_t>(slotCount)),
         queuedMessages(),
-        uuid(),
+        // uuid(),
         previousRequest(nullptr),
-        maxCurrentDeferred(0),
-        releasedSinceLastCheck(0),
+        // maxCurrentDeferred(0),
+        // releasedSinceLastCheck(0),
         shouldCloseMailbox(),
         exitCode(0),
         mailboxPool(mailboxSize, 255),
-        messagePriorityQueue(slotCount),
-        namedHandles(),
+        // messagePriorityQueue(slotCount),
+        // namedHandles(),
         defaultPriority(100),
+        // log(512, 8),
+        log(1),
         fileMappingName()
   {
     std::memcpy(this->fileMappingName, std::assume_aligned<JEM_CACHE_LINE>(fileMappingName), JEM_CACHE_LINE);
@@ -881,7 +1459,7 @@ public:
 
     constexpr static PFN_request_proc global_dispatch_table[] = {
       &qtz_mailbox::proc_noop,
-      &qtz_mailbox::proc_placeholder1,
+      &qtz_mailbox::proc_kill,
       &qtz_mailbox::proc_placeholder2,
       &qtz_mailbox::proc_alloc_mailbox,
       &qtz_mailbox::proc_free_mailbox,
@@ -955,7 +1533,7 @@ GLOBAL_MESSAGE_KIND_EXECUTE_CALLBACK_WITH_BUFFER
 
 
   qtz_message_action_t proc_noop(qtz_request_t request) noexcept;
-  qtz_message_action_t proc_placeholder1(qtz_request_t request) noexcept;
+  qtz_message_action_t proc_kill(qtz_request_t request) noexcept;
   qtz_message_action_t proc_placeholder2(qtz_request_t request) noexcept;
   qtz_message_action_t proc_alloc_mailbox(qtz_request_t request) noexcept;
   qtz_message_action_t proc_free_mailbox(qtz_request_t request) noexcept;
@@ -1013,6 +1591,9 @@ extern qtz_pid_t    g_qtzKernelProcessId;
 
 
 extern "C" qtz_exit_code_t JEM_stdcall qtz_mailbox_main_thread_proc(void *params);
+
+
+static_assert(sizeof(qtz_mailbox) == (8 * JEM_CACHE_LINE));
 
 
 

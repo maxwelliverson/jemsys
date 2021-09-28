@@ -269,7 +269,12 @@ namespace {
 
 
     g_qtzGlobalMailbox = new (mailboxMemory) qtz_mailbox(messageSlotCount - 1, totalFileMappingSize, fileMappingName);
+    onexit([]{
 
+
+
+      return 0;
+    });
 
     initMailboxThreadSACL(threadSecDesc);
 

@@ -199,6 +199,7 @@ namespace jem{
           freeSlab(),
           slabAlignment(std::bit_ceil(this->blockSize * blocksPerSlab)),
           slabAlignmentMask(~(slabAlignment - 1)) {
+      std::memset(slabStackBase, 0, sizeof(void*) * InitialStackSize);
       makeNewSlab();
     }
 

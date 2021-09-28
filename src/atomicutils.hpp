@@ -140,6 +140,7 @@ namespace {
     return false;
   }
 
+
   template <typename IntType>
   class atomic_flags{
   public:
@@ -369,9 +370,10 @@ namespace {
       return true;
     }
     void priv_wait() noexcept {
-      jem_ptrdiff_t current = value.load();
+      /*jem_ptrdiff_t current = value.load();
       if ( current == 0 )
-        WaitOnAddress(&value, &current, sizeof(current), INFINITE);
+        WaitOnAddress(&value, &current, sizeof(current), INFINITE);*/
+      value.wait(0);
     }
 
     std::atomic<jem_ptrdiff_t> value;

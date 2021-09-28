@@ -6,9 +6,10 @@
 
 #include <thread>
 #include <barrier>
-#include <format>
+// #include <format>
 #include <semaphore>
 #include <iostream>
+#include <charconv>
 
 using namespace std::chrono_literals;
 
@@ -16,7 +17,11 @@ inline void* get_thread_id() noexcept {
   return (void*)std::hash<std::thread::id>{}(std::this_thread::get_id());
 }
 
-template <typename ...Args>
+inline std::chrono::microseconds us_since(const std::chrono::high_resolution_clock::time_point& start) noexcept {
+  return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start);
+}
+
+/*template <typename ...Args>
 inline void log(std::string_view fmt, Args&& ...args) noexcept {
   thread_local void* threadId = get_thread_id();
   std::string str = std::format(fmt, args...);
@@ -28,6 +33,23 @@ inline void log(std::string_view fmt, Args&& ...args) noexcept {
   std::memcpy(buffer + sizeof(size_t), str.data(), length + 1);
   qtz_send(threadId, 20, buffer, 0, JEM_WAIT);
   delete[] buffer;
+}*/
+
+template <size_t N>
+inline void print_to_cursor(char*& cursor, const char (&string)[N]) noexcept {
+  std::memcpy(cursor, string, N - 1);
+  cursor += (N - 1);
+}
+inline void print_to_cursor(char*& cursor, char* const bufferEnd, size_t n) noexcept {
+  auto&& [newCursor, result] = std::to_chars(cursor, bufferEnd, n);
+  cursor = newCursor;
+}
+inline void print_to_cursor(char*& cursor, char* const bufferEnd, const std::chrono::microseconds& us) noexcept {
+  print_to_cursor(cursor, bufferEnd, us.count());
+  print_to_cursor(cursor, "us");
+}
+inline void end_string(char* cursor) noexcept {
+  *cursor = '\0';
 }
 
 inline void execute_ops_on_threads(jem_size_t N) noexcept {
@@ -45,15 +67,35 @@ inline void execute_ops_on_threads(jem_size_t N) noexcept {
     .startTime    = startTime
   };
 
-  qtz_send(nullptr, 1, &setTimePayload, 1, JEM_WAIT);
+  qtz_send(nullptr, 2, &setTimePayload, 1, JEM_WAIT);
 
   for ( size_t i = 0; i < N; ++i ) {
     threads.emplace_back([=](std::barrier<>& barrier){
 
+      void* threadId = get_thread_id();
+
       barrier.arrive_and_wait();
 
       for ( jem_size_t j = 0; j < N; ++j ) {
-        log("thread#{}, msg#{}, @{}", i, j, std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - startTime));
+        struct buffer_t{
+          size_t bufferLength;
+          char   data[72];
+        } buffer;
+        char* cursor = buffer.data;
+        char* const bufferEnd = cursor + sizeof(buffer.data);
+
+        print_to_cursor(cursor, "thread#");
+        print_to_cursor(cursor, bufferEnd, i);
+        print_to_cursor(cursor, ", msg#");
+        print_to_cursor(cursor, bufferEnd, j);
+        print_to_cursor(cursor, ", @");
+        print_to_cursor(cursor, bufferEnd, us_since(startTime));
+        buffer.bufferLength = cursor - reinterpret_cast<char*>(&buffer);
+        // end_string(cursor);
+
+        qtz_send(threadId, 20, &buffer, 0, JEM_WAIT);
+
+        // log("thread#{}, msg#{}, @{}", i, j, std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - startTime));
       }
 
     }, std::ref(threadBarrier));
@@ -96,5 +138,19 @@ int main() {
   };
   auto result = qtz_init(&initParams);
 
-  execute_ops_on_threads(4);
+  execute_ops_on_threads(16);
+
+  // std::this_thread::sleep_for(2s);
+
+  struct kill_request{
+    size_t structSize;
+    unsigned long exitCode;
+  } killRequest{
+    .structSize = sizeof(kill_request),
+    .exitCode   = 0
+  };
+
+  auto killResult = qtz_request_wait(qtz_send(nullptr, 1, &killRequest, 1, JEM_WAIT), JEM_WAIT);
+
+  assert( killResult == QTZ_SUCCESS );
 }
