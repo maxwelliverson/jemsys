@@ -74,6 +74,7 @@ typedef enum {
   SLC_TYPE_KIND_BOOLEAN,
   SLC_TYPE_KIND_INTEGRAL,
   SLC_TYPE_KIND_FLOATING_POINT,
+  SLC_TYPE_KIND_ALIAS,
   SLC_TYPE_KIND_POINTER,
   SLC_TYPE_KIND_ARRAY,
   SLC_TYPE_KIND_FUNCTION,
@@ -146,6 +147,7 @@ typedef struct slc_aggregate_member_descriptor_t {
   jem_u8_t                     bitfield_offset;
   jem_u32_t                    offset;
   const char*                  name;
+  jem_size_t                   alignment;
 } slc_aggregate_member_descriptor_t;
 typedef struct slc_aggregate_base_descriptor_t {
   const slc_type_descriptor_t* type;
@@ -169,6 +171,15 @@ typedef struct slc_function_descriptor_t {
     const char* aliased_function;
   };
 } slc_function_descriptor_t;
+
+
+typedef struct slc_aggregate_member_params_t {
+  const slc_type_descriptor_t* type;
+  jem_u16_t                    flags;
+  jem_u8_t                     bitfield_bits;
+  const char*                  name;
+  jem_size_t                   alignment;
+} slc_aggregate_member_params_t;
 
 
 typedef struct slc_integral_type_params_t {
@@ -215,13 +226,13 @@ typedef struct slc_member_function_pointer_type_params_t{
   const slc_type_descriptor_t* aggregate_type;
 } slc_member_function_pointer_type_params_t;
 typedef struct slc_aggregate_type_params_t{
-  const char*                                      name;
-  slc_type_flags_t                                 flags;
-  jem_u32_t                                        alignment;
-  const slc_type_ref_t*                            bases;
-  jem_size_t                                       base_count;
-  const slc_aggregate_member_descriptor_t* const * members;
-  jem_size_t                                       member_count;
+  const char*                                  name;
+  slc_type_flags_t                             flags;
+  jem_u32_t                                    alignment;
+  const slc_type_ref_t*                        bases;
+  jem_size_t                                   base_count;
+  const slc_aggregate_member_params_t* const * members;
+  jem_size_t                                   member_count;
 } slc_aggregate_type_params_t;
 typedef struct slc_enumerator_type_params_t{
   const char*                         name;
@@ -241,22 +252,7 @@ typedef struct slc_type_params_t {
 
 
 
-typedef struct slc_platform_constants_t {
-  jem_size_t pointer_size;
-  jem_size_t pointer_alignment;
-  jem_size_t si_member_pointer_size;
-  jem_size_t mi_member_pointer_size;
-  jem_size_t vi_member_pointer_size;
-  jem_size_t si_member_pointer_alignment;
-  jem_size_t mi_member_pointer_alignment;
-  jem_size_t vi_member_pointer_alignment;
-  jem_size_t si_member_function_pointer_size;
-  jem_size_t mi_member_function_pointer_size;
-  jem_size_t vi_member_function_pointer_size;
-  jem_size_t si_member_function_pointer_alignment;
-  jem_size_t mi_member_function_pointer_alignment;
-  jem_size_t vi_member_function_pointer_alignment;
-} slc_platform_constants_t;
+
 
 typedef struct slc_type_entry_t {
   jem_local_id_t               local_id;
@@ -286,6 +282,10 @@ struct slc_type_descriptor_t {
       jem_u32_t   mantissa_bits;
     } floating_point;
     struct {
+      const char*    name;
+      slc_type_ref_t target;
+    } alias;
+    struct {
       slc_type_ref_t pointee;
     } pointer;
     struct {
@@ -297,6 +297,7 @@ struct slc_type_descriptor_t {
       const slc_type_ref_t* args;
       jem_u32_t             arg_count;
       jem_u16_t             flags;
+      jem_u16_t             callconv;
     } function;
     struct {
       slc_type_ref_t               pointee;
@@ -313,7 +314,7 @@ struct slc_type_descriptor_t {
       const slc_aggregate_member_descriptor_t* members;
       jem_size_t                               member_count;
       jem_u16_t                                flags;
-      slc_inheritance_kind_t              inheritance_kind;
+      slc_inheritance_kind_t                   inheritance_kind;
     } aggregate;
     struct {
       const char*                         name;
