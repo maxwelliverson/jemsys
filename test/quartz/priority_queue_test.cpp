@@ -2,7 +2,7 @@
 // Created by maxwe on 2021-08-26.
 //
 
-#include "internal.hpp"
+#include "quartz/internal.hpp"
 
 #include <string>
 #include <iostream>
