@@ -4,7 +4,7 @@
 
 #include <catch.hpp>
 
-#include <quartz/core.h>
+#include <quartz.h>
 
 #include <thread>
 #include <barrier>

@@ -6,7 +6,7 @@
 #define JEMSYS_INTERNAL_DICTIONARY_HPP
 
 
-#include "quartz/core.h"
+#include "quartz.h"
 
 #include "iterator.hpp"
 #include "allocator.hpp"

@@ -7,7 +7,7 @@
 
 #define JEM_SHARED_LIB_EXPORT
 
-#include <quartz/core.h>
+#include <quartz.h>
 
 
 #include <atomic>

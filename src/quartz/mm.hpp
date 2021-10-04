@@ -6,7 +6,7 @@
 #define JEMSYS_QUARTZ_MM_INTERNAL_HPP
 
 #define JEM_SHARED_LIB_EXPORT
-#include <quartz/core.h>
+#include <quartz.h>
 
 #include <memory>
 #include <optional>

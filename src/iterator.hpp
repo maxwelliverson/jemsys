@@ -5,7 +5,7 @@
 #ifndef JEMSYS_INTERNAL_ITERATOR_HPP
 #define JEMSYS_INTERNAL_ITERATOR_HPP
 
-#include "quartz/core.h"
+#include "quartz.h"
 
 #include <utility>
 #include <ranges>

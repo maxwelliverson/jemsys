@@ -5,8 +5,8 @@
 #ifndef JEMSYS_QUARTZ_KERNEL_INTERNAL_HPP
 #define JEMSYS_QUARTZ_KERNEL_INTERNAL_HPP
 
-#include <quartz/core.h>
 #include <agate/core.h>
+#include <quartz.h>
 
 #include "atomicutils.hpp"
 #include "internal.hpp"

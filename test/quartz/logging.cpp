@@ -2,7 +2,7 @@
 // Created by maxwe on 2021-09-25.
 //
 
-#include <quartz/core.h>
+#include <quartz.h>
 
 #include <thread>
 #include <barrier>
