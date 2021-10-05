@@ -9,6 +9,7 @@
 #include <agate.h>
 
 #include "atomicutils.hpp"
+#include "ipc/offset_ptr.hpp"
 
 
 namespace agt{
@@ -51,7 +52,8 @@ namespace agt{
     mailbox_kind_shared_spmc,
     mailbox_kind_shared_mpsc,
     mailbox_kind_shared_mpmc,
-    mailbox_kind_private
+    mailbox_kind_private,
+    MAILBOX_KIND_MAX_ENUM
   };
 
 
@@ -153,6 +155,7 @@ extern "C" {
 
 
   struct agt_mailbox {
+    atomic_u32_t        refCount;
     agt::mailbox_kind_t kind;
   };
 
@@ -171,10 +174,157 @@ extern "C" {
 
 namespace agt{
   struct local_mailbox : agt_mailbox {
-
+    std::byte*         messageSlots;
+    jem_size_t         slotCount;
+    jem_size_t         slotSize;
   };
-  struct shared_mailbox : agt_mailbox {
+  struct local_spsc_mailbox : local_mailbox {
+    jem_size_t                 payloadOffset;        // [0]: 8;  (40, 48)
+    JEM_cache_aligned
+    semaphore_t                availableSlotSema;    // [1]: 8;  (0,   8)
+    binary_semaphore_t         producerSemaphore;    // [1]: 1;  (8,   9)
+                                         // [1]: 7;  (9,  16) - alignment
+    agt_message_t              producerPreviousMsg;  // [1]: 8;  (16, 24)
+    JEM_cache_aligned
+    semaphore_t                queuedMessageSema;    // [2]: 8;  (0,   8)
+    binary_semaphore_t         consumerSemaphore;    // [2]: 1;  (8,   9)
+                                         // [2]: 7;  (9,  16) - alignment
+    agt_message_t              consumerPreviousMsg;  // [2]: 8;  (16, 24)
+    agt_message_t              consumerLastFreeSlot; // [2]: 8;  (24, 32)
+    JEM_cache_aligned
+    std::atomic<agt_message_t> nextFreeSlot;         // [3]: 8;  (0,   8)
+  };
+  struct local_mpsc_mailbox : local_mailbox {
 
+    shared_semaphore_t slotSemaphore;
+    JEM_cache_aligned
+    std::atomic<agt_message_t> nextFreeSlot;
+    jem_size_t                 payloadOffset;
+
+    JEM_cache_aligned
+    std::atomic<agt_message_t> lastQueuedSlot;
+    std::atomic<agt_message_t> lastFreeSlot;
+    agt_message_t              previousReceivedMessage;
+    JEM_cache_aligned
+    mpsc_counter_t     queuedMessageCount;
+    jem_u32_t          maxProducers;
+    binary_semaphore_t consumerSemaphore;
+    semaphore_t        producerSemaphore;
+  };
+  struct local_spmc_mailbox : local_mailbox {
+    semaphore_t        slotSemaphore;
+    JEM_cache_aligned
+    atomic_size_t      nextFreeSlot;
+    JEM_cache_aligned
+    atomic_size_t      lastQueuedSlot;
+    JEM_cache_aligned                          // 192 - alignment
+    atomic_u32_t       queuedSinceLastCheck; // 196
+    jem_u32_t          minQueuedMessages;    // 200
+    jem_u32_t          maxConsumers;         // 220
+    binary_semaphore_t producerSemaphore;    // 221
+                                         // 224 - alignment
+    semaphore_t        consumerSemaphore;    // 240
+  };
+  struct local_mpmc_mailbox : local_mailbox {
+    semaphore_t      slotSemaphore;
+    JEM_cache_aligned
+    atomic_size_t    nextFreeSlot;
+    JEM_cache_aligned
+    atomic_size_t    lastQueuedSlot;
+    JEM_cache_aligned                        // 192 - alignment
+    atomic_u32_t     queuedSinceLastCheck; // 196
+    jem_u32_t        minQueuedMessages;    // 200
+    jem_u32_t        maxProducers;         // 220
+    jem_u32_t        maxConsumers;         // 224
+    semaphore_t      producerSemaphore;    // 240
+    semaphore_t      consumerSemaphore;    // 256
+  };
+
+
+  struct shared_mailbox : agt_mailbox {
+    ipc::offset_ptr<std::byte> messageSlots;
+    jem_size_t                 slotCount;
+    jem_size_t                 slotSize;
+  };
+  struct shared_spsc_mailbox : shared_mailbox {
+    std::byte*         producerSlotAddr;
+    std::byte*         consumerSlotAddr;
+    JEM_cache_aligned
+    semaphore_t        availableSlotSema;    // [1]: 8;  (0,   8)
+    binary_semaphore_t producerSemaphore;    // [1]: 1;  (8,   9)
+                                         // [1]: 7;  (9,  16) - alignment
+    agt_message_t      producerPreviousMsg;  // [1]: 8;  (16, 24)
+    JEM_cache_aligned
+    semaphore_t        queuedMessageSema;    // [2]: 8;  (0,   8)
+    binary_semaphore_t consumerSemaphore;    // [2]: 1;  (8,   9)
+                                         // [2]: 7;  (9,  16) - alignment
+    agt_message_t      consumerPreviousMsg;  // [2]: 8;  (16, 24)
+    agt_message_t      consumerLastFreeSlot; // [2]: 8;  (24, 32)
+    JEM_cache_aligned
+    atomic_size_t      nextFreeSlotIndex;         // [3]: 8;  (0,   8)
+    JEM_cache_aligned
+    std::byte          slots[];
+  };
+  struct shared_mpsc_mailbox : shared_mailbox {
+    shared_semaphore_t slotSemaphore;
+    JEM_cache_aligned
+    std::atomic<agt_message_t> nextFreeSlot;
+    jem_size_t                 payloadOffset;
+    JEM_cache_aligned
+    std::atomic<agt_message_t> lastQueuedSlot;
+    agt_message_t              previousReceivedMessage;
+    JEM_cache_aligned
+    mpsc_counter_t     queuedMessageCount;
+    jem_u32_t          maxProducers;
+    binary_semaphore_t consumerSemaphore;
+    semaphore_t        producerSemaphore;
+    JEM_cache_aligned
+    std::byte          slots[];
+  };
+  struct shared_spmc_mailbox : shared_mailbox {
+    semaphore_t        slotSemaphore;
+    JEM_cache_aligned
+    atomic_size_t      nextFreeSlot;
+    JEM_cache_aligned
+    atomic_size_t      lastQueuedSlot;
+    JEM_cache_aligned                          // 192 - alignment
+    atomic_u32_t       queuedSinceLastCheck; // 196
+    jem_u32_t          minQueuedMessages;    // 200
+    jem_u32_t          maxConsumers;         // 220
+    binary_semaphore_t producerSemaphore;    // 221
+                                         // 224 - alignment
+    semaphore_t        consumerSemaphore;    // 240
+    JEM_cache_aligned
+    std::byte          slots[];
+  };
+  struct shared_mpmc_mailbox : shared_mailbox {
+    semaphore_t      slotSemaphore;
+    JEM_cache_aligned
+    atomic_size_t    nextFreeSlot;
+    JEM_cache_aligned
+    atomic_size_t    lastQueuedSlot;
+    JEM_cache_aligned
+    atomic_u32_t     queuedSinceLastCheck;
+    jem_u32_t        minQueuedMessages;
+    jem_u32_t        maxProducers;         // 220
+    jem_u32_t        maxConsumers;         // 224
+    semaphore_t      producerSemaphore;    // 240
+    semaphore_t      consumerSemaphore;    // 256
+    JEM_cache_aligned
+    std::byte          slots[];
+  };
+
+  struct private_mailbox : agt_mailbox {
+    std::byte*               messageSlots;
+    jem_size_t               slotCount;
+    jem_size_t               slotSize;
+    // JEM_cache_aligned
+    jem_size_t               availableSlotCount;
+    jem_size_t               queuedMessageCount;
+    agt_message_t            nextFreeSlot;
+    agt_message_t            prevAcquiredSlot;
+    agt_message_t            prevQueuedMessage;
+    agt_message_t            prevReleasedSlot;
   };
 
   struct local_agent : agt_agent {
@@ -187,6 +337,105 @@ namespace agt{
   struct shared_agent : agt_agent {
 
   };
+
+  struct JEM_cache_aligned mailbox_vtable{
+    agt_slot_t(   JEM_stdcall* pfn_acquire_slot)(agt_mailbox_t mailbox, jem_size_t messageSize, jem_u64_t timeout_us) JEM_noexcept;
+    void(         JEM_stdcall* pfn_release_slot)(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_signal_t( JEM_stdcall* pfn_send)(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_message_t(JEM_stdcall* pfn_receive)(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
+    agt_status_t( JEM_stdcall* pfn_attach)(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
+    void(         JEM_stdcall* pfn_detach)(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
+    void(         JEM_stdcall* pfn_return_message)(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
+  };
+  
+  
+  
+  extern const mailbox_vtable vtable_table[];
+  
+  namespace impl{
+    agt_status_t  JEM_stdcall local_spsc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_spsc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
+    agt_slot_t    JEM_stdcall local_spsc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_spsc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall local_spsc_send(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_message_t JEM_stdcall local_spsc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_spsc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
+
+
+    agt_status_t  JEM_stdcall local_mpsc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_mpsc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
+    agt_slot_t    JEM_stdcall local_mpsc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_mpsc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall local_mpsc_send(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_message_t JEM_stdcall local_mpsc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_mpsc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
+
+    
+    agt_status_t  JEM_stdcall local_spmc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_spmc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
+    agt_slot_t    JEM_stdcall local_spmc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_spmc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall local_spmc_send(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_message_t JEM_stdcall local_spmc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_spmc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
+
+
+    agt_status_t  JEM_stdcall local_mpmc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_mpmc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
+    agt_slot_t    JEM_stdcall local_mpmc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_mpmc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall local_mpmc_send(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_message_t JEM_stdcall local_mpmc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_mpmc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
+
+    
+    agt_status_t  JEM_stdcall shared_spsc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_spsc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
+    agt_slot_t    JEM_stdcall shared_spsc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_spsc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall shared_spsc_send(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_message_t JEM_stdcall shared_spsc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_spsc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
+
+    
+    agt_status_t  JEM_stdcall shared_mpsc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_mpsc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
+    agt_slot_t    JEM_stdcall shared_mpsc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_mpsc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall shared_mpsc_send(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_message_t JEM_stdcall shared_mpsc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_mpsc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
+
+    
+    agt_status_t  JEM_stdcall shared_spmc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_spmc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
+    agt_slot_t    JEM_stdcall shared_spmc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_spmc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall shared_spmc_send(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_message_t JEM_stdcall shared_spmc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_spmc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
+
+    
+    agt_status_t  JEM_stdcall shared_mpmc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_mpmc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
+    agt_slot_t    JEM_stdcall shared_mpmc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_mpmc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall shared_mpmc_send(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_message_t JEM_stdcall shared_mpmc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_mpmc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
+
+
+    agt_status_t  JEM_stdcall private_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall private_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
+    agt_slot_t    JEM_stdcall private_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall private_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall private_send(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
+    agt_message_t JEM_stdcall private_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall private_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
+
+  }
+  
+  
 }
 
 static_assert(sizeof(agt_message) == JEM_CACHE_LINE);

@@ -94,6 +94,8 @@ namespace {
     }
   };
 
+
+  // FIXME: I think these atomic_wait implementations are fairly slow.... :(
   template <typename T, typename F>
   bool atomic_wait(const std::atomic<T>& target, deadline_t deadline, F&& func) noexcept {
     T capturedValue = target.load(std::memory_order_acquire);

@@ -100,13 +100,10 @@ typedef enum agt_status_t {
   AGT_ERROR_BAD_ALLOC,
   AGT_ERROR_MAILBOX_IS_FULL,
   AGT_ERROR_MAILBOX_IS_EMPTY,
-  AGT_ERROR_TOO_MANY_PRODUCERS,
-  AGT_ERROR_TOO_MANY_CONSUMERS,
+  AGT_ERROR_TOO_MANY_SENDERS,
+  AGT_ERROR_TOO_MANY_RECEIVERS,
   AGT_ERROR_ALREADY_RECEIVED,
-  AGT_ERROR_NOT_YET_IMPLEMENTED,
-  AGT_ERROR_INSUFFICIENT_PERMISSIONS,
-  AGT_ERROR_INCOMPATIBLE_PARAMETERS,
-  AGT_ERROR_DUPLICATE_PARAMETERS
+  AGT_ERROR_NOT_YET_IMPLEMENTED
 } agt_status_t;
 
 
@@ -117,10 +114,6 @@ typedef const struct agt_mailbox_vtable{
   void(         JEM_stdcall* pfn_release_slot)(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
   agt_signal_t( JEM_stdcall* pfn_send)(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
   agt_message_t(JEM_stdcall* pfn_receive)(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
-  agt_status_t( JEM_stdcall* pfn_attach_sender)(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
-  void(         JEM_stdcall* pfn_detach_sender)(agt_mailbox_t mailbox) JEM_noexcept;
-  agt_status_t( JEM_stdcall* pfn_attach_receiver)(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
-  void(         JEM_stdcall* pfn_detach_receiver)(agt_mailbox_t mailbox) JEM_noexcept;
 }* agt_mailbox_vtable_t;
 
 
@@ -181,9 +174,9 @@ JEM_api void*        JEM_stdcall agt_message_get_payload(agt_message_t message, 
  * Mailboxes
  * */
 
-JEM_api agt_status_t  JEM_stdcall agt_mailbox_attach_sender(agt_mailbox_t mailbox, jem_u64_t timeous_us) JEM_noexcept;
+JEM_api agt_status_t  JEM_stdcall agt_mailbox_attach_sender(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
 JEM_api void          JEM_stdcall agt_mailbox_detach_sender(agt_mailbox_t mailbox) JEM_noexcept;
-JEM_api agt_status_t  JEM_stdcall agt_mailbox_attach_receiver(agt_mailbox_t mailbox, jem_u64_t timeous_us) JEM_noexcept;
+JEM_api agt_status_t  JEM_stdcall agt_mailbox_attach_receiver(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
 JEM_api void          JEM_stdcall agt_mailbox_detach_receiver(agt_mailbox_t mailbox) JEM_noexcept;
 
 JEM_api agt_slot_t    JEM_stdcall agt_mailbox_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;

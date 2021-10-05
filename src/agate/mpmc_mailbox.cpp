@@ -2,7 +2,7 @@
 // Created by Maxwell on 2021-06-17.
 //
 
-#include <agate/mpmc_mailbox.h>
+#include <agate.h>
 
 extern "C" {
 
