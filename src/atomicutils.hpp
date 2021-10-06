@@ -28,6 +28,8 @@
 #define PAUSE_x16() do { REPEAT_STMT_x16(PAUSE_x1();) } while(false)
 #define PAUSE_x32() do { REPEAT_STMT_x32(PAUSE_x1();) } while(false)
 
+#define TIMEOUT_US_LONG_WAIT_THRESHOLD 20000
+
 namespace {
 
   struct deadline_t{
@@ -61,6 +63,89 @@ namespace {
   };
 
 
+  void spin_sleep_until(deadline_t deadline) noexcept {
+    jem_u32_t backoff = 0;
+    while ( deadline.has_not_passed() ) {
+      switch (backoff) {
+        default:
+          PAUSE_x32();
+          [[fallthrough]];
+        case 5:
+          PAUSE_x16();
+          [[fallthrough]];
+        case 4:
+          PAUSE_x8();
+          [[fallthrough]];
+        case 3:
+          PAUSE_x4();
+          [[fallthrough]];
+        case 2:
+          PAUSE_x2();
+          [[fallthrough]];
+        case 1:
+          PAUSE_x1();
+          [[fallthrough]];
+        case 0:
+          PAUSE_x1();
+      }
+      ++backoff;
+    }
+  }
+
+  void sleep(jem_u64_t ms) noexcept {
+    if ( ms > 20 )
+      Sleep((DWORD)ms);
+    else
+      spin_sleep_until(deadline_t::from_timeout_us(ms * 1000));
+  }
+  void usleep(jem_u64_t us) noexcept {
+    spin_sleep_until(deadline_t::from_timeout_us(us));
+  }
+  void nanosleep(jem_u64_t ns) noexcept {
+
+  }
+
+  template <typename T>
+  bool atomic_wait(const std::atomic<T>& target, std::type_identity_t<T> value, deadline_t deadline) noexcept {
+    jem_u32_t backoff = 0;
+    bool matchesValue = target.load() == value;
+    while ( matchesValue && deadline.has_not_passed() ) {
+      switch (backoff) {
+        default:
+          PAUSE_x32();
+          [[fallthrough]];
+        case 5:
+          PAUSE_x16();
+          [[fallthrough]];
+        case 4:
+          PAUSE_x8();
+          [[fallthrough]];
+        case 3:
+          PAUSE_x4();
+          [[fallthrough]];
+        case 2:
+          PAUSE_x2();
+          [[fallthrough]];
+        case 1:
+          PAUSE_x1();
+          [[fallthrough]];
+        case 0:
+          PAUSE_x1();
+      }
+      ++backoff;
+      matchesValue = target.load() == value;
+    }
+  }
+  /*template <typename T>
+  bool atomic_wait_for(const std::atomic<T>& target, std::type_identity_t<T> value, jem_u64_t timeout_us) noexcept {
+    if ( timeout_us >= TIMEOUT_US_LONG_WAIT_THRESHOLD ) [[unlikely]] {
+
+    }
+    else {
+
+    }
+  }*/
+
 
 
   // FIXME: I think these atomic_wait implementations are fairly slow.... :(
@@ -89,7 +174,7 @@ namespace {
     }
     return false;
   }
-  template <typename T>
+  /*template <typename T>
   bool atomic_wait(const std::atomic<T>& target, std::type_identity_t<T> value, deadline_t deadline) noexcept {
     jem_u32_t remainingTimeout = deadline.to_timeout_ms();
     do {
@@ -109,7 +194,7 @@ namespace {
     }
     return false;
   }
-
+*/
   class simple_mutex_t {
     long value_ = 0;
 
@@ -166,10 +251,24 @@ namespace {
   };
 
   class atomic_flag_t {
-    long value_;
+    std::atomic<jem_u32_t> value_;
   public:
     atomic_flag_t() = default;
-    atomic_flag_t(long val) noexcept : value_(val){ }
+    atomic_flag_t(jem_u32_t val) noexcept : value_(val){ }
+
+    void set() noexcept { }
+    bool test() const noexcept { }
+    bool set_and_test() noexcept { }
+
+    void reset() noexcept { }
+
+    void wait() const noexcept {}
+    bool wait_for(jem_u64_t timeout_us) const noexcept {
+      return atomic_wait(value_, 1, deadline_t::from_timeout_us(timeout_us));
+    }
+    bool wait_until(deadline_t deadline) const noexcept {
+      return atomic_wait(value_, 0, deadline);
+    }
 
 
   };
