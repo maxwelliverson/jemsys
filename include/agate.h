@@ -154,17 +154,17 @@ JEM_api void         JEM_stdcall agt_destroy_actor(agt_actor_t actor) JEM_noexce
  * Signals
  * */
 
-JEM_api agt_status_t JEM_stdcall agt_signal_wait(agt_signal_t signal, jem_u64_t timeout_us);
-JEM_api agt_status_t JEM_stdcall agt_signal_status(agt_signal_t signal);
-JEM_api void         JEM_stdcall agt_signal_ignore(agt_signal_t signal);
+JEM_api agt_signal_t JEM_stdcall agt_signal_copy(agt_signal_t signal) JEM_noexcept;
+JEM_api agt_status_t JEM_stdcall agt_signal_wait(agt_signal_t signal, jem_u64_t timeout_us) JEM_noexcept;
+JEM_api void         JEM_stdcall agt_signal_ignore(agt_signal_t signal) JEM_noexcept;
 
 
 /*
  * Messages
  * */
 
-JEM_api void         JEM_stdcall agt_message_raise_signal(agt_message_t message, agt_status_t status);
-JEM_api void*        JEM_stdcall agt_message_get_payload(agt_message_t message, jem_size_t* pMessageSize);
+JEM_api void         JEM_stdcall agt_message_raise_signal(agt_message_t message, agt_status_t status) JEM_noexcept;
+JEM_api void*        JEM_stdcall agt_message_get_payload(agt_message_t message, jem_size_t* pMessageSize) JEM_noexcept;
 
 
 

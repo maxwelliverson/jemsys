@@ -70,7 +70,7 @@ namespace impl{
 
 
     JEM_forceinline void discard_slot(mailbox_t mailbox, message_t message) noexcept {
-      if ( message->flags.test_and_set(agt::message_result_is_discarded) )
+      if ( message->flags.test_and_set(agt::signal_result_is_discarded) )
         release_slot(mailbox, message);
     }
 
@@ -135,7 +135,7 @@ extern "C" {
     const auto mailbox = cast<mailbox_t>(handle);
     const auto message = static_cast<message_t>(impl::payload_to_message(mailbox, messageSlot));
 
-    message->flags.set(agt::message_in_use | flags);
+    message->flags.set(agt::signal_in_use | flags);
 
     impl::enqueue_slot(mailbox, message);
 
@@ -210,7 +210,7 @@ extern "C" {
       const auto mailbox = cast<mailbox_t>(handle);
 
       std::ranges::for_each(std::span{ messageSlots, slotCount }, [mailbox, flags](void* slot){
-        static_cast<message_t>(impl::payload_to_message(mailbox, slot))->flags.set(agt::message_in_use | flags);
+        static_cast<message_t>(impl::payload_to_message(mailbox, slot))->flags.set(agt::signal_in_use | flags);
       });
 
       const auto firstMessage = static_cast<message_t>(impl::payload_to_message(mailbox, messageSlots[0]));
@@ -334,7 +334,7 @@ extern "C" {
 
 
   JEM_api bool                JEM_stdcall agt_dynamic_local_mpsc_mailbox_discard(agt_message_t message) JEM_noexcept {
-    if ( message->flags.fetch( agt::message_result_cannot_discard | agt::message_result_was_checked ) == agt::message_result_cannot_discard )
+    if ( message->flags.fetch( agt::signal_result_cannot_discard | agt::message_result_was_checked ) == agt::signal_result_cannot_discard)
       return false;
     impl::discard_slot(cast<impl::mailbox_t>(message->parent), static_cast<impl::message_t>(message));
     return true;

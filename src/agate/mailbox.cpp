@@ -261,7 +261,7 @@ namespace {
       const auto object  = cast<object_t>(handle);
       const auto message = static_cast<message_t>(payload_to_message(messageSlot));
 
-      message->flags.set(flags | agt::message_in_use);
+      message->flags.set(flags | agt::signal_in_use);
       ops::enqueue_message(object, message);
       if ( flags & AGT_SEND_MESSAGE_DISCARD_RESULT )
         return nullptr;
@@ -276,7 +276,7 @@ namespace {
 
       for ( jem_size_t i = 0; i != messageCount; ++i ) {
         const auto message = static_cast<message_t>(payload_to_message(slots[i]));
-        message->flags.set(flags | agt::message_in_use);
+        message->flags.set(flags | agt::signal_in_use);
         messageList[i] = message;
       }
 

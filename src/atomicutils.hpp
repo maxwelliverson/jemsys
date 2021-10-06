@@ -30,40 +30,6 @@
 
 namespace {
 
-  void acquire_duffs_spinlock(long& spinlock) {
-    jem_u32_t backoff = 0;
-    while(_InterlockedExchange(&spinlock, 1) != 0) {
-      while (__iso_volatile_load32(&reinterpret_cast<int&>(spinlock)) != 0) {
-        switch (backoff) {
-          default:
-            PAUSE_x32();
-            [[fallthrough]];
-          case 5:
-            PAUSE_x16();
-            [[fallthrough]];
-          case 4:
-            PAUSE_x8();
-            [[fallthrough]];
-          case 3:
-            PAUSE_x4();
-            [[fallthrough]];
-          case 2:
-            PAUSE_x2();
-            [[fallthrough]];
-          case 1:
-            PAUSE_x1();
-            [[fallthrough]];
-          case 0:
-            PAUSE_x1();
-        }
-        ++backoff;
-      }
-    }
-  }
-  void release_duffs_spinlock(long& spinlock) {
-    _InterlockedExchange(&spinlock, 0);
-  }
-
   struct deadline_t{
     jem_u64_t timestamp;
 
@@ -93,6 +59,8 @@ namespace {
       return lrgInt.QuadPart < timestamp;
     }
   };
+
+
 
 
   // FIXME: I think these atomic_wait implementations are fairly slow.... :(
@@ -142,6 +110,69 @@ namespace {
     return false;
   }
 
+  class simple_mutex_t {
+    long value_ = 0;
+
+    void acquire_duffs_spinlock() {
+      jem_u32_t backoff = 0;
+      while(_InterlockedExchange(&value_, 1) != 0) {
+        while (__iso_volatile_load32(&reinterpret_cast<int&>(value_)) != 0) {
+          switch (backoff) {
+            default:
+              PAUSE_x32();
+              [[fallthrough]];
+            case 5:
+              PAUSE_x16();
+              [[fallthrough]];
+            case 4:
+              PAUSE_x8();
+              [[fallthrough]];
+            case 3:
+              PAUSE_x4();
+              [[fallthrough]];
+            case 2:
+              PAUSE_x2();
+              [[fallthrough]];
+            case 1:
+              PAUSE_x1();
+              [[fallthrough]];
+            case 0:
+              PAUSE_x1();
+          }
+          ++backoff;
+        }
+      }
+    }
+    bool try_acquire_duffs_spinlock() {
+      return _InterlockedExchange(&value_, 1) == 0;
+    }
+    bool try_acquire_duffs_spinlock_until(deadline_t deadline) {
+      return _InterlockedExchange(&value_, 1) == 0;
+    }
+    bool try_acquire_duffs_spinlock_for(jem_u64_t timeout_us) {
+      return try_acquire_duffs_spinlock_until(spinlock, deadline_t::from_timeout_us(timeout_us));
+    }
+    void release_duffs_spinlock() {
+      _InterlockedExchange(&spinlock, 0);
+    }
+
+  public:
+    void acquire() noexcept {
+
+    }
+    void release() noexcept {
+      _InterlockedExchange(&value_, 0);
+    }
+  };
+
+  class atomic_flag_t {
+    long value_;
+  public:
+    atomic_flag_t() = default;
+    atomic_flag_t(long val) noexcept : value_(val){ }
+
+
+  };
 
   template <typename IntType>
   class atomic_flags{

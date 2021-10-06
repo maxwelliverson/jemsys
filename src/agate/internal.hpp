@@ -25,10 +25,10 @@ namespace agt{
   inline constexpr static jem_u32_t PseudoMessageSlotId = static_cast<jem_u32_t>(-1);
 
   enum message_flags_t {
-    message_in_use                = 0x0001,
-    message_result_is_ready       = 0x0002,
-    message_result_is_discarded   = 0x0004,
-    message_result_cannot_discard = 0x0008,
+    signal_in_use = 0x0001,
+    signal_result_is_ready = 0x0002,
+    signal_result_is_discarded = 0x0004,
+    signal_result_cannot_discard = 0x0008,
     message_is_cancelled          = 0x0010,
     message_needs_cleanup         = 0x0020,
     message_has_been_received     = 0x0040,

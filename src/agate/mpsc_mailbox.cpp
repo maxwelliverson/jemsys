@@ -102,7 +102,29 @@ agt_message_t JEM_stdcall impl::local_mpsc_receive(agt_mailbox_t mailbox_, jem_u
 }
 
 void JEM_stdcall impl::local_mpsc_return_message(agt_mailbox_t mailbox_, agt_message_t message) noexcept {
-  mailbox->lastFreeSlot.
+  auto lastFreeSlot = mailbox->lastFreeSlot.load();
+  do {
+    lastFreeSlot->next.address = message;
+  } while( !mailbox->lastFreeSlot.compare_exchange_weak(lastFreeSlot, message) );
+  // FIXME: I think this is still a potential bug, though it might be one thats hard to detect....
+  lastFreeSlot->next.address = message; // while this might seem redundant, it's needed for this to be totally robust.
+  /*
+   * Scenario where a message (M3) is lost:
+   *
+   * T1: lastFreeSlot = M1, message = M2
+   * T2: lastFreeSlot = M1, message = M3
+   * T2: M1->next = M3
+   * T1: M1->next = M2
+   * T2: lastFreeSlot = M3
+   * T1: loop fail
+   * T1: M3->next = M2
+   * T1: lastFreeSlot = M2
+   * T1: freeSlots += 1
+   *
+   *
+   * */
+
+  mailbox->slotSemaphore.release(1);
 }
 
 

@@ -112,7 +112,7 @@ JEM_api agt_status_t JEM_stdcall agt_finish_send_message_spsc(agt_mailbox_t mail
     return AGT_CANCELLED;
   }
 
-  message->flags.set(flags | agt::message_in_use);
+  message->flags.set(flags | agt::signal_in_use);
   enqueue_slot(mailbox, message);
 
   *pMessage = message;
@@ -139,7 +139,7 @@ JEM_api agt_status_t JEM_stdcall agt_receive_message_spsc(agt_mailbox_t mailbox_
   return AGT_SUCCESS;
 }
 JEM_api void         JEM_stdcall agt_discard_message_spsc(agt_mailbox_t mailbox, agt_message_t message) {
-  if ( message->flags.test_and_set(agt::message_result_is_discarded) )
+  if ( message->flags.test_and_set(agt::signal_result_is_discarded) )
     release_slot(static_cast<agt::spsc_mailbox*>(mailbox), message);
 }
 JEM_api agt_status_t JEM_stdcall agt_cancel_message_spsc(agt_mailbox_t mailbox, agt_message_t message) {

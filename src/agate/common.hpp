@@ -14,10 +14,13 @@
 
 namespace agt{
   enum message_flags_t {
-    message_in_use                = 0x0001,
-    message_result_is_ready       = 0x0002,
-    message_result_is_discarded   = 0x0004,
-    message_result_cannot_discard = 0x0008,
+    message_is_shared = 0x1
+  };
+  enum signal_flags_t {
+    signal_in_use = 0x0001,
+    signal_result_is_ready = 0x0002,
+    signal_result_is_discarded = 0x0004,
+    signal_result_cannot_discard = 0x0008,
   };
 
 
@@ -131,10 +134,11 @@ extern "C" {
   struct agt_signal{
     atomic_flags32_t flags;
     agt_status_t     status;
+    atomic_u32_t     openHandles;
+    jem_flags32_t    messageFlags;
   };
 
   struct JEM_cache_aligned agt_message{
-    jem_flags32_t flags;
     union {
       jem_size_t   index;
       agt_message* address;
