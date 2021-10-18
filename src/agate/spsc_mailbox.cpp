@@ -3,10 +3,129 @@
 //
 
 
+#include "common.hpp"
+
+using namespace agt;
+
+namespace {
+  inline agt_message_t get_free_slot(local_spsc_mailbox* mailbox) noexcept {
+    agt_message_t thisMsg = mailbox->nextFreeSlot.load(std::memory_order_acquire);
+    while ( !mailbox->nextFreeSlot.compare_exchange_weak(thisMsg, thisMsg->next.address) );
+    return thisMsg;
+  }
+  inline agt_message_t get_queued_message(local_spsc_mailbox* mailbox) noexcept {
+    agt_message_t message = mailbox->consumerPreviousMsg->next.address;
+    free_hold(mailbox, mailbox->consumerPreviousMsg);
+    mailbox->consumerPreviousMsg = message;
+    return message;
+  }
+}
+
+
+
+
+
+
+#define mailbox ((local_spsc_mailbox*)_mailbox)
+
+
+agt_status_t  JEM_stdcall agt::impl::local_spsc_attach(agt_mailbox_t _mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept {
+  if ( isSender ) {
+    if ( !mailbox->producerSemaphore.try_acquire_for(timeout_us) )
+      return AGT_ERROR_TOO_MANY_SENDERS;
+  }
+  else {
+    if ( !mailbox->consumerSemaphore.try_acquire_for(timeout_us) )
+      return AGT_ERROR_TOO_MANY_RECEIVERS;
+  }
+  return AGT_SUCCESS;
+}
+void          JEM_stdcall agt::impl::local_spsc_detach(agt_mailbox_t _mailbox, bool isSender) JEM_noexcept {
+  if ( isSender)
+    mailbox->producerSemaphore.release();
+  else
+    mailbox->consumerSemaphore.release();
+}
+
+
+agt_slot_t    JEM_stdcall agt::impl::local_spsc_acquire_slot(agt_mailbox_t _mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept {
+  if ( slot_size > mailbox->slotSize ) [[unlikely]]
+    return nullptr;
+  switch ( timeout_us ) {
+    case JEM_WAIT:
+      mailbox->slotSemaphore.acquire();
+      break;
+    case JEM_DO_NOT_WAIT:
+      if ( !mailbox->slotSemaphore.try_acquire() )
+        return nullptr;
+      break;
+    default:
+      if ( !mailbox->slotSemaphore.try_acquire_for(timeout_us) )
+        return nullptr;
+  }
+  agt_message_t msg = get_free_slot(mailbox);
+  msg->payloadSize = slot_size;
+  return (agt_slot_t)msg;
+}
+void          JEM_stdcall agt::impl::local_spsc_release_slot(agt_mailbox_t _mailbox, agt_slot_t slot) JEM_noexcept {
+  /*agt_message_t message = to_message(slot);
+  agt_message_t newNextSlot = mailbox->nextFreeSlot.load(std::memory_order_acquire);
+  do {
+    message->next.address = newNextSlot;
+  } while( !mailbox->nextFreeSlot.compare_exchange_weak(newNextSlot, message) );*/
+  auto message = to_message(slot);
+  mailbox->consumerLastFreeSlot->next.address = message;
+  mailbox->consumerLastFreeSlot = message;
+  mailbox->slotSemaphore.release();
+}
+agt_signal_t  JEM_stdcall agt::impl::local_spsc_send(agt_mailbox_t _mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept {
+  auto message = to_message(slot);
+  message->signal.flags.set(flags | agt::message_in_use);
+  mailbox->producerPreviousMsg->next.address = message;
+  mailbox->producerPreviousMsg = message;
+
+  mailbox->queuedMessageSema.release();
+
+  if ( flags & AGT_IGNORE_RESULT )
+    return nullptr;
+  return &message->signal;
+}
+agt_message_t JEM_stdcall agt::impl::local_spsc_receive(agt_mailbox_t _mailbox, jem_u64_t timeout_us) JEM_noexcept {
+  switch ( timeout_us ) {
+    case JEM_WAIT:
+      mailbox->queuedMessageSema.acquire();
+      break;
+    case JEM_DO_NOT_WAIT:
+      if ( !mailbox->queuedMessageSema.try_acquire() )
+        return nullptr;
+      break;
+    default:
+      if ( !mailbox->queuedMessageSema.try_acquire_for(timeout_us) )
+        return nullptr;
+  }
+  return get_queued_message(mailbox);
+}
+
+
+void          JEM_stdcall agt::impl::local_spsc_return_message(agt_mailbox_t _mailbox, agt_message_t message) JEM_noexcept {
+
+
+  auto lastFreeSlot = mailbox->lastFreeSlot.load();
+  do {
+    lastFreeSlot->next.address = message;
+  } while( !mailbox->lastFreeSlot.compare_exchange_weak(lastFreeSlot, message) );
+  // FIXME: I think this is still a potential bug, though it might be one thats hard to detect....
+  lastFreeSlot->next.address = message; // while this might seem redundant, it's needed for this to be totally robust.
+
+  mailbox->slotSemaphore.release();
+}
+
+
+/*
 #include <agate/spsc_mailbox.h>
 
-
 #include "internal.hpp"
+
 
 
 namespace {
@@ -154,4 +273,4 @@ JEM_api agt_status_t JEM_stdcall agt_receive_message_spsc_dynamic(agt_mailbox_t 
 JEM_api void         JEM_stdcall agt_discard_message_spsc_dynamic(agt_mailbox_t mailbox, agt_message_t message);
 JEM_api agt_status_t JEM_stdcall agt_cancel_message_spsc_dynamic(agt_mailbox_t mailbox, agt_message_t message);
 
-}
+}*/

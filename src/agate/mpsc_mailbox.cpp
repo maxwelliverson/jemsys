@@ -18,9 +18,8 @@ namespace {
   }
   inline agt_message_t get_queued_message(local_mpsc_mailbox* mailbox) noexcept {
     agt_message_t message = mailbox->previousReceivedMessage->next.address;
-    if ( message->signal.)
-    agt_discard_message_mpsc(mailbox, mailbox->previousMessage);
-    mailbox->previousMessage = message;
+    free_hold(mailbox, mailbox->previousReceivedMessage);
+    mailbox->previousReceivedMessage = message;
     return message;
   }
 }
@@ -69,20 +68,24 @@ agt_slot_t    JEM_stdcall impl::local_mpsc_acquire_slot(agt_mailbox_t mailbox_, 
   return (agt_slot_t)msg;
 }
 void          JEM_stdcall impl::local_mpsc_release_slot(agt_mailbox_t mailbox_, agt_slot_t slot) JEM_noexcept {
-  agt_message_t message = (agt_message_t)slot;
+  agt_message_t message = to_message(slot);
   agt_message_t newNextSlot = mailbox->nextFreeSlot.load(std::memory_order_acquire);
   do {
     message->next.address = newNextSlot;
   } while( !mailbox->nextFreeSlot.compare_exchange_weak(newNextSlot, message) );
   mailbox->slotSemaphore.release();
 }
-agt_signal_t  JEM_stdcall impl::local_mpsc_send(agt_mailbox_t mailbox_, agt_slot_t slot) JEM_noexcept {
+agt_signal_t  JEM_stdcall impl::local_mpsc_send(agt_mailbox_t mailbox_, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept {
   agt_message_t lastQueuedMessage = mailbox->lastQueuedSlot.load(std::memory_order_acquire);
-  agt_message_t message = (agt_message_t)slot;
+  agt_message_t message = to_message(slot);
+  message->signal.flags.set(flags | agt::message_in_use);
   do {
     lastQueuedMessage->next.address = message;
   } while ( !mailbox->lastQueuedSlot.compare_exchange_weak(lastQueuedMessage, message) );
   mailbox->queuedMessageCount.increase(1);
+
+  if ( flags & AGT_IGNORE_RESULT )
+    return nullptr;
   return &message->signal;
 }
 agt_message_t JEM_stdcall impl::local_mpsc_receive(agt_mailbox_t mailbox_, jem_u64_t timeout_us) JEM_noexcept {
@@ -101,7 +104,7 @@ agt_message_t JEM_stdcall impl::local_mpsc_receive(agt_mailbox_t mailbox_, jem_u
   return get_queued_message(mailbox);
 }
 
-void JEM_stdcall impl::local_mpsc_return_message(agt_mailbox_t mailbox_, agt_message_t message) noexcept {
+void          JEM_stdcall impl::local_mpsc_return_message(agt_mailbox_t mailbox_, agt_message_t message) noexcept {
   auto lastFreeSlot = mailbox->lastFreeSlot.load();
   do {
     lastFreeSlot->next.address = message;

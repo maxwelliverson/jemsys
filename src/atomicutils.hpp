@@ -197,6 +197,7 @@ namespace {
 */
   class simple_mutex_t {
     long value_ = 0;
+    std::atomic_uint32_t waiters_ = 0;
 
     void acquire_duffs_spinlock() {
       jem_u32_t backoff = 0;
@@ -235,10 +236,10 @@ namespace {
       return _InterlockedExchange(&value_, 1) == 0;
     }
     bool try_acquire_duffs_spinlock_for(jem_u64_t timeout_us) {
-      return try_acquire_duffs_spinlock_until(spinlock, deadline_t::from_timeout_us(timeout_us));
+      return try_acquire_duffs_spinlock_until(deadline_t::from_timeout_us(timeout_us));
     }
     void release_duffs_spinlock() {
-      _InterlockedExchange(&spinlock, 0);
+      _InterlockedExchange(&value_, 0);
     }
 
   public:
@@ -256,21 +257,30 @@ namespace {
     atomic_flag_t() = default;
     atomic_flag_t(jem_u32_t val) noexcept : value_(val){ }
 
-    void set() noexcept { }
-    bool test() const noexcept { }
-    bool set_and_test() noexcept { }
+    void set() noexcept {
+      value_.store(1);
+      value_.notify_all();
+    }
+    bool test() const noexcept {
+      return value_.load() == 1;
+    }
+    bool set_and_test() noexcept {
+      return value_.exchange(1) == 1;
+    }
 
-    void reset() noexcept { }
+    void reset() noexcept {
+      value_.store(0);
+    }
 
-    void wait() const noexcept {}
+    void wait() const noexcept {
+      value_.wait(0);
+    }
     bool wait_for(jem_u64_t timeout_us) const noexcept {
-      return atomic_wait(value_, 1, deadline_t::from_timeout_us(timeout_us));
+      return atomic_wait(value_, 0, deadline_t::from_timeout_us(timeout_us));
     }
     bool wait_until(deadline_t deadline) const noexcept {
       return atomic_wait(value_, 0, deadline);
     }
-
-
   };
 
   template <typename IntType>
@@ -346,6 +356,10 @@ namespace {
       return std::atomic_fetch_xor(&bits, flags);
     }
 
+    JEM_nodiscard JEM_forceinline flag_type fetch_and_clear() noexcept {
+      return bits.exchange(0);
+    }
+
     JEM_forceinline void set(flag_type flags) noexcept {
       std::atomic_fetch_or(&bits, flags);
     }
@@ -355,6 +369,14 @@ namespace {
     JEM_forceinline void flip(flag_type flags) noexcept {
       std::atomic_fetch_xor(&bits, flags);
     }
+
+    JEM_forceinline void clear() noexcept {
+      reset();
+    }
+    JEM_forceinline void clear_and_set(flag_type flags) noexcept {
+      bits.store(flags);
+    }
+
     JEM_forceinline void reset() noexcept {
       bits.store(0);
     }
