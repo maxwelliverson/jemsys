@@ -366,7 +366,7 @@ namespace agt{
     semaphore_t                availableSlotSema;    // [1]: 8;  (0,   8)
     binary_semaphore_t         producerSemaphore;    // [1]: 1;  (8,   9)
                                                      // [1]: 7;  (9,  16) - alignment
-    agt_message_t              producerPreviousMsg;  // [1]: 8;  (16, 24)
+    agt_message_t producerPreviousQueuedMsg;  // [1]: 8;  (16, 24)
   JEM_cache_aligned
     semaphore_t                queuedMessageSema;    // [2]: 8;  (0,   8)
     binary_semaphore_t         consumerSemaphore;    // [2]: 1;  (8,   9)
@@ -374,7 +374,8 @@ namespace agt{
     agt_message_t              consumerPreviousMsg;  // [2]: 8;  (16, 24)
     agt_message_t              consumerLastFreeSlot; // [2]: 8;  (24, 32)
   JEM_cache_aligned
-    std::atomic<agt_message_t> nextFreeSlot;         // [3]: 8;  (0,   8)
+    std::atomic<agt_message_t>
+        producerNextFreeSlot;         // [3]: 8;  (0,   8)
     PFN_mailbox_dtor           pfnDtor;              // [3]: 8;  (8,  16)
     void*                      dtorUserData;         // [3]: 8;  (16, 24)
   };

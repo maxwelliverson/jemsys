@@ -109,7 +109,9 @@ namespace {
   bool atomic_wait(const std::atomic<T>& target, std::type_identity_t<T> value, deadline_t deadline) noexcept {
     jem_u32_t backoff = 0;
     bool matchesValue = target.load() == value;
-    while ( matchesValue && deadline.has_not_passed() ) {
+    while ( matchesValue ) {
+      if ( deadline.has_passed() )
+        return false;
       switch (backoff) {
         default:
           PAUSE_x32();
@@ -135,6 +137,7 @@ namespace {
       ++backoff;
       matchesValue = target.load() == value;
     }
+    return true;
   }
   /*template <typename T>
   bool atomic_wait_for(const std::atomic<T>& target, std::type_identity_t<T> value, jem_u64_t timeout_us) noexcept {

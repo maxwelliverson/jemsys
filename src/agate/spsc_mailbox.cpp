@@ -9,9 +9,10 @@ using namespace agt;
 
 namespace {
   inline agt_message_t get_free_slot(local_spsc_mailbox* mailbox) noexcept {
-    agt_message_t thisMsg = mailbox->nextFreeSlot.load(std::memory_order_acquire);
-    while ( !mailbox->nextFreeSlot.compare_exchange_weak(thisMsg, thisMsg->next.address) );
-    return thisMsg;
+
+    agt_message_t msg = mailbox->producerNextFreeSlot;
+    mailbox->producerNextFreeSlot = msg->next.address;
+    return msg;
   }
   inline agt_message_t get_queued_message(local_spsc_mailbox* mailbox) noexcept {
     agt_message_t message = mailbox->consumerPreviousMsg->next.address;
@@ -74,17 +75,17 @@ void          JEM_stdcall agt::impl::local_spsc_release_slot(agt_mailbox_t _mail
     message->next.address = newNextSlot;
   } while( !mailbox->nextFreeSlot.compare_exchange_weak(newNextSlot, message) );*/
   auto message = to_message(slot);
-  mailbox->consumerLastFreeSlot->next.address = message;
-  mailbox->consumerLastFreeSlot = message;
+  message->next.address = mailbox->producerNextFreeSlot;
+  mailbox->producerNextFreeSlot = message;
   mailbox->slotSemaphore.release();
 }
 agt_signal_t  JEM_stdcall agt::impl::local_spsc_send(agt_mailbox_t _mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept {
   auto message = to_message(slot);
   message->signal.flags.set(flags | agt::message_in_use);
-  mailbox->producerPreviousMsg->next.address = message;
-  mailbox->producerPreviousMsg = message;
+  mailbox->producerPreviousQueuedMsg->next.address = message;
+  mailbox->producerPreviousQueuedMsg = message;
 
-  mailbox->queuedMessageSema.release();
+  mailbox->queuedMessages.release();
 
   if ( flags & AGT_IGNORE_RESULT )
     return nullptr;
@@ -93,14 +94,14 @@ agt_signal_t  JEM_stdcall agt::impl::local_spsc_send(agt_mailbox_t _mailbox, agt
 agt_message_t JEM_stdcall agt::impl::local_spsc_receive(agt_mailbox_t _mailbox, jem_u64_t timeout_us) JEM_noexcept {
   switch ( timeout_us ) {
     case JEM_WAIT:
-      mailbox->queuedMessageSema.acquire();
+      mailbox->queuedMessages.acquire();
       break;
     case JEM_DO_NOT_WAIT:
-      if ( !mailbox->queuedMessageSema.try_acquire() )
+      if ( !mailbox->queuedMessages.try_acquire() )
         return nullptr;
       break;
     default:
-      if ( !mailbox->queuedMessageSema.try_acquire_for(timeout_us) )
+      if ( !mailbox->queuedMessages.try_acquire_for(timeout_us) )
         return nullptr;
   }
   return get_queued_message(mailbox);
@@ -108,17 +109,33 @@ agt_message_t JEM_stdcall agt::impl::local_spsc_receive(agt_mailbox_t _mailbox, 
 
 
 void          JEM_stdcall agt::impl::local_spsc_return_message(agt_mailbox_t _mailbox, agt_message_t message) JEM_noexcept {
-
-
-  auto lastFreeSlot = mailbox->lastFreeSlot.load();
-  do {
-    lastFreeSlot->next.address = message;
-  } while( !mailbox->lastFreeSlot.compare_exchange_weak(lastFreeSlot, message) );
-  // FIXME: I think this is still a potential bug, though it might be one thats hard to detect....
-  lastFreeSlot->next.address = message; // while this might seem redundant, it's needed for this to be totally robust.
-
+  auto lastFreeSlot = mailbox->lastFreeSlot.exchange(message);
+  lastFreeSlot->next.address = message;
   mailbox->slotSemaphore.release();
 }
+
+
+
+
+agt_status_t  JEM_stdcall impl::shared_spsc_attach(agt_mailbox_t mailbox_, bool isSender, jem_u64_t timeout_us) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void          JEM_stdcall impl::shared_spsc_detach(agt_mailbox_t mailbox_, bool isSender) noexcept {}
+
+agt_slot_t    JEM_stdcall impl::shared_spsc_acquire_slot(agt_mailbox_t mailbox_, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept {
+  return nullptr;
+}
+void          JEM_stdcall impl::shared_spsc_release_slot(agt_mailbox_t mailbox_, agt_slot_t slot) JEM_noexcept {}
+agt_signal_t  JEM_stdcall impl::shared_spsc_send(agt_mailbox_t mailbox_, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept {
+  return nullptr;
+}
+agt_message_t JEM_stdcall impl::shared_spsc_receive(agt_mailbox_t mailbox_, jem_u64_t timeout_us) JEM_noexcept {
+  return nullptr;
+}
+
+void          JEM_stdcall impl::shared_spsc_return_message(agt_mailbox_t mailbox_, agt_message_t message) noexcept {}
+
+
 
 
 /*

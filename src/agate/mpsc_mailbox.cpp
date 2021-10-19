@@ -132,6 +132,29 @@ void          JEM_stdcall impl::local_mpsc_return_message(agt_mailbox_t mailbox_
 
 
 
+
+agt_status_t  JEM_stdcall impl::shared_mpsc_attach(agt_mailbox_t mailbox_, bool isSender, jem_u64_t timeout_us) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void          JEM_stdcall impl::shared_mpsc_detach(agt_mailbox_t mailbox_, bool isSender) noexcept {}
+
+agt_slot_t    JEM_stdcall impl::shared_mpsc_acquire_slot(agt_mailbox_t mailbox_, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept {
+  return nullptr;
+}
+void          JEM_stdcall impl::shared_mpsc_release_slot(agt_mailbox_t mailbox_, agt_slot_t slot) JEM_noexcept {}
+agt_signal_t  JEM_stdcall impl::shared_mpsc_send(agt_mailbox_t mailbox_, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept {
+  return nullptr;
+}
+agt_message_t JEM_stdcall impl::shared_mpsc_receive(agt_mailbox_t mailbox_, jem_u64_t timeout_us) JEM_noexcept {
+  return nullptr;
+}
+
+void          JEM_stdcall impl::shared_mpsc_return_message(agt_mailbox_t mailbox_, agt_message_t message) noexcept {}
+
+
+
+
+
 /*
 
 namespace {

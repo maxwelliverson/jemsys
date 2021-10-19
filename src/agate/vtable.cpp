@@ -140,9 +140,9 @@ JEM_api void          JEM_stdcall agt_mailbox_release_slot(agt_mailbox_t mailbox
   assert( mailbox->kind < MAILBOX_KIND_MAX_ENUM );
   vtable_table[mailbox->kind].pfn_release_slot(mailbox, slot);
 }
-JEM_api agt_signal_t  JEM_stdcall agt_mailbox_send(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept {
+JEM_api agt_signal_t  JEM_stdcall agt_mailbox_send(agt_mailbox_t mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept {
   assert( mailbox->kind < MAILBOX_KIND_MAX_ENUM );
-  return vtable_table[mailbox->kind].pfn_send(mailbox, slot);
+  return vtable_table[mailbox->kind].pfn_send(mailbox, slot, flags);
 }
 JEM_api agt_message_t JEM_stdcall agt_mailbox_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept {
   assert( mailbox->kind < MAILBOX_KIND_MAX_ENUM );

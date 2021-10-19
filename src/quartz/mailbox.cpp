@@ -50,11 +50,17 @@ qtz_message_action_t qtz_mailbox::proc_alloc_mailbox(qtz_request_t request) noex
 
   auto payload = request->payload_as<qtz::alloc_mailbox_request>();
   void* mailboxAddress;
+  void* slotsAddress;
   std::string_view name{ payload->name, std::strlen(payload->name) };
   // dict_iter_t dictEntry;
 
   if ( payload->isShared ) {
     request->status = QTZ_ERROR_IPC_SUPPORT_UNAVAILABLE;
+    goto exit;
+  }
+
+  if ( payload->slotSize == 0 ) {
+    request->status = QTZ_ERROR_BAD_SIZE;
     goto exit;
   }
 
@@ -69,10 +75,20 @@ qtz_message_action_t qtz_mailbox::proc_alloc_mailbox(qtz_request_t request) noex
 
   mailboxAddress = this->mailboxPool.alloc_block();
 
+
   if ( !mailboxAddress ) {
     request->status = QTZ_ERROR_BAD_ALLOC;
     /*if ( !name.empty() )
       namedHandles.erase(dictEntry);*/
+    goto exit;
+  }
+
+
+  slotsAddress = _aligned_malloc(payload->slotSize * payload->slotCount, JEM_CACHE_LINE);
+
+  if ( !slotsAddress ) {
+    this->mailboxPool.free_block(mailboxAddress);
+    request->status = QTZ_ERROR_BAD_ALLOC;
     goto exit;
   }
 
@@ -82,8 +98,11 @@ qtz_message_action_t qtz_mailbox::proc_alloc_mailbox(qtz_request_t request) noex
     desc.isShared = payload->isShared;
   }*/
 
-  *payload->handle = mailboxAddress;
-  request->status = QTZ_SUCCESS;
+  *payload->handle       = mailboxAddress;
+  std::memcpy(mailboxAddress, &slotsAddress, sizeof(void*));
+  // *(void**)mailboxAddress = slotsAddress;
+  // *payload->slotsAddress = slotsAddress;
+  request->status        = QTZ_SUCCESS;
 
 
   exit:
@@ -95,7 +114,9 @@ qtz_message_action_t qtz_mailbox::proc_free_mailbox(qtz_request_t request) noexc
 
   // auto handleEntry = this->namedHandles.find(payload->name);
 
-
+  this->mailboxPool.free_block(payload->handle);
+  // Note: this is only valid for local mailboxes. Fix when implementing IPC support
+  _aligned_free(payload->slotsAddress);
 
   return QTZ_ACTION_NOTIFY_LISTENER;
 }
@@ -178,12 +199,12 @@ qtz_message_action_t qtz_mailbox::proc_execute_callback(qtz_request_t request) n
   auto payload = request->payload_as<qtz::execute_callback_request>();
   assert( payload->structLength == sizeof(qtz::execute_callback_request) );
   payload->callback(payload->userData);
-  return QTZ_ACTION_DISCARD;
+  return QTZ_ACTION_NOTIFY_LISTENER;
 }
 qtz_message_action_t qtz_mailbox::proc_execute_callback_with_buffer(qtz_request_t request) noexcept {
   auto payload = request->payload_as<qtz::execute_callback_with_buffer_request>();
   payload->callback(payload->userData);
-  return QTZ_ACTION_DISCARD;
+  return QTZ_ACTION_NOTIFY_LISTENER;
 }
 
 
@@ -316,10 +337,8 @@ JEM_api qtz_status_t  JEM_stdcall qtz_request_wait(qtz_request_t message, jem_u6
   return result;
 }
 JEM_api void          JEM_stdcall qtz_request_discard(qtz_request_t message) {
-  if ( message->is_real_message() ) [[likely]] {
-    auto mailbox = message->parent_mailbox();
-    mailbox->discard_request(message);
-  }
+  auto mailbox = message->parent_mailbox();
+  mailbox->discard_request(message);
 }
 
 JEM_api qtz_request_t JEM_stdcall qtz_send(void* sender, qtz_local_id_t messageId, const void* messageBuffer, jem_u32_t priority, jem_u64_t us_timeout) JEM_noexcept {

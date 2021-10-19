@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <new>
+#include <vector>
 
 namespace jem{
   class default_allocator{
@@ -79,10 +80,13 @@ namespace jem{
 
     inline slab* alloc_slab() const noexcept {
 #if defined(_WIN32)
-      return static_cast<slab*>(_aligned_malloc(slabAlignment, slabAlignment));
+      auto result = static_cast<slab*>(_aligned_malloc(slabAlignment, slabAlignment));
+
 #else
-      return static_cast<slab*>(std::aligned_alloc(slabAlignment, slabAlignment));
+      auto result = static_cast<slab*>(std::aligned_alloc(slabAlignment, slabAlignment));
 #endif
+      std::memset(result, 0, slabAlignment);
+      return result;
     }
     inline void free_slab(slab* slab) const noexcept {
 #if defined(_WIN32)
@@ -99,6 +103,10 @@ namespace jem{
       return reinterpret_cast<slab*>(reinterpret_cast<uintptr_t>(block) & slabAlignmentMask);
     }
 
+    inline jem_size_t indexOfBlock(slab* s, block_t block) const noexcept {
+      return ((std::byte*)block - (std::byte*)s) / blockSize;
+    }
+
 
 
     inline bool isEmpty(const slab* s) const noexcept {
@@ -109,6 +117,21 @@ namespace jem{
     }
 
 
+    inline void assertSlabIsValid(slab* s) const noexcept {
+      if ( s->availableBlocks == 0 )
+        return;
+      jem_size_t blockCount = 1;
+      std::vector<bool> blocks;
+      blocks.resize(blocksPerSlab + 1);
+      block_t currentBlock = s->nextFreeBlock;
+      while (blockCount < s->availableBlocks) {
+        jem_size_t index = indexOfBlock(s, currentBlock);
+        assert( !blocks[index] );
+        blocks[index] = true;
+        ++blockCount;
+        currentBlock = (block_t)*currentBlock;
+      }
+    }
 
 
     inline void makeNewSlab() noexcept {
@@ -122,7 +145,7 @@ namespace jem{
           slabStackBase = newStackBase;
           slabStackTop  = newStackBase + newStackSize;
           slabStackHead = newStackBase + oldStackSize;
-          fullStackHead = newStackBase + oldStackSize;
+          fullStackOnePastTop = newStackBase + oldStackSize;
 
           for ( slab** entry = newStackBase; entry != slabStackHead; ++entry )
             (*entry)->stackPosition = entry;
@@ -131,13 +154,14 @@ namespace jem{
 
       const auto s = slabStackHead;
 
-      allocSlab = *s;
+
 
       *s = alloc_slab();
       (*s)->availableBlocks = static_cast<jem_u32_t>(blocksPerSlab);
       (*s)->nextFreeBlock   = lookupBlock(*s, 1);
       (*s)->stackPosition = s;
 
+      allocSlab = *s;
 
       uint32_t i = 1;
       while (  i < blocksPerSlab ) {
@@ -145,19 +169,35 @@ namespace jem{
         *block = lookupBlock(*s, ++i);
       }
 
+      assertSlabIsValid(*s);
+
       ++slabStackHead;
     }
 
     inline void findAllocSlab() noexcept {
       if ( isFull(allocSlab) ) {
-        if (fullStackHead == slabStackHead ) [[unlikely]] {
+        if (fullStackOnePastTop == slabStackHead ) {
           makeNewSlab();
         }
         else {
-          if ( allocSlab != *fullStackHead )
-            swapSlabs(allocSlab, *fullStackHead);
-          allocSlab = *++fullStackHead;
+          if ( allocSlab != *fullStackOnePastTop)
+            swapSlabs(allocSlab, *fullStackOnePastTop);
+          allocSlab = *++fullStackOnePastTop;
         }
+      }
+    }
+
+    inline void pruneSlabs(slab* parentSlab) noexcept {
+      if ( isEmpty(parentSlab) ) {
+        if ( freeSlab && isEmpty(freeSlab) ) [[unlikely]] {
+          removeStackEntry(freeSlab);
+        }
+        freeSlab = parentSlab;
+      }
+      else if (parentSlab->stackPosition < fullStackOnePastTop) [[unlikely]] {
+        --fullStackOnePastTop;
+        if ( parentSlab->stackPosition != fullStackOnePastTop)
+          swapSlabs(parentSlab, *fullStackOnePastTop);
       }
     }
 
@@ -182,7 +222,7 @@ namespace jem{
     slab** slabStackBase;
     slab** slabStackHead;
     slab** slabStackTop;
-    slab** fullStackHead;
+    slab** fullStackOnePastTop;
     slab*  allocSlab;
     slab*  freeSlab;
     size_t slabAlignment;
@@ -195,6 +235,7 @@ namespace jem{
           slabStackBase(alloc_array<slab*>(InitialStackSize, StackAlignment)),
           slabStackHead(slabStackBase),
           slabStackTop(slabStackBase + InitialStackSize),
+          fullStackOnePastTop(slabStackHead),
           allocSlab(),
           freeSlab(),
           slabAlignment(std::bit_ceil(this->blockSize * blocksPerSlab)),
@@ -225,23 +266,17 @@ namespace jem{
 
     }
     void  free_block(void* block_) noexcept {
+
       auto* parentSlab = lookupSlab(block_);
+      assert( ((uintptr_t)block_ - (uintptr_t)parentSlab) % blockSize == 0);
       auto  block = static_cast<block_t>(block_);
+
       *block = parentSlab->nextFreeBlock;
       parentSlab->nextFreeBlock = block;
       ++parentSlab->availableBlocks;
 
-      if ( isEmpty(parentSlab) ) {
-        if ( isEmpty(freeSlab) ) [[unlikely]] {
-          removeStackEntry(freeSlab);
-        }
-        freeSlab = parentSlab;
-      }
-      else if (parentSlab->stackPosition < fullStackHead ) [[unlikely]] {
-        --fullStackHead;
-        if ( parentSlab->stackPosition != fullStackHead )
-          swapSlabs(parentSlab, *fullStackHead);
-      }
+      pruneSlabs(parentSlab);
+
       allocSlab = parentSlab;
     }
 

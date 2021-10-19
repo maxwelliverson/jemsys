@@ -189,27 +189,25 @@ namespace agt{
     jem_size_t         slotSize;
   };
   struct local_spsc_mailbox : local_mailbox {
-    jem_size_t                 payloadOffset;        // [0]: 8;  (40, 48)
+    binary_semaphore_t         consumerSemaphore;    // [2]: 1;  (8,   9)
+    binary_semaphore_t         producerSemaphore;    // [1]: 1;  (8,   9)
     JEM_cache_aligned
     semaphore_t                slotSemaphore;    // [1]: 8;  (0,   8)
-    binary_semaphore_t         producerSemaphore;    // [1]: 1;  (8,   9)
-                                         // [1]: 7;  (9,  16) - alignment
-    agt_message_t              producerPreviousMsg;  // [1]: 8;  (16, 24)
+    agt_message_t              producerPreviousQueuedMsg;  // [1]: 8;  (16, 24)
+    agt_message_t              producerNextFreeSlot;         // [3]: 8;  (0,   8)
+
     JEM_cache_aligned
-    semaphore_t                queuedMessageSema;    // [2]: 8;  (0,   8)
-    binary_semaphore_t         consumerSemaphore;    // [2]: 1;  (8,   9)
-                                         // [2]: 7;  (9,  16) - alignment
+    semaphore_t                queuedMessages;    // [2]: 8;  (0,   8)
     agt_message_t              consumerPreviousMsg;  // [2]: 8;  (16, 24)
-    agt_message_t              consumerLastFreeSlot; // [2]: 8;  (24, 32)
+
     JEM_cache_aligned
-    std::atomic<agt_message_t> nextFreeSlot;         // [3]: 8;  (0,   8)
+    std::atomic<agt_message_t> lastFreeSlot; // [2]: 8;  (24, 32)
   };
   struct local_mpsc_mailbox : local_mailbox {
 
-    shared_semaphore_t slotSemaphore;
+    semaphore_t                slotSemaphore;
     JEM_cache_aligned
     std::atomic<agt_message_t> nextFreeSlot;
-    jem_size_t                 payloadOffset;
 
     JEM_cache_aligned
     std::atomic<agt_message_t> lastQueuedSlot;
@@ -224,30 +222,31 @@ namespace agt{
   struct local_spmc_mailbox : local_mailbox {
     semaphore_t        slotSemaphore;
     JEM_cache_aligned
-    atomic_size_t      nextFreeSlot;
+    std::atomic<agt_message_t> lastFreeSlot;
+    agt_message_t              nextFreeSlot;
+    agt_message_t              lastQueuedSlot;
     JEM_cache_aligned
-    atomic_size_t      lastQueuedSlot;
+    std::atomic<agt_message_t> previousReceivedMessage;
     JEM_cache_aligned                          // 192 - alignment
-    atomic_u32_t       queuedSinceLastCheck; // 196
-    jem_u32_t          minQueuedMessages;    // 200
+    semaphore_t        queuedMessages;
     jem_u32_t          maxConsumers;         // 220
     binary_semaphore_t producerSemaphore;    // 221
                                          // 224 - alignment
     semaphore_t        consumerSemaphore;    // 240
   };
   struct local_mpmc_mailbox : local_mailbox {
-    semaphore_t      slotSemaphore;
+    semaphore_t                slotSemaphore;
     JEM_cache_aligned
-    atomic_size_t    nextFreeSlot;
+    std::atomic<agt_message_t> nextFreeSlot;
+    std::atomic<agt_message_t> lastQueuedSlot;
     JEM_cache_aligned
-    atomic_size_t    lastQueuedSlot;
-    JEM_cache_aligned                        // 192 - alignment
-    atomic_u32_t     queuedSinceLastCheck; // 196
-    jem_u32_t        minQueuedMessages;    // 200
-    jem_u32_t        maxProducers;         // 220
-    jem_u32_t        maxConsumers;         // 224
-    semaphore_t      producerSemaphore;    // 240
-    semaphore_t      consumerSemaphore;    // 256
+    std::atomic<agt_message_t> previousReceivedMessage;
+    JEM_cache_aligned
+    semaphore_t                queuedMessages; // 196
+    jem_u32_t                  maxProducers;         // 220
+    jem_u32_t                  maxConsumers;         // 224
+    semaphore_t                producerSemaphore;    // 240
+    semaphore_t                consumerSemaphore;    // 256
   };
 
 
@@ -332,9 +331,10 @@ namespace agt{
     jem_size_t               availableSlotCount;
     jem_size_t               queuedMessageCount;
     agt_message_t            nextFreeSlot;
-    agt_message_t            prevAcquiredSlot;
+    agt_message_t            prevReceivedMessage;
     agt_message_t            prevQueuedMessage;
-    agt_message_t            prevReleasedSlot;
+    bool                     isSenderClaimed;
+    bool                     isReceiverClaimed;
   };
 
   struct local_agent : agt_agent {
