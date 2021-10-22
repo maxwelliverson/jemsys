@@ -40,6 +40,9 @@ add_library(jemsys library.c include/jemsys.h)
 add_executable(TEST.quartz.logging test/quartz/logging.cpp)
 target_include_directories(TEST.quartz.logging PUBLIC include src)
 
+add_executable(SpeedTest test/quartz/speed_test.cpp)
+target_include_directories(SpeedTest PUBLIC include src)
+
 add_executable(TEST.agate.mailbox test/agate/solo_mailbox.cpp)
 
 target_include_directories(TEST.agate.mailbox PUBLIC include src)
@@ -52,10 +55,12 @@ target_include_directories(TEST.jemsys PUBLIC include src)
 #target_link_libraries(jemsys.old.agate PUBLIC jemsys.internal)
 
 target_link_libraries(jemsys.quartz PUBLIC jemsys.internal)
-target_link_libraries(jemsys.old.agate PUBLIC jemsys.internal)
-target_link_libraries(jemsys.agate  PUBLIC jemsys.internal jemsys.quartz)
+target_link_libraries(jemsys.agate  PUBLIC #[[jemsys.internal ]] jemsys.quartz)
 target_link_libraries(jemsys.opal   PUBLIC jemsys.internal)
-target_link_libraries(TEST.quartz.logging PUBLIC jemsys.internal jemsys.quartz)
+target_link_libraries(jemsys        PUBLIC jemsys.quartz jemsys.agate jemsys.opal)
+
+target_link_libraries(SpeedTest     PUBLIC jemsys.quartz)
+target_link_libraries(TEST.quartz.logging PUBLIC jemsys.internal jemsys.quartz jemsys.agate)
 target_link_libraries(TEST.agate.mailbox PUBLIC jemsys.agate jemsys.quartz asan)
 
 target_link_libraries(TEST.jemsys   PUBLIC jemsys.internal jemsys.quartz jemsys.agate jemsys.silica)

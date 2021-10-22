@@ -2,6 +2,8 @@
 // Created by maxwe on 2021-10-18.
 //
 
+#undef NDEBUG
+
 #include <agate.h>
 #include <quartz.h>
 
@@ -22,7 +24,7 @@ enum agt_mailbox_kind_t {
 };
 
 void test_create_mpmc_mailbox_sync() {
-  agt_mailbox_t mailbox;
+  agt_mailbox_t mailbox = nullptr;
   agt_create_mailbox_params_t params;
 
 
@@ -65,7 +67,7 @@ void test_create_mpmc_mailbox_sync() {
 }
 
 void test_create_mpsc_mailbox_sync() {
-  agt_mailbox_t mailbox;
+  agt_mailbox_t mailbox = nullptr;
   agt_create_mailbox_params_t params;
 
   params.scope = AGT_MAILBOX_SCOPE_LOCAL;
@@ -103,7 +105,7 @@ void test_create_mpsc_mailbox_sync() {
 }
 
 void test_create_spmc_mailbox_sync() {
-  agt_mailbox_t mailbox;
+  agt_mailbox_t mailbox = nullptr;
   agt_create_mailbox_params_t params;
 
   params.scope = AGT_MAILBOX_SCOPE_LOCAL;
@@ -139,7 +141,7 @@ void test_create_spmc_mailbox_sync() {
 }
 
 void test_create_spsc_mailbox_sync() {
-  agt_mailbox_t mailbox;
+  agt_mailbox_t mailbox = nullptr;
   agt_create_mailbox_params_t params;
 
   params.scope = AGT_MAILBOX_SCOPE_LOCAL;
@@ -171,7 +173,7 @@ void test_create_spsc_mailbox_sync() {
 }
 
 void test_create_private_mailbox_sync() {
-  agt_mailbox_t mailbox;
+  agt_mailbox_t mailbox = nullptr;
   agt_create_mailbox_params_t params;
 
   params.scope = AGT_MAILBOX_SCOPE_PRIVATE;
@@ -202,8 +204,8 @@ void test_create_private_mailbox_sync() {
 
 
 void test_create_mpmc_mailbox_async() {
-  agt_mailbox_t mailbox;
-  qtz_request_t request;
+  agt_mailbox_t mailbox = nullptr;
+  qtz_request_t request = nullptr;
   agt_create_mailbox_params_t params;
 
   params.scope = AGT_MAILBOX_SCOPE_LOCAL;
@@ -246,7 +248,7 @@ void test_create_mpmc_mailbox_async() {
 }
 
 void test_create_mpsc_mailbox_async() {
-  agt_mailbox_t mailbox;
+  agt_mailbox_t mailbox = nullptr;
   qtz_request_t request;
   agt_create_mailbox_params_t params;
 
@@ -286,7 +288,7 @@ void test_create_mpsc_mailbox_async() {
 }
 
 void test_create_spmc_mailbox_async() {
-  agt_mailbox_t mailbox;
+  agt_mailbox_t mailbox = nullptr;
   qtz_request_t request;
   agt_create_mailbox_params_t params;
 
@@ -325,7 +327,7 @@ void test_create_spmc_mailbox_async() {
 }
 
 void test_create_spsc_mailbox_async() {
-  agt_mailbox_t mailbox;
+  agt_mailbox_t mailbox = nullptr;
   qtz_request_t request;
   agt_create_mailbox_params_t params;
 
@@ -360,7 +362,7 @@ void test_create_spsc_mailbox_async() {
 }
 
 void test_create_private_mailbox_async() {
-  agt_mailbox_t mailbox;
+  agt_mailbox_t mailbox = nullptr;
   qtz_request_t request;
   agt_create_mailbox_params_t params;
 

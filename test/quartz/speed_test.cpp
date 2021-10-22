@@ -1,5 +1,5 @@
 //
-// Created by maxwe on 2021-09-25.
+// Created by maxwe on 2021-10-21.
 //
 
 #include <quartz.h>
@@ -11,6 +11,11 @@
 #include <semaphore>
 #include <iostream>
 #include <charconv>
+
+std::chrono::high_resolution_clock::time_point g_procStartTime;
+std::chrono::high_resolution_clock::time_point g_sendStartTime;
+std::chrono::high_resolution_clock::time_point g_sendEndTime;
+std::chrono::high_resolution_clock::time_point g_procEndTime;
 
 using namespace std::chrono_literals;
 
@@ -36,28 +41,28 @@ inline void log(std::string_view fmt, Args&& ...args) noexcept {
   delete[] buffer;
 }*/
 
-template <size_t N>
-inline void print_to_cursor(char*& cursor, const char (&string)[N]) noexcept {
-  std::memcpy(cursor, string, N - 1);
-  cursor += (N - 1);
-}
-inline void print_to_cursor(char*& cursor, char* const bufferEnd, size_t n) noexcept {
-  auto&& [newCursor, result] = std::to_chars(cursor, bufferEnd, n);
-  cursor = newCursor;
-}
-inline void print_to_cursor(char*& cursor, char* const bufferEnd, const std::chrono::microseconds& us) noexcept {
-  print_to_cursor(cursor, bufferEnd, us.count());
-  print_to_cursor(cursor, "us");
-}
-inline void end_string(char* cursor) noexcept {
-  *cursor = '\0';
-}
-
-inline void execute_ops_on_threads(jem_size_t N) noexcept {
+inline void execute_ops_on_threads(jem_size_t N, jem_size_t messagesPerThread) noexcept {
   auto startTime = std::chrono::high_resolution_clock::now();
 
   std::vector<std::thread> threads;
-  std::barrier<>           threadBarrier{(ptrdiff_t)N};
+  std::barrier             entryBarrier{(ptrdiff_t)N, []() noexcept {
+                              struct execute_callback_request{
+                                size_t structLength;
+                                void(* callback)(void*);
+                                void*  userData;
+                              } callbackRequestBuffer{
+                                .structLength = sizeof(execute_callback_request),
+                                .callback     = [](void*){
+                                  g_procStartTime = std::chrono::high_resolution_clock::now();
+                                },
+                                .userData     = nullptr
+                              };
+
+                              qtz_discard(qtz_send(QTZ_THIS_PROCESS, QTZ_DEFAULT_PRIORITY, 21, &callbackRequestBuffer, JEM_WAIT));
+
+                              g_sendStartTime = std::chrono::high_resolution_clock::now();
+                            }};
+  std::barrier             finishBarrier{(ptrdiff_t)N, []() noexcept { g_sendEndTime = std::chrono::high_resolution_clock::now(); }};
   threads.reserve(N);
 
   struct payload_t{
@@ -71,16 +76,18 @@ inline void execute_ops_on_threads(jem_size_t N) noexcept {
   qtz_send(QTZ_THIS_PROCESS, 1, 2, &setTimePayload, JEM_WAIT);
 
   for ( size_t i = 0; i < N; ++i ) {
-    threads.emplace_back([=](std::barrier<>& barrier){
+    threads.emplace_back([&]() mutable {
 
       agt_set_self((agt_agent_t)get_thread_id());
 
-      barrier.arrive_and_wait();
+      jem_size_t messageCount = messagesPerThread;
 
-      jem_size_t N2 = N * N;
+      entryBarrier.arrive_and_wait();
 
-      for ( jem_size_t j = 0; j < N2; ++j ) {
-        struct buffer_t{
+
+
+      for ( jem_size_t j = 0; j < messageCount; ++j ) {
+        /*struct buffer_t{
           size_t bufferLength;
           char   data[72];
         } buffer;
@@ -97,11 +104,13 @@ inline void execute_ops_on_threads(jem_size_t N) noexcept {
         // end_string(cursor);
 
         qtz_send(QTZ_THIS_PROCESS, QTZ_DEFAULT_PRIORITY, 20, &buffer, JEM_WAIT);
-
-        // log("thread#{}, msg#{}, @{}", i, j, std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - startTime));
+*/
+        qtz_send(QTZ_THIS_PROCESS, QTZ_DEFAULT_PRIORITY, 0, nullptr, JEM_WAIT);
       }
 
-    }, std::ref(threadBarrier));
+      finishBarrier.arrive_and_wait();
+
+    });
   }
 
   for ( auto& thread : threads )
@@ -116,7 +125,7 @@ inline void execute_ops_on_threads(jem_size_t N) noexcept {
   } callbackRequestBuffer{
     .structLength = sizeof(execute_callback_request),
     .callback     = [](void* sem){
-      std::cout << std::endl;
+      g_procEndTime = std::chrono::high_resolution_clock::now();
       static_cast<std::binary_semaphore*>(sem)->release();
     },
     .userData     = &isDoneProcessingRequests
@@ -127,6 +136,20 @@ inline void execute_ops_on_threads(jem_size_t N) noexcept {
   qtz_discard(qtz_send(QTZ_THIS_PROCESS, 1000, 21, &callbackRequestBuffer, JEM_WAIT));
 
   isDoneProcessingRequests.acquire();
+
+  auto totalMessages = N * messagesPerThread;
+  auto totalSendTime = g_sendEndTime - g_sendStartTime;
+  auto totalProcTime = g_procEndTime - g_procStartTime;
+  auto totalTime = g_procEndTime - g_sendStartTime;
+  auto totalSendTimePerMessage = totalSendTime / (float)totalMessages;
+  auto totalProcTimePerMessage = totalProcTime / (float)(totalMessages + 2);
+
+  std::cout << "totalMessages: " << totalMessages << "\n";
+  std::cout << "totalSendTime: " << totalSendTime << "\n";
+  std::cout << "totalProcTime: " << totalProcTime << "\n";
+  std::cout << "totalTime:     " << totalTime << "\n\n";
+  std::cout << "totalSendTimePerMessage: " << totalSendTimePerMessage << "\n";
+  std::cout << "totalProcTimePerMessage: " << totalProcTimePerMessage << std::endl;
 }
 
 int main() {
@@ -134,16 +157,14 @@ int main() {
     .kernel_version     = 0,
     .kernel_mode        = QTZ_KERNEL_INIT_CREATE_NEW,
     .kernel_access_code = "catch2-test-kernel",
-    .message_slot_count = 2047,
+    .message_slot_count = 16000,
     .process_name       = "Multithreaded Init Test Proc",
     .module_count       = 0,
     .modules            = nullptr
   };
   auto result = qtz_init(&initParams);
 
-  execute_ops_on_threads(8);
-
-  // std::this_thread::sleep_for(2s);
+  execute_ops_on_threads(6, 1000);
 
   struct kill_request{
     size_t structSize;
