@@ -74,13 +74,13 @@ JEM_begin_c_namespace
  * */
 
 
-typedef struct agt_signal*  agt_signal_t;
-typedef struct agt_message* agt_message_t;
-typedef struct agt_mailbox* agt_mailbox_t;
-typedef struct agt_agent*   agt_agent_t;
+typedef struct agt_signal*   agt_signal_t;
+typedef struct agt_message*  agt_message_t;
+typedef struct agt_mailbox*  agt_mailbox_t;
+typedef struct agt_agent*    agt_agent_t;
 
-typedef struct agt_slot*    agt_slot_t;
-typedef struct agt_actor*   agt_actor_t;
+typedef struct agt_mailslot* agt_mailslot_t;
+typedef struct agt_actor*    agt_actor_t;
 
 typedef enum agt_status_t {
   AGT_SUCCESS,
@@ -136,22 +136,22 @@ typedef struct {
 } agt_create_mailbox_params_t;
 
 
-typedef agt_status_t(*agt_actor_proc_t)(agt_agent_t self, jem_u64_t messageId, void* messageData, void* actorState);
-typedef void(*agt_actor_dtor_t)(agt_agent_t self, void* actorState);
+typedef agt_status_t(*agt_actor_proc_t)(jem_u64_t messageId, void* messageData, void* actorState);
+typedef void(*agt_actor_dtor_t)(void* actorState);
 
-typedef const struct agt_mailbox_vtable{
-  agt_slot_t(   JEM_stdcall* pfn_acquire_slot)(agt_mailbox_t mailbox, jem_size_t messageSize, jem_u64_t timeout_us) JEM_noexcept;
-  void(         JEM_stdcall* pfn_release_slot)(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
-  agt_signal_t( JEM_stdcall* pfn_send)(agt_mailbox_t mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept;
+/*typedef const struct agt_mailbox_vtable{
+  agt_mailslot_t(   JEM_stdcall* pfn_acquire_slot)(agt_mailbox_t mailbox, jem_size_t messageSize, jem_u64_t timeout_us) JEM_noexcept;
+  void(         JEM_stdcall* pfn_release_slot)(agt_mailbox_t mailbox, agt_mailslot_t slot) JEM_noexcept;
+  agt_signal_t( JEM_stdcall* pfn_send)(agt_mailbox_t mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
   agt_message_t(JEM_stdcall* pfn_receive)(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
-}* agt_mailbox_vtable_t;
+}* agt_mailbox_vtable_t;*/
 
 
 
-struct agt_slot{
-  char        reserved[JEM_CACHE_LINE - (2 * sizeof(void*))];
-  agt_agent_t sender;
-  jem_u64_t   id;
+struct agt_mailslot {
+  char        reserved[JEM_CACHE_LINE - sizeof(void*)];
+
+  jem_u64_t   messageId;
   char        payload[];
 };
 struct agt_actor{
@@ -159,6 +159,12 @@ struct agt_actor{
   agt_actor_dtor_t dtor;
   void*            state;
 };
+
+typedef struct agt_message_info_t{
+  jem_size_t size;
+  jem_global_id_t messageId;
+  void* payload;
+} agt_message_info_t;
 
 
 
@@ -184,12 +190,6 @@ JEM_api agt_status_t  JEM_stdcall agt_signal_wait(agt_signal_t signal, jem_u64_t
 JEM_api void          JEM_stdcall agt_signal_discard(agt_signal_t signal) JEM_noexcept;
 
 
-/*
- * Messages
- * */
-
-JEM_api void          JEM_stdcall agt_message_raise_signal(agt_message_t message, agt_status_t status) JEM_noexcept;
-JEM_api void*         JEM_stdcall agt_message_get_payload(agt_message_t message, jem_size_t* pMessageSize) JEM_noexcept;
 
 
 
@@ -199,17 +199,22 @@ JEM_api void*         JEM_stdcall agt_message_get_payload(agt_message_t message,
  * Mailboxes
  * */
 
-JEM_api agt_status_t  JEM_stdcall agt_mailbox_attach_sender(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
-JEM_api void          JEM_stdcall agt_mailbox_detach_sender(agt_mailbox_t mailbox) JEM_noexcept;
-JEM_api agt_status_t  JEM_stdcall agt_mailbox_attach_receiver(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
-JEM_api void          JEM_stdcall agt_mailbox_detach_receiver(agt_mailbox_t mailbox) JEM_noexcept;
+JEM_api agt_status_t   JEM_stdcall agt_mailbox_attach_sender(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
+JEM_api void           JEM_stdcall agt_mailbox_detach_sender(agt_mailbox_t mailbox) JEM_noexcept;
+JEM_api agt_status_t   JEM_stdcall agt_mailbox_attach_receiver(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
+JEM_api void           JEM_stdcall agt_mailbox_detach_receiver(agt_mailbox_t mailbox) JEM_noexcept;
 
-JEM_api agt_slot_t    JEM_stdcall agt_mailbox_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
-JEM_api void          JEM_stdcall agt_mailbox_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
-JEM_api agt_signal_t  JEM_stdcall agt_mailbox_send(agt_mailbox_t mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept;
-JEM_api agt_message_t JEM_stdcall agt_mailbox_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
+JEM_api agt_mailslot_t JEM_stdcall agt_mailbox_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+JEM_api agt_signal_t   JEM_stdcall agt_mailbox_send(agt_mailbox_t mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
+JEM_api agt_message_t  JEM_stdcall agt_mailbox_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
 
-JEM_api agt_mailbox_vtable_t JEM_stdcall agt_mailbox_lookup_vtable(agt_mailbox_t mailbox) JEM_noexcept;
+/*
+ * Messages
+ * */
+
+JEM_api void          JEM_stdcall agt_return_message(agt_message_t message, agt_status_t status) JEM_noexcept;
+JEM_api void          JEM_stdcall agt_read_message(agt_message_t message, agt_message_info_t* messageInfo) JEM_noexcept;
+
 
 
 /*

@@ -36,9 +36,9 @@ namespace agt{
   using PFN_mailbox_detach_sender   = void(JEM_stdcall*)(agt_mailbox_t mailbox) noexcept;
   using PFN_mailbox_attach_receiver = agt_status_t(JEM_stdcall*)(agt_mailbox_t mailbox, jem_u64_t timeout_us) noexcept;
   using PFN_mailbox_detach_receiver = void(JEM_stdcall*)(agt_mailbox_t mailbox) noexcept;
-  using PFN_mailbox_acquire_slot    = agt_slot_t(JEM_stdcall*)(agt_mailbox_t mailbox, jem_size_t messageSize, jem_u64_t timeout_us) noexcept;
-  using PFN_mailbox_release_slot    = void(JEM_stdcall*)(agt_mailbox_t mailbox, agt_slot_t slot) noexcept;
-  using PFN_mailbox_send            = agt_signal_t(JEM_stdcall*)(agt_mailbox_t mailbox, agt_slot_t slot) noexcept;
+  using PFN_mailbox_acquire_slot    = agt_mailslot_t(JEM_stdcall*)(agt_mailbox_t mailbox, jem_size_t messageSize, jem_u64_t timeout_us) noexcept;
+  using PFN_mailbox_release_slot    = void(JEM_stdcall*)(agt_mailbox_t mailbox, agt_mailslot_t slot) noexcept;
+  using PFN_mailbox_send            = agt_signal_t(JEM_stdcall*)(agt_mailbox_t mailbox, agt_mailslot_t slot) noexcept;
   using PFN_mailbox_receive         = agt_message_t(JEM_stdcall*)(agt_mailbox_t mailbox, jem_u64_t timeout_us) noexcept;
 
 
@@ -64,6 +64,15 @@ namespace agt{
     MAILBOX_KIND_MAX_ENUM
   };
 
+  enum mailbox_role_t {
+    MAILBOX_ROLE_SENDER,
+    MAILBOX_ROLE_RECEIVER
+  };
+
+  enum mailbox_op_kind_t {
+    MAILBOX_OP_KIND_ATTACH,
+    MAILBOX_OP_KIND_DETACH
+  };
 
   /*enum object_type_id_t {
     object_type_mpsc_mailbox,
@@ -340,9 +349,9 @@ namespace agt{
   struct local_agent : agt_agent {
     virtual ~local_agent();
 
-    virtual agt_slot_t   acquire_slot(jem_size_t slot_size, jem_u64_t timeout_us) noexcept = 0;
-    virtual void         release_slot(agt_slot_t slot) noexcept = 0;
-    virtual agt_signal_t send(agt_slot_t slot) noexcept = 0;
+    virtual agt_mailslot_t   acquire_slot(jem_size_t slot_size, jem_u64_t timeout_us) noexcept = 0;
+    virtual void         release_slot(agt_mailslot_t slot) noexcept = 0;
+    virtual agt_signal_t send(agt_mailslot_t slot) noexcept = 0;
   };
   struct shared_agent : agt_agent {
 
@@ -350,12 +359,10 @@ namespace agt{
 
 
   struct JEM_cache_aligned mailbox_vtable{
-    agt_slot_t(   JEM_stdcall* pfn_acquire_slot)(agt_mailbox_t mailbox, jem_size_t messageSize, jem_u64_t timeout_us) JEM_noexcept;
-    void(         JEM_stdcall* pfn_release_slot)(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
-    agt_signal_t( JEM_stdcall* pfn_send)(agt_mailbox_t mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept;
+    agt_mailslot_t(   JEM_stdcall* pfn_acquire_slot)(agt_mailbox_t mailbox, jem_size_t messageSize, jem_u64_t timeout_us) JEM_noexcept;
+    agt_signal_t( JEM_stdcall* pfn_send)(agt_mailbox_t mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
     agt_message_t(JEM_stdcall* pfn_receive)(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
-    agt_status_t( JEM_stdcall* pfn_attach)(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
-    void(         JEM_stdcall* pfn_detach)(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
+    agt_status_t( JEM_stdcall* pfn_try_operation)(agt_mailbox_t mailbox, mailbox_role_t role, mailbox_op_kind_t opKind, jem_u64_t timeout_us) JEM_noexcept;
     void(         JEM_stdcall* pfn_return_message)(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
   };
   
@@ -365,83 +372,89 @@ namespace agt{
   
   namespace impl{
 
-    agt_status_t  JEM_stdcall local_spsc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
-    void          JEM_stdcall local_spsc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
-    agt_slot_t    JEM_stdcall local_spsc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
-    void          JEM_stdcall local_spsc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
-    agt_signal_t  JEM_stdcall local_spsc_send(agt_mailbox_t mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept;
+    agt_status_t  JEM_stdcall local_spsc_try_operation(agt_mailbox_t mailbox, mailbox_role_t role, mailbox_op_kind_t opKind, jem_u64_t timeout_us) noexcept;
+    agt_mailslot_t    JEM_stdcall local_spsc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    agt_signal_t  JEM_stdcall local_spsc_send(agt_mailbox_t mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
     agt_message_t JEM_stdcall local_spsc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall local_spsc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
 
 
+    agt_status_t  JEM_stdcall local_mpsc_try_operation(agt_mailbox_t mailbox, mailbox_role_t role, mailbox_op_kind_t opKind, jem_u64_t timeout_us) noexcept;
     agt_status_t  JEM_stdcall local_mpsc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall local_mpsc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
-    agt_slot_t    JEM_stdcall local_mpsc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
-    void          JEM_stdcall local_mpsc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
-    agt_signal_t  JEM_stdcall local_mpsc_send(agt_mailbox_t mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept;
+    agt_mailslot_t    JEM_stdcall local_mpsc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_mpsc_release_slot(agt_mailbox_t mailbox, agt_mailslot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall local_mpsc_send(agt_mailbox_t mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
     agt_message_t JEM_stdcall local_mpsc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall local_mpsc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
 
-    
+
+    agt_status_t  JEM_stdcall local_spmc_try_operation(agt_mailbox_t mailbox, mailbox_role_t role, mailbox_op_kind_t opKind, jem_u64_t timeout_us) noexcept;
     agt_status_t  JEM_stdcall local_spmc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall local_spmc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
-    agt_slot_t    JEM_stdcall local_spmc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
-    void          JEM_stdcall local_spmc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
-    agt_signal_t  JEM_stdcall local_spmc_send(agt_mailbox_t mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept;
+    agt_mailslot_t    JEM_stdcall local_spmc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_spmc_release_slot(agt_mailbox_t mailbox, agt_mailslot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall local_spmc_send(agt_mailbox_t mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
     agt_message_t JEM_stdcall local_spmc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall local_spmc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
 
 
+    agt_status_t  JEM_stdcall local_mpmc_try_operation(agt_mailbox_t mailbox, mailbox_role_t role, mailbox_op_kind_t opKind, jem_u64_t timeout_us) noexcept;
     agt_status_t  JEM_stdcall local_mpmc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall local_mpmc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
-    agt_slot_t    JEM_stdcall local_mpmc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
-    void          JEM_stdcall local_mpmc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
-    agt_signal_t  JEM_stdcall local_mpmc_send(agt_mailbox_t mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept;
+    agt_mailslot_t    JEM_stdcall local_mpmc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall local_mpmc_release_slot(agt_mailbox_t mailbox, agt_mailslot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall local_mpmc_send(agt_mailbox_t mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
     agt_message_t JEM_stdcall local_mpmc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall local_mpmc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
 
-    
+
+    agt_status_t  JEM_stdcall shared_spsc_try_operation(agt_mailbox_t mailbox, mailbox_role_t role, mailbox_op_kind_t opKind, jem_u64_t timeout_us) noexcept;
     agt_status_t  JEM_stdcall shared_spsc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall shared_spsc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
-    agt_slot_t    JEM_stdcall shared_spsc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
-    void          JEM_stdcall shared_spsc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
-    agt_signal_t  JEM_stdcall shared_spsc_send(agt_mailbox_t mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept;
+    agt_mailslot_t    JEM_stdcall shared_spsc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_spsc_release_slot(agt_mailbox_t mailbox, agt_mailslot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall shared_spsc_send(agt_mailbox_t mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
     agt_message_t JEM_stdcall shared_spsc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall shared_spsc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
 
-    
+
+    agt_status_t  JEM_stdcall shared_mpsc_try_operation(agt_mailbox_t mailbox, mailbox_role_t role, mailbox_op_kind_t opKind, jem_u64_t timeout_us) noexcept;
     agt_status_t  JEM_stdcall shared_mpsc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall shared_mpsc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
-    agt_slot_t    JEM_stdcall shared_mpsc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
-    void          JEM_stdcall shared_mpsc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
-    agt_signal_t  JEM_stdcall shared_mpsc_send(agt_mailbox_t mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept;
+    agt_mailslot_t    JEM_stdcall shared_mpsc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_mpsc_release_slot(agt_mailbox_t mailbox, agt_mailslot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall shared_mpsc_send(agt_mailbox_t mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
     agt_message_t JEM_stdcall shared_mpsc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall shared_mpsc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
 
-    
+
+    agt_status_t  JEM_stdcall shared_spmc_try_operation(agt_mailbox_t mailbox, mailbox_role_t role, mailbox_op_kind_t opKind, jem_u64_t timeout_us) noexcept;
     agt_status_t  JEM_stdcall shared_spmc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall shared_spmc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
-    agt_slot_t    JEM_stdcall shared_spmc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
-    void          JEM_stdcall shared_spmc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
-    agt_signal_t  JEM_stdcall shared_spmc_send(agt_mailbox_t mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept;
+    agt_mailslot_t    JEM_stdcall shared_spmc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_spmc_release_slot(agt_mailbox_t mailbox, agt_mailslot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall shared_spmc_send(agt_mailbox_t mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
     agt_message_t JEM_stdcall shared_spmc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall shared_spmc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
 
-    
+
+    agt_status_t  JEM_stdcall shared_mpmc_try_operation(agt_mailbox_t mailbox, mailbox_role_t role, mailbox_op_kind_t opKind, jem_u64_t timeout_us) noexcept;
     agt_status_t  JEM_stdcall shared_mpmc_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall shared_mpmc_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
-    agt_slot_t    JEM_stdcall shared_mpmc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
-    void          JEM_stdcall shared_mpmc_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
-    agt_signal_t  JEM_stdcall shared_mpmc_send(agt_mailbox_t mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept;
+    agt_mailslot_t    JEM_stdcall shared_mpmc_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall shared_mpmc_release_slot(agt_mailbox_t mailbox, agt_mailslot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall shared_mpmc_send(agt_mailbox_t mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
     agt_message_t JEM_stdcall shared_mpmc_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall shared_mpmc_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
 
 
+    agt_status_t  JEM_stdcall private_try_operation(agt_mailbox_t mailbox, mailbox_role_t role, mailbox_op_kind_t opKind, jem_u64_t timeout_us) noexcept;
     agt_status_t  JEM_stdcall private_attach(agt_mailbox_t mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall private_detach(agt_mailbox_t mailbox, bool isSender) JEM_noexcept;
-    agt_slot_t    JEM_stdcall private_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
-    void          JEM_stdcall private_release_slot(agt_mailbox_t mailbox, agt_slot_t slot) JEM_noexcept;
-    agt_signal_t  JEM_stdcall private_send(agt_mailbox_t mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept;
+    agt_mailslot_t    JEM_stdcall private_acquire_slot(agt_mailbox_t mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+    void          JEM_stdcall private_release_slot(agt_mailbox_t mailbox, agt_mailslot_t slot) JEM_noexcept;
+    agt_signal_t  JEM_stdcall private_send(agt_mailbox_t mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
     agt_message_t JEM_stdcall private_receive(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
     void          JEM_stdcall private_return_message(agt_mailbox_t mailbox, agt_message_t message) JEM_noexcept;
 
@@ -454,7 +467,7 @@ namespace agt{
 
 namespace {
 
-  inline agt_message_t to_message(agt_slot_t slot) noexcept {
+  inline agt_message_t to_message(agt_mailslot_t slot) noexcept {
     return (agt_message_t)slot;
   }
   inline agt_message_t to_message(agt_signal_t signal) noexcept {
@@ -465,7 +478,7 @@ namespace {
              ? (agt_mailbox_t)(((std::byte*)message) + message->mailbox.offset)
              : message->mailbox.address;
   }
-  inline agt_mailbox_t to_mailbox(agt_slot_t slot) noexcept {
+  inline agt_mailbox_t to_mailbox(agt_mailslot_t slot) noexcept {
     return to_mailbox(to_message(slot));
   }
 

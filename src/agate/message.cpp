@@ -87,6 +87,7 @@ JEM_api void         JEM_stdcall agt_signal_discard(agt_signal_t signal) JEM_noe
 }
 
 
+/*
 JEM_api void         JEM_stdcall agt_message_raise_signal(agt_message_t message, agt_status_t status) JEM_noexcept {
   if ( message->signal.flags.test(agt::message_ignore_result) ) {
     condemn(message);
@@ -96,11 +97,37 @@ JEM_api void         JEM_stdcall agt_message_raise_signal(agt_message_t message,
   message->signal.status = status;
   message->signal.isReady.set();
 }
-JEM_api void*        JEM_stdcall agt_message_get_payload(agt_message_t message, jem_size_t* pMessageSize) JEM_noexcept {
-  if ( pMessageSize )
-    *pMessageSize = message->payloadSize;
+JEM_api void*        JEM_stdcall agt_message_get_payload(agt_message_t message, jem_global_id_t* pMessageId) JEM_noexcept {
+  if ( pMessageId )
+    *pMessageId = message->payloadSize;
   return message->payload;
 }
+*/
+
+JEM_api void JEM_stdcall agt_return_message(agt_message_t message, agt_status_t status) JEM_noexcept {
+
+  JEM_assert( message != nullptr );
+  JEM_assume( message != nullptr );
+
+  if ( message->signal.flags.test(agt::message_ignore_result) ) {
+    condemn(message);
+    return;
+  }
+
+  message->signal.status = status;
+  message->signal.isReady.set();
+}
+JEM_api void JEM_stdcall agt_read_message(agt_message_t message, agt_message_info_t* messageInfo) JEM_noexcept {
+  JEM_assert( message != nullptr );
+  JEM_assert( messageInfo != nullptr );
+  JEM_assume( message != nullptr );
+  JEM_assume( messageInfo != nullptr );
+
+  messageInfo->messageId = message->id;
+  messageInfo->size      = message->payloadSize;
+  messageInfo->payload   = message->payload;
+}
+
 
 
 

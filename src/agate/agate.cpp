@@ -19,6 +19,17 @@ namespace {
     agt_mailbox_scope_t scope;
   };
 
+  struct inline_callback_args {
+    agt_mailbox_t*        mailboxAddress;
+    create_mailbox_params createParams;
+  };
+
+  struct qtz_execute_callback_args {
+    jem_size_t structSize;
+    void(*callback)(inline_callback_args*);
+    inline_callback_args args;
+  };
+
   inline void init_slots(agt_mailbox_t mailbox, const create_mailbox_params& params) noexcept {
     jem_size_t slotCount = params.slotCount;
     jem_size_t slotSize = params.slotSize;
@@ -34,6 +45,8 @@ namespace {
       message->signal.openHandles.store(1);
       message->signal.status = AGT_ERROR_STATUS_NOT_SET;
     }
+
+
   }
 
   inline agt_mailbox_t make_local_spsc_mailbox(void* memory, const create_mailbox_params& params) noexcept {
@@ -212,7 +225,7 @@ namespace {
     }
   }
 
-  inline agt_mailbox_t init_mailbox(void* memory, const create_mailbox_params& params) {
+  agt_mailbox_t init_mailbox(void* memory, const create_mailbox_params& params) {
     return select_init_routine(params)(memory, params);
   }
 
@@ -257,27 +270,21 @@ namespace {
   }
 
 
-  inline void async_create_mailbox(agt_mailbox_t* pMailbox, const agt_create_mailbox_params_t& params) {
+  void create_mailbox_callback(inline_callback_args* args) noexcept {
+    std::memcpy(&args->createParams.slotsAddress, *args->mailboxAddress, sizeof(void*));
+    std::memset(*args->mailboxAddress, 0, sizeof(agt::local_mpsc_mailbox));
+    (*args->mailboxAddress) = init_mailbox(*args->mailboxAddress, args->createParams);
+  }
 
 
-    struct callback_args{
-      agt_mailbox_t*        mailboxAddress;
-      create_mailbox_params createParams;
-    };
+  JEM_noinline void async_create_mailbox(agt_mailbox_t* pMailbox, const agt_create_mailbox_params_t& params) {
 
-    struct qtz_execute_callback_args {
-      jem_size_t structSize;
-      void(*callback)(callback_args*);
-      callback_args args;
-    } callbackArgs{
+    qtz_execute_callback_args callbackArgs{
       .structSize = sizeof(qtz_execute_callback_args),
-      .callback = [](callback_args* args){
-        args->createParams.slotsAddress = **(void***)args->mailboxAddress;
-        (*args->mailboxAddress) = init_mailbox(*args->mailboxAddress, args->createParams);
-      },
+      .callback = create_mailbox_callback,
       .args = {
         .mailboxAddress = pMailbox,
-        .createParams   = {
+        .createParams = {
           .slotsAddress = nullptr,
           .slotSize     = params.min_slot_size,
           .slotCount    = params.min_slot_count,
@@ -292,9 +299,7 @@ namespace {
 
     *(qtz_request_t*)params.async_handle_address = qtz_send(QTZ_THIS_PROCESS, QTZ_DEFAULT_PRIORITY, 22, &callbackArgs, JEM_WAIT);
   }
-  inline agt_status_t sync_create_mailbox(agt_mailbox_t* pMailbox, const agt_create_mailbox_params_t& params) {
-
-    agt_agent_t self = agt_get_self();
+  JEM_noinline agt_status_t sync_create_mailbox(agt_mailbox_t* pMailbox, const agt_create_mailbox_params_t& params) {
 
     create_mailbox_params mailboxParams{
       .slotsAddress = nullptr,

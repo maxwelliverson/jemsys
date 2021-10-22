@@ -30,26 +30,30 @@ namespace {
 #define mailbox ((local_spsc_mailbox*)_mailbox)
 
 
-agt_status_t  JEM_stdcall agt::impl::local_spsc_attach(agt_mailbox_t _mailbox, bool isSender, jem_u64_t timeout_us) JEM_noexcept {
-  if ( isSender ) {
-    if ( !mailbox->producerSemaphore.try_acquire_for(timeout_us) )
-      return AGT_ERROR_TOO_MANY_SENDERS;
+agt_status_t  JEM_stdcall agt::impl::local_spsc_try_operation(agt_mailbox_t _mailbox, mailbox_role_t role, mailbox_op_kind_t opKind, jem_u64_t timeout_us) noexcept {
+  switch (opKind) {
+    case MAILBOX_OP_KIND_ATTACH:
+      if ( role == MAILBOX_ROLE_SENDER ) {
+        if ( !mailbox->producerSemaphore.try_acquire_for(timeout_us) )
+          return AGT_ERROR_TOO_MANY_SENDERS;
+      }
+      else {
+        if ( !mailbox->consumerSemaphore.try_acquire_for(timeout_us) )
+          return AGT_ERROR_TOO_MANY_RECEIVERS;
+      }
+      return AGT_SUCCESS;
+    case MAILBOX_OP_KIND_DETACH:
+      if ( role == MAILBOX_ROLE_SENDER )
+        mailbox->producerSemaphore.release();
+      else
+        mailbox->consumerSemaphore.release();
+      return AGT_SUCCESS;
+    JEM_no_default;
   }
-  else {
-    if ( !mailbox->consumerSemaphore.try_acquire_for(timeout_us) )
-      return AGT_ERROR_TOO_MANY_RECEIVERS;
-  }
-  return AGT_SUCCESS;
-}
-void          JEM_stdcall agt::impl::local_spsc_detach(agt_mailbox_t _mailbox, bool isSender) JEM_noexcept {
-  if ( isSender)
-    mailbox->producerSemaphore.release();
-  else
-    mailbox->consumerSemaphore.release();
 }
 
 
-agt_slot_t    JEM_stdcall agt::impl::local_spsc_acquire_slot(agt_mailbox_t _mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept {
+agt_mailslot_t    JEM_stdcall agt::impl::local_spsc_acquire_slot(agt_mailbox_t _mailbox, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept {
   if ( slot_size > mailbox->slotSize ) [[unlikely]]
     return nullptr;
   switch ( timeout_us ) {
@@ -66,20 +70,20 @@ agt_slot_t    JEM_stdcall agt::impl::local_spsc_acquire_slot(agt_mailbox_t _mail
   }
   agt_message_t msg = get_free_slot(mailbox);
   msg->payloadSize = slot_size;
-  return (agt_slot_t)msg;
+  return (agt_mailslot_t)msg;
 }
-void          JEM_stdcall agt::impl::local_spsc_release_slot(agt_mailbox_t _mailbox, agt_slot_t slot) JEM_noexcept {
-  /*agt_message_t message = to_message(slot);
+/*void          JEM_stdcall agt::impl::local_spsc_release_slot(agt_mailbox_t _mailbox, agt_mailslot_t slot) JEM_noexcept {
+  *//*agt_message_t message = to_message(slot);
   agt_message_t newNextSlot = mailbox->nextFreeSlot.load(std::memory_order_acquire);
   do {
     message->next.address = newNextSlot;
-  } while( !mailbox->nextFreeSlot.compare_exchange_weak(newNextSlot, message) );*/
+  } while( !mailbox->nextFreeSlot.compare_exchange_weak(newNextSlot, message) );*//*
   auto message = to_message(slot);
   message->next.address = mailbox->producerNextFreeSlot;
   mailbox->producerNextFreeSlot = message;
   mailbox->slotSemaphore.release();
-}
-agt_signal_t  JEM_stdcall agt::impl::local_spsc_send(agt_mailbox_t _mailbox, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept {
+}*/
+agt_signal_t  JEM_stdcall agt::impl::local_spsc_send(agt_mailbox_t _mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept {
   auto message = to_message(slot);
   message->signal.flags.set(flags | agt::message_in_use);
   mailbox->producerPreviousQueuedMsg->next.address = message;
@@ -107,7 +111,6 @@ agt_message_t JEM_stdcall agt::impl::local_spsc_receive(agt_mailbox_t _mailbox, 
   return get_queued_message(mailbox);
 }
 
-
 void          JEM_stdcall agt::impl::local_spsc_return_message(agt_mailbox_t _mailbox, agt_message_t message) JEM_noexcept {
   auto lastFreeSlot = mailbox->lastFreeSlot.exchange(message);
   lastFreeSlot->next.address = message;
@@ -116,17 +119,33 @@ void          JEM_stdcall agt::impl::local_spsc_return_message(agt_mailbox_t _ma
 
 
 
-
-agt_status_t  JEM_stdcall impl::shared_spsc_attach(agt_mailbox_t mailbox_, bool isSender, jem_u64_t timeout_us) noexcept {
+agt_status_t  JEM_stdcall agt::impl::shared_spsc_try_operation(agt_mailbox_t _mailbox, mailbox_role_t role, mailbox_op_kind_t opKind, jem_u64_t timeout_us) noexcept {
+  /*switch (opKind) {
+    case MAILBOX_OP_KIND_ATTACH:
+      if ( role == MAILBOX_ROLE_SENDER ) {
+        if ( !mailbox->producerSemaphore.try_acquire_for(timeout_us) )
+          return AGT_ERROR_TOO_MANY_SENDERS;
+      }
+      else {
+        if ( !mailbox->consumerSemaphore.try_acquire_for(timeout_us) )
+          return AGT_ERROR_TOO_MANY_RECEIVERS;
+      }
+      return AGT_SUCCESS;
+    case MAILBOX_OP_KIND_DETACH:
+      if ( role == MAILBOX_ROLE_SENDER )
+        mailbox->producerSemaphore.release();
+      else
+        mailbox->consumerSemaphore.release();
+      return AGT_SUCCESS;
+      JEM_no_default;
+  }*/
   return AGT_ERROR_NOT_YET_IMPLEMENTED;
 }
-void          JEM_stdcall impl::shared_spsc_detach(agt_mailbox_t mailbox_, bool isSender) noexcept {}
 
-agt_slot_t    JEM_stdcall impl::shared_spsc_acquire_slot(agt_mailbox_t mailbox_, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept {
+agt_mailslot_t    JEM_stdcall impl::shared_spsc_acquire_slot(agt_mailbox_t mailbox_, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept {
   return nullptr;
 }
-void          JEM_stdcall impl::shared_spsc_release_slot(agt_mailbox_t mailbox_, agt_slot_t slot) JEM_noexcept {}
-agt_signal_t  JEM_stdcall impl::shared_spsc_send(agt_mailbox_t mailbox_, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept {
+agt_signal_t  JEM_stdcall impl::shared_spsc_send(agt_mailbox_t mailbox_, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept {
   return nullptr;
 }
 agt_message_t JEM_stdcall impl::shared_spsc_receive(agt_mailbox_t mailbox_, jem_u64_t timeout_us) JEM_noexcept {
