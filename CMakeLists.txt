@@ -6,12 +6,18 @@ set(CMAKE_CXX_STANDARD 20)
 
 
 add_library(asan INTERFACE)
-target_compile_options(asan INTERFACE -fsanitize=address)
-target_link_directories(asan INTERFACE "$ENV{ProgramFiles\(x86\)}/Microsoft Visual Studio/2019/Community/VC/Tools/Llvm/x64/lib/clang/12.0.0/lib/windows")
-#target_link_libraries(asan INTERFACE clang_rt.asan_dynamic-x86_64 clang_rt.asan_dynamic_runtime_thunk-x86_64)
-#target_link_options(asan INTERFACE /wholearchive:clang_rt.asan_dynamic_runtime_thunk-x86_64.lib)
+if (CMAKE_ASAN_ENABLED)
+    set(ASAN_LIBRARY_DIRECTORY "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/Llvm/x64/lib/clang/12.0.0/lib/windows")
+    target_compile_options(asan INTERFACE -fsanitize=address /Od)
+    target_link_directories(asan INTERFACE "${ASAN_LIBRARY_DIRECTORY}")
+    #target_link_libraries(asan INTERFACE clang_rt.asan_dynamic-x86_64 clang_rt.asan_dynamic_runtime_thunk-x86_64)
+    #target_link_options(asan INTERFACE /wholearchive:clang_rt.asan_dynamic_runtime_thunk-x86_64.lib)
+    #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+endif()
 
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+
+
+
 
 add_library(jemsys.internal #[[src/ipc.cpp]] src/dictionary.cpp src/vector.cpp)
 target_include_directories(jemsys.internal PUBLIC include src)
