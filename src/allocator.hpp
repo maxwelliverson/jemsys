@@ -262,6 +262,9 @@ namespace jem{
       allocSlab->nextFreeBlock = static_cast<block_t>(*block);
       --allocSlab->availableBlocks;
 
+      if (freeSlab == allocSlab)
+        freeSlab = nullptr;
+
       return block;
 
     }
