@@ -387,24 +387,27 @@ namespace {
 
     JEM_forceinline void wait_exact(flag_type flags) const noexcept {
       flag_type capturedFlags;
-      do {
-        WaitOnAddress((volatile void*)&bits, &flags, sizeof(flag_type), INFINITE);
+      capturedFlags = bits.load(std::memory_order_relaxed);
+      while( capturedFlags != flags ) {
+        WaitOnAddress((volatile void*)&bits, &capturedFlags, sizeof(flag_type), INFINITE);
         capturedFlags = bits.load(std::memory_order_relaxed);
-      } while( capturedFlags != flags );
+      }
     }
     JEM_forceinline void wait_any(flag_type flags) const noexcept {
       flag_type capturedFlags;
-      do {
-        WaitOnAddress((volatile void*)&bits, &flags, sizeof(flag_type), INFINITE);
+      capturedFlags = bits.load(std::memory_order_relaxed);
+      while( (capturedFlags & flags) == 0 ) {
+        WaitOnAddress((volatile void*)&bits, &capturedFlags, sizeof(flag_type), INFINITE);
         capturedFlags = bits.load(std::memory_order_relaxed);
-      } while( (capturedFlags & flags) == 0 );
+      }
     }
     JEM_forceinline void wait_all(flag_type flags) const noexcept {
       flag_type capturedFlags;
-      do {
-        WaitOnAddress((volatile void*)&bits, &flags, sizeof(flag_type), INFINITE);
+      capturedFlags = bits.load(std::memory_order_relaxed);
+      while( (capturedFlags & flags) != flags ) {
+        WaitOnAddress((volatile void*)&bits, &capturedFlags, sizeof(flag_type), INFINITE);
         capturedFlags = bits.load(std::memory_order_relaxed);
-      } while( (capturedFlags & flags) != flags );
+      }
     }
 
     JEM_forceinline bool wait_exact_until(flag_type flags, deadline_t deadline) const noexcept {
