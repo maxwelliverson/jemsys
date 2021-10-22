@@ -216,12 +216,16 @@ JEM_api agt_mailbox_vtable_t JEM_stdcall agt_mailbox_lookup_vtable(agt_mailbox_t
  * Agents
  * */
 
-JEM_api void          JEM_stdcall agt_set_self(agt_agent_t self) JEM_noexcept;
-JEM_api agt_agent_t   JEM_stdcall agt_get_self() JEM_noexcept;
+JEM_api void           JEM_stdcall agt_set_self(agt_agent_t self) JEM_noexcept;
 
-JEM_api agt_slot_t    JEM_stdcall agt_agent_acquire_slot(agt_agent_t agent, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
-JEM_api void          JEM_stdcall agt_agent_release_slot(agt_agent_t agent, agt_slot_t slot) JEM_noexcept;
-JEM_api agt_signal_t  JEM_stdcall agt_agent_send(agt_agent_t agent, agt_slot_t slot, agt_send_flags_t flags) JEM_noexcept;
+
+
+///
+
+JEM_api agt_agent_t    JEM_stdcall agt_self() JEM_noexcept;
+
+JEM_api agt_mailslot_t JEM_stdcall agt_agent_acquire_slot(agt_agent_t agent, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+JEM_api agt_signal_t   JEM_stdcall agt_agent_send(agt_agent_t agent, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
 
 
 

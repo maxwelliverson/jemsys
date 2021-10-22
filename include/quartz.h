@@ -11,19 +11,15 @@ JEM_begin_c_namespace
 
 
 #define QTZ_KERNEL_VERSION_MOST_RECENT ((jem_u32_t)-1)
-#define QTZ_DEFAULT_MODULE ((qtz_module_t)nullptr)
-#define QTZ_GLOBAL_MODULE_ID ((qtz_local_id_t)0)
+#define QTZ_DEFAULT_PRIORITY ((jem_u32_t)0)
+#define QTZ_THIS_PROCESS ((qtz_process_t)NULL)
 
-typedef jem_u32_t                  qtz_local_id_t;
-typedef jem_u64_t                  qtz_global_id_t;
 
 typedef struct qtz_request*        qtz_request_t;
 typedef struct qtz_process*        qtz_process_t;
-typedef struct qtz_error*          qtz_error_t;
-typedef struct qtz_module*         qtz_module_t;
 
 
-typedef enum {
+typedef enum qtz_status_t {
   QTZ_SUCCESS,
   QTZ_NOT_READY,
   QTZ_DISCARDED,
@@ -43,21 +39,14 @@ typedef enum {
   QTZ_ERROR_UNSUPPORTED_OPERATION,
   QTZ_ERROR_IPC_SUPPORT_UNAVAILABLE
 } qtz_status_t;
-typedef enum {
+typedef enum qtz_kernel_init_mode_t {
   QTZ_KERNEL_INIT_OPEN_ALWAYS,
   QTZ_KERNEL_INIT_CREATE_NEW,
   QTZ_KERNEL_INIT_OPEN_EXISTING
 } qtz_kernel_init_mode_t;
-typedef enum {
-  QTZ_SEND_MUST_CHECK_RESULT = 0x100,
-  QTZ_SEND_CANCEL_ON_DISCARD = 0x200,
-  QTZ_SEND_IGNORE_ERRORS     = 0x400
-} qtz_send_flag_bits_t;
-
-typedef jem_flags32_t qtz_send_flags_t;
 
 
-typedef struct {
+typedef struct qtz_init_params_t {
   jem_u32_t              kernel_version;
   qtz_kernel_init_mode_t kernel_mode;
   const char*            kernel_access_code;
@@ -71,15 +60,74 @@ typedef struct {
 
 
 
+/**
+ * @brief Initializes the Quartz subsystem.
+ *
+ * @note Must be called before any other Quartz API call.
+ *
+ * @returns [QTZ_SUCCESS] => Indicates Quartz is properly initialized. Note this does NOT
+ *                           guarantee it was initialized by this particular invocation.
+ *          [QTZ_ERROR_INVALID_KERNEL_VERSION] => Indicates that no kernel executable was
+ *          found with version equal to @code params->kernel_version @endcode
+ *
+ * @param [in] params Dictates the parameters with which quartz will be initialized.
+ * */
+JEM_api qtz_status_t  JEM_stdcall qtz_init(const qtz_init_params_t* params) JEM_noexcept;
 
-JEM_api qtz_status_t  JEM_stdcall qtz_init(const qtz_init_params_t* params);
+/**
+ * @brief Returns a semi-portable handle to the current process.
+ *
+ * @note Calling this function for immediate use as an argument of qtz_send is much less
+ *       efficient than simply using the QTZ_THIS_PROCESS macro.
+ *
+ * @returns A handle to the current process.
+ * */
+JEM_api qtz_process_t JEM_stdcall qtz_get_process() JEM_noexcept;
 
-JEM_api qtz_status_t  JEM_stdcall qtz_request_status(qtz_request_t message);
-JEM_api qtz_status_t  JEM_stdcall qtz_request_wait(qtz_request_t message, jem_u64_t timeout_us);
-JEM_api void          JEM_stdcall qtz_request_discard(qtz_request_t message);
+/**
+ * @brief Sends a message to process message queues.
+ *
+ * @param [in, optional] process A handle to the process that will receive this message.
+ * If a null pointer is passed, the message is sent to the calling process. The macro QTZ_THIS_PROCESS
+ * is intended to be used for this purpose.
+ * @param [in, optional] priority The priority of the message. Lower valued integers are higher priority,
+ * where 1 is the highest priority. Zero is a special value that indicates the message has default priority.
+ * The macro QTZ_DEFAULT_PRIORITY is intended to be used for this purpose. Default priorities are specific
+ * to the receiving process, and are not static.
+ * @param [in] messageId Identifies the message type.
+ * @param [in] messageBuffer A buffer that holds the raw message data. This buffer can be in temporary
+ * storage, as its contents are copied during the call to qtz_send. The exact format of the buffer is
+ * highly specific to the value of messageId.
+ * @param [in] timeoutMicroseconds Desired timeout in microseconds. Ultimately, message storage capacity
+ * for any given process is limited, and while it shouldn't be an issue in most circumstances, it is
+ * possible for a process' message queue to be full. In these cases, qtz_send will optionally wait for a
+ * spot in the queue to open up, or until the amount of time specified by timeoutMicroseconds has passed.
+ * The macro JEM_WAIT can be specified here to indicate a (functionally) infinite timeout. Likewise, the
+ * macro JEM_DO_NOT_WAIT can be specified to indicate that the call should immediately return if the queue
+ * is full. In the case that the send is unsuccessful, a null pointer is returned.
+ *
+ * */
+JEM_api qtz_request_t JEM_stdcall qtz_send(qtz_process_t process,
+                                           jem_u32_t priority,
+                                           jem_u32_t messageId,
+                                           const void* messageBuffer,
+                                           jem_u64_t timeoutMicroseconds) JEM_noexcept;
 
-JEM_api qtz_request_t JEM_stdcall qtz_send(void* sender, qtz_local_id_t messageId, const void* messageBuffer, jem_u32_t priority, jem_u64_t us_timeout) JEM_noexcept;
-JEM_api qtz_request_t JEM_stdcall qtz_send_ex(void* sender, qtz_process_t receivingProcess, qtz_local_id_t messageId, const void* messageBuffer,  jem_u32_t priority, qtz_send_flags_t flags, jem_u64_t us_timeout) JEM_noexcept;
+/**
+ * @brief Waits for the specified message to finish being processed, and then retrieves the result.
+ *
+ * @returns [QTZ_NOT_READY] => Indicates the message hasn't yet finished processing.
+ *          any other value => The result of the processed message.
+ * */
+JEM_api qtz_status_t  JEM_stdcall qtz_wait(qtz_request_t message, jem_u64_t timeout_us) JEM_noexcept;
+
+/**
+ * @brief Discards the specified message, informing the subsystem that the sender is not interested
+ * in the result.
+ * */
+JEM_api void          JEM_stdcall qtz_discard(qtz_request_t message) JEM_noexcept;
+
+
 
 
 JEM_end_c_namespace

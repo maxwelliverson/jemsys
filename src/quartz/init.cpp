@@ -418,7 +418,7 @@ namespace {
 
 
 extern "C" {
-  JEM_api qtz_status_t  JEM_stdcall qtz_init(const qtz_init_params_t* params) {
+  JEM_api qtz_status_t  JEM_stdcall qtz_init(const qtz_init_params_t* params) JEM_noexcept {
 
     qtz_status_t status = QTZ_SUCCESS;
 

@@ -218,7 +218,7 @@ TEST_CASE("Create an MPMC mailbox asynchronously", "[agate][mailbox]") {
 
   REQUIRE( agt_create_mailbox(&mailbox, &params) == AGT_DEFERRED );
   REQUIRE( request != nullptr );
-  REQUIRE( qtz_request_wait(request, JEM_WAIT) == QTZ_SUCCESS );
+  REQUIRE( qtz_wait(request, JEM_WAIT) == QTZ_SUCCESS );
   REQUIRE( mailbox != nullptr );
   REQUIRE( mailbox_kind == mailbox_kind_local_mpmc );
 
@@ -261,7 +261,7 @@ TEST_CASE("Create an MPSC mailbox asynchronously", "[agate][mailbox]") {
   std::memset(params.name, 0, sizeof(params.name));
 
   REQUIRE( agt_create_mailbox(&mailbox, &params) == AGT_DEFERRED );
-  REQUIRE( qtz_request_wait(request, JEM_WAIT) == QTZ_SUCCESS );
+  REQUIRE( qtz_wait(request, JEM_WAIT) == QTZ_SUCCESS );
   REQUIRE( mailbox != nullptr );
   REQUIRE( mailbox_kind == mailbox_kind_local_mpsc );
 
@@ -302,7 +302,7 @@ TEST_CASE("Create an SPMC mailbox asynchronously", "[agate][mailbox]") {
 
   REQUIRE( agt_create_mailbox(&mailbox, &params) == AGT_DEFERRED );
   REQUIRE( request != nullptr );
-  REQUIRE( qtz_request_wait(request, JEM_WAIT) == QTZ_SUCCESS );
+  REQUIRE( qtz_wait(request, JEM_WAIT) == QTZ_SUCCESS );
   REQUIRE( mailbox != nullptr );
   REQUIRE( mailbox_kind == mailbox_kind_local_spmc );
   REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
@@ -341,7 +341,7 @@ TEST_CASE("Create an SPSC mailbox asynchronously", "[agate][mailbox]") {
 
   REQUIRE( agt_create_mailbox(&mailbox, &params) == AGT_DEFERRED );
   REQUIRE( request != nullptr );
-  REQUIRE( qtz_request_wait(request, JEM_WAIT) == QTZ_SUCCESS );
+  REQUIRE( qtz_wait(request, JEM_WAIT) == QTZ_SUCCESS );
   REQUIRE( mailbox != nullptr );
   REQUIRE( mailbox_kind == mailbox_kind_local_spsc );
   REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
@@ -374,7 +374,7 @@ TEST_CASE("Create a private mailbox asynchronously", "[agate][mailbox]") {
 
   REQUIRE( agt_create_mailbox(&mailbox, &params) == AGT_DEFERRED );
   REQUIRE( request != nullptr );
-  REQUIRE( qtz_request_wait(request, JEM_WAIT) == QTZ_SUCCESS );
+  REQUIRE( qtz_wait(request, JEM_WAIT) == QTZ_SUCCESS );
   REQUIRE( mailbox != nullptr );
   REQUIRE( mailbox_kind == mailbox_kind_private );
   REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );

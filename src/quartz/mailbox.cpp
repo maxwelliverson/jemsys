@@ -6,6 +6,7 @@
 
 #include "internal.hpp"
 
+#include <agate.h>
 
 #include <iostream>
 
@@ -228,21 +229,9 @@ namespace {
     }
   }
 
-  inline qtz_request_t get_request(qtz_mailbox* mailbox, jem_u64_t us_timeout) noexcept {
-    switch ( us_timeout ) {
-      case JEM_DO_NOT_WAIT:
-        return mailbox->try_acquire_free_slot();
-        break;
-      case JEM_WAIT:
-        return mailbox->acquire_free_slot();
-        break;
-      default:
-        return mailbox->try_acquire_free_slot_for(us_timeout);
-    }
-  }
-}
+extern "C" {
 
-extern "C" qtz_exit_code_t JEM_stdcall qtz_mailbox_main_thread_proc(void*) {
+  qtz_exit_code_t       JEM_stdcall qtz_mailbox_main_thread_proc(void*) {
 
   /*using PFN_request_proc = qtz_message_action_t(qtz_mailbox::*)(qtz_request_t) noexcept;
 
@@ -305,20 +294,7 @@ extern "C" qtz_exit_code_t JEM_stdcall qtz_mailbox_main_thread_proc(void*) {
     }
   }
 
-
-
-extern "C" {
-
-
-JEM_api qtz_status_t  JEM_stdcall qtz_request_status(qtz_request_t message) {
-  auto flags = message->flags.fetch();
-  if ( flags & QTZ_MESSAGE_IS_READY )
-    return message->status;
-  if ( flags & QTZ_MESSAGE_IS_DISCARDED )
-    return QTZ_DISCARDED;
-  return QTZ_NOT_READY;
-}
-JEM_api qtz_status_t  JEM_stdcall qtz_request_wait(qtz_request_t message, jem_u64_t timeout_us) {
+  JEM_api qtz_status_t  JEM_stdcall qtz_wait(qtz_request_t message, jem_u64_t timeout_us) noexcept {
 
   using clock = std::chrono::high_resolution_clock;
   using duration_t = clock::duration;
@@ -341,51 +317,43 @@ JEM_api qtz_status_t  JEM_stdcall qtz_request_wait(qtz_request_t message, jem_u6
   message->discard();
   return result;
 }
-JEM_api void          JEM_stdcall qtz_request_discard(qtz_request_t message) {
-  auto mailbox = message->parent_mailbox();
-  mailbox->discard_request(message);
+
+  JEM_api void          JEM_stdcall qtz_discard(qtz_request_t message) noexcept {
+  message->discard();
 }
 
-JEM_api qtz_request_t JEM_stdcall qtz_send(void* sender, qtz_local_id_t messageId, const void* messageBuffer, jem_u32_t priority, jem_u64_t us_timeout) JEM_noexcept {
+  JEM_api qtz_request_t JEM_stdcall qtz_send(qtz_process_t process, jem_u32_t priority, jem_u32_t messageId, const void* messageBuffer, jem_u64_t us_timeout) noexcept {
+
   qtz_request_t request;
   qtz_mailbox_t mailbox;
   qtz_mailbox_t localMailbox = g_qtzGlobalMailbox;
 
-  auto mailbox = g_qtzGlobalMailbox;
+  if ( !localMailbox ) [[unlikely]] {
+    return nullptr;
+  }
 
-  request = get_request(mailbox, us_timeout);
+  mailbox = process ? (qtz_mailbox_t)process : localMailbox;
+  request = mailbox->acquire_slot(us_timeout);
 
   if ( !request )
     return nullptr;
 
-  fill_request(request, messageId, priority, messageBuffer);
-  request->senderObject = sender;
+  request->messageKind = static_cast<qtz_message_kind_t>(messageId);
+  request->senderObject = agt_self();
+  request->queuePriority = priority ? priority : mailbox->defaultPriority;
+  request->fromForeignProcess = mailbox != localMailbox;
+
+  if ( messageId != GLOBAL_MESSAGE_KIND_NOOP ) [[likely]] {
+    std::memcpy(request->payload, messageBuffer, *static_cast<const size_t*>(messageBuffer));
+  }
 
   mailbox->enqueue_request(request);
 
   return request;
 }
-JEM_api qtz_request_t JEM_stdcall qtz_send_ex(void* sender, qtz_process_t process, qtz_local_id_t messageId, const void* messageBuffer,  jem_u32_t priority, qtz_send_flags_t flags, jem_u64_t us_timeout) JEM_noexcept {
 
-  auto mailbox = (qtz_mailbox*)process;
-
-  qtz_request_t request;
-
-  request = get_request(mailbox, us_timeout);
-
-  if ( !request )
-    return nullptr;
-
-  fill_request(request, messageId, priority, messageBuffer);
-  request->senderObject = sender;
-  request->flags.set(flags);
-
-  if ( mailbox != g_qtzGlobalMailbox )
-    request->fromForeignProcess = true;
-
-  mailbox->enqueue_request(request);
-
-  return request;
-}
+  JEM_api qtz_process_t JEM_stdcall qtz_get_process() JEM_noexcept {
+    return (qtz_process_t)g_qtzGlobalMailbox;
+  }
 
 }

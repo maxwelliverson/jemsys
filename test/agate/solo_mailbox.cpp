@@ -217,7 +217,7 @@ void test_create_mpmc_mailbox_async() {
 
   assert( agt_create_mailbox(&mailbox, &params) == AGT_DEFERRED );
   assert( request != nullptr );
-  assert( qtz_request_wait(request, JEM_WAIT) == QTZ_SUCCESS );
+  assert( qtz_wait(request, JEM_WAIT) == QTZ_SUCCESS );
   assert( mailbox != nullptr );
   assert( mailbox_kind == mailbox_kind_local_mpmc );
 
@@ -260,7 +260,7 @@ void test_create_mpsc_mailbox_async() {
   std::memset(params.name, 0, sizeof(params.name));
 
   assert( agt_create_mailbox(&mailbox, &params) == AGT_DEFERRED );
-  assert( qtz_request_wait(request, JEM_WAIT) == QTZ_SUCCESS );
+  assert( qtz_wait(request, JEM_WAIT) == QTZ_SUCCESS );
   assert( mailbox != nullptr );
   assert( mailbox_kind == mailbox_kind_local_mpsc );
 
@@ -301,7 +301,7 @@ void test_create_spmc_mailbox_async() {
 
   assert( agt_create_mailbox(&mailbox, &params) == AGT_DEFERRED );
   assert( request != nullptr );
-  assert( qtz_request_wait(request, JEM_WAIT) == QTZ_SUCCESS );
+  assert( qtz_wait(request, JEM_WAIT) == QTZ_SUCCESS );
   assert( mailbox != nullptr );
   assert( mailbox_kind == mailbox_kind_local_spmc );
   assert( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
@@ -340,7 +340,7 @@ void test_create_spsc_mailbox_async() {
 
   assert( agt_create_mailbox(&mailbox, &params) == AGT_DEFERRED );
   assert( request != nullptr );
-  assert( qtz_request_wait(request, JEM_WAIT) == QTZ_SUCCESS );
+  assert( qtz_wait(request, JEM_WAIT) == QTZ_SUCCESS );
   assert( mailbox != nullptr );
   assert( mailbox_kind == mailbox_kind_local_spsc );
   assert( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
@@ -373,7 +373,7 @@ void test_create_private_mailbox_async() {
 
   assert( agt_create_mailbox(&mailbox, &params) == AGT_DEFERRED );
   assert( request != nullptr );
-  assert( qtz_request_wait(request, JEM_WAIT) == QTZ_SUCCESS );
+  assert( qtz_wait(request, JEM_WAIT) == QTZ_SUCCESS );
   assert( mailbox != nullptr );
   assert( mailbox_kind == mailbox_kind_private );
   assert( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );

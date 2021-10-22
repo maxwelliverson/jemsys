@@ -24,7 +24,7 @@ namespace {
     jem_size_t slotSize = params.slotSize;
     auto messageSlots = static_cast<std::byte*>(params.slotsAddress);
 
-    std::memset(messageSlots, 0, slotSize * slotCount);
+    // std::memset(messageSlots, 0, slotSize * slotCount);
 
     for ( jem_size_t i = 0; i < slotCount; ++i ) {
       auto message = new(messageSlots + (slotSize * i)) agt_message;
@@ -229,7 +229,9 @@ namespace {
 
 
 
-  inline qtz_request_t alloc_mailbox(agt_agent_t self, agt_mailbox_t* pMailbox, const char name[], create_mailbox_params& params) {
+
+
+  JEM_noinline qtz_request_t alloc_mailbox(agt_mailbox_t* pMailbox, const char name[], create_mailbox_params& params) {
 
     params.slotSize = get_slot_size(params.slotSize);
     params.slotCount = get_slot_count(params.slotCount);
@@ -251,13 +253,12 @@ namespace {
     };
     std::memcpy(alloc_mailbox_args.name, name, sizeof(alloc_mailbox_args.name));
 
-    return qtz_send(self, 3, &alloc_mailbox_args, 0, JEM_WAIT);
+    return qtz_send(QTZ_THIS_PROCESS, QTZ_DEFAULT_PRIORITY, 3, &alloc_mailbox_args, JEM_WAIT);
   }
 
 
   inline void async_create_mailbox(agt_mailbox_t* pMailbox, const agt_create_mailbox_params_t& params) {
 
-    agt_agent_t self = agt_get_self();
 
     struct callback_args{
       agt_mailbox_t*        mailboxAddress;
@@ -287,9 +288,9 @@ namespace {
       }
     };
 
-    qtz_request_discard(alloc_mailbox(self, pMailbox, params.name, callbackArgs.args.createParams));
+    qtz_discard(alloc_mailbox(pMailbox, params.name, callbackArgs.args.createParams));
 
-    *(qtz_request_t*)params.async_handle_address = qtz_send(self, 22, &callbackArgs, 0, JEM_WAIT);
+    *(qtz_request_t*)params.async_handle_address = qtz_send(QTZ_THIS_PROCESS, QTZ_DEFAULT_PRIORITY, 22, &callbackArgs, JEM_WAIT);
   }
   inline agt_status_t sync_create_mailbox(agt_mailbox_t* pMailbox, const agt_create_mailbox_params_t& params) {
 
@@ -304,7 +305,7 @@ namespace {
       .scope        = params.scope
     };
 
-    switch (qtz_request_wait(alloc_mailbox(self, pMailbox, params.name, mailboxParams), JEM_WAIT)) {
+    switch (qtz_wait(alloc_mailbox(pMailbox, params.name, mailboxParams), JEM_WAIT)) {
       case QTZ_SUCCESS: break;
       case QTZ_ERROR_NOT_INITIALIZED: return AGT_ERROR_INITIALIZATION_FAILED;
       case QTZ_ERROR_INTERNAL: return AGT_ERROR_UNKNOWN;
@@ -349,7 +350,7 @@ namespace {
           .slotCount    = mailbox->slotCount,
           .name         = {}
         };
-        qtz_request_discard(qtz_send(agt_get_self(), 4, &args, 0, JEM_WAIT));
+        qtz_send(QTZ_THIS_PROCESS, QTZ_DEFAULT_PRIORITY, 4, &args, JEM_WAIT);
       }
         break;
         // TODO: Add IPC support
@@ -372,9 +373,6 @@ namespace {
     .modules            = nullptr
   };
 
-  inline constinit thread_local agt_agent_t tl_self = nullptr;
-
-
   inline bool agt_init() noexcept {
     return qtz_init(&g_initParams) == QTZ_SUCCESS;
   }
@@ -383,13 +381,6 @@ namespace {
 
 
 extern "C" {
-
-JEM_api void          JEM_stdcall agt_set_self(agt_agent_t self) JEM_noexcept {
-  tl_self = self;
-}
-JEM_api agt_agent_t   JEM_stdcall agt_get_self() JEM_noexcept {
-  return tl_self;
-}
 
 JEM_api agt_status_t  JEM_stdcall agt_create_mailbox(agt_mailbox_t* pMailbox, const agt_create_mailbox_params_t* params) JEM_noexcept {
 
