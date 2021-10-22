@@ -174,8 +174,7 @@ enum {
   QTZ_MESSAGE_IS_READY      = 0x1,
   QTZ_MESSAGE_IS_DISCARDED  = 0x2,
   QTZ_MESSAGE_NOT_PRESERVED = 0x4,
-  QTZ_MESSAGE_IS_FINALIZED  = 0x8,
-  QTZ_MESSAGE_ALL_FLAGS     = 0xF,
+  QTZ_MESSAGE_ALL_FLAGS     = 0x7,
   QTZ_MESSAGE_PRESERVE      = (QTZ_MESSAGE_ALL_FLAGS ^ QTZ_MESSAGE_NOT_PRESERVED)
 };
 
@@ -205,9 +204,9 @@ typedef enum {
   GLOBAL_MESSAGE_KIND_EXECUTE_CALLBACK_WITH_BUFFER = 22
 } qtz_message_kind_t;
 typedef enum {
-  QTZ_ACTION_DISCARD,
-  QTZ_ACTION_DEFERRED,
-  QTZ_ACTION_NOTIFY_LISTENER
+  QTZ_MESSAGE_ACTION_DO_NOTHING,
+  QTZ_MESSAGE_ACTION_NOTIFY_SENDER,
+  QTZ_MESSAGE_ACTION_DESTROY
 } qtz_message_action_t;
 
 namespace qtz {
@@ -810,13 +809,10 @@ namespace qtz {
   static_assert(sizeof(async_buffered_output_log) > sizeof(big_buffered_log));
 }
 
-
+struct qtz_mailbox;
+using qtz_mailbox_t = qtz_mailbox*;
 
 struct qtz_request {
-
-  inline constexpr static jem_u32_t DiscardedDeathFlags = QTZ_MESSAGE_NOT_PRESERVED | QTZ_MESSAGE_IS_DISCARDED;
-  inline constexpr static jem_u32_t FinalizedDeathFlags = QTZ_MESSAGE_NOT_PRESERVED | QTZ_MESSAGE_IS_FINALIZED;
-  inline constexpr static jem_u32_t FinalizedAndDiscardedFlags = DiscardedDeathFlags ^ FinalizedDeathFlags;
 
   JEM_cache_aligned
   jem_size_t           nextSlot;
@@ -826,12 +822,10 @@ struct qtz_request {
   jem_u32_t            queuePriority;
 
   atomic_flags32_t     flags = 0;
-  qtz_message_action_t action;
   qtz_status_t         status;
 
   void*                senderObject;
 
-  bool                 readyToDie;
   bool                 fromForeignProcess;
 
   // 27 free bytes
@@ -847,7 +841,6 @@ struct qtz_request {
     thisSlot = slot;
     flags.set(QTZ_MESSAGE_NOT_PRESERVED);
     fromForeignProcess = false;
-    readyToDie         = false;
   }
 
 
@@ -857,41 +850,30 @@ struct qtz_request {
   }
 
 
-  bool is_discarded() const noexcept {
-    return flags.test(QTZ_MESSAGE_IS_DISCARDED);
-  }
-  bool is_ready_to_die() const noexcept {
-    return readyToDie;
+
+  void discard() noexcept {
+    discard(parent_mailbox());
   }
 
-  void finalize() noexcept {
-    readyToDie = (flags.fetch_and_set(QTZ_MESSAGE_IS_FINALIZED) & DiscardedDeathFlags) == DiscardedDeathFlags;
+  void action_notify_sender() noexcept {
+    action_notify_sender(parent_mailbox());
   }
-  void discard() noexcept {
-    readyToDie = (flags.fetch_and_set(QTZ_MESSAGE_IS_DISCARDED) & FinalizedDeathFlags) == FinalizedDeathFlags;
-  }
-  void finalize_and_return() noexcept {
-    jem_u32_t oldFlags = flags.fetch_and_set(QTZ_MESSAGE_IS_READY | QTZ_MESSAGE_IS_FINALIZED);
-    readyToDie = (oldFlags & DiscardedDeathFlags) == DiscardedDeathFlags;
-    if ( !(oldFlags & QTZ_MESSAGE_IS_DISCARDED) )
-      flags.notify_all();
-  }
+
   void lock() noexcept {
     flags.reset(QTZ_MESSAGE_NOT_PRESERVED);
   }
   void unlock() noexcept {
-    jem_u32_t oldFlags = flags.fetch_and_set(QTZ_MESSAGE_NOT_PRESERVED);
-    readyToDie = (oldFlags & FinalizedAndDiscardedFlags) == FinalizedAndDiscardedFlags;
+    this->unlock(this->parent_mailbox());
   }
 
-  void reset() noexcept {
-    flags.reset(QTZ_MESSAGE_NOT_PRESERVED);
-    readyToDie = false;
-    fromForeignProcess = false;
-    messageKind = (qtz_message_kind_t)-1;
-  }
 
-  struct qtz_mailbox* parent_mailbox() const noexcept;
+
+  void discard(qtz_mailbox_t mailbox) noexcept;
+  void action_notify_sender(qtz_mailbox_t mailbox) noexcept;
+  void action_destroy(qtz_mailbox_t mailbox) noexcept;
+  void unlock(qtz_mailbox_t mailbox) noexcept;
+
+  qtz_mailbox_t parent_mailbox() const noexcept;
 };
 
 class request_priority_queue{
@@ -1198,6 +1180,8 @@ public:
   }
 };
 
+extern "C" qtz_exit_code_t JEM_stdcall qtz_mailbox_main_thread_proc(void *params);
+
 struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
 
   using time_point = std::chrono::high_resolution_clock::time_point;
@@ -1207,6 +1191,8 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   JEM_cache_aligned
 
   semaphore_t slotSemaphore;
+  jem_global_id_t globalProcessId; // = processId << 32
+  jem_local_id_t processId;
 
 
   // 48 free bytes
@@ -1316,6 +1302,8 @@ struct alignas(QTZ_REQUEST_SIZE) qtz_mailbox {
   }
 
 private:
+
+
   inline qtz_request_t     get_request(jem_size_t slot) const noexcept {
     assert(slot < totalSlotCount);
     return const_cast<qtz_request_t>(messageSlots + slot);
@@ -1337,32 +1325,6 @@ private:
 
     return message;
   }
-  inline qtz_request_t get_next_queued_request() const noexcept {
-    return get_request(previousRequest->nextSlot);
-  }
-  inline void          release_request_slot(qtz_request_t message) noexcept {
-    const jem_size_t thisSlot = get_slot(message);
-    jem_size_t newNextSlot = nextFreeSlot.load(std::memory_order_acquire);
-    do {
-      message->nextSlot = newNextSlot;
-    } while( !nextFreeSlot.compare_exchange_weak(newNextSlot, thisSlot) );
-    slotSemaphore.release();
-  }
-  inline void          replace_previous(qtz_request_t message) noexcept {
-    message->lock();
-    previousRequest->unlock();
-    if ( previousRequest->is_ready_to_die() ) {
-      previousRequest->reset();
-      release_request_slot(previousRequest);
-    }
-    previousRequest = message;
-  }
-
-public:
-
-
-
-
   inline qtz_request_t acquire_free_slot() noexcept {
     slotSemaphore.acquire();
     return get_free_request_slot();
@@ -1383,12 +1345,17 @@ public:
     return get_free_request_slot();
   }
 
+  inline qtz_request_t get_next_queued_request() const noexcept {
+    return get_request(previousRequest->nextSlot);
+  }
 
   inline qtz_request_t acquire_next_queued_request() noexcept {
 
     queuedMessages.decrease(1);
     auto nextRequest = get_next_queued_request();
-    replace_previous(nextRequest);
+    nextRequest->lock();
+    previousRequest->unlock(this);
+    previousRequest = nextRequest;
     return nextRequest;
 
 
@@ -1431,25 +1398,21 @@ public:
     return messagePriorityQueue.pop();*/
   }
 
-
-  inline void          enqueue_request(qtz_request_t message) noexcept {
-    const jem_size_t slot = get_slot(message);
-    jem_size_t prevLastQueuedSlot = lastQueuedSlot.exchange(slot);
-    /*jem_size_t prevLastQueuedSlot = lastQueuedSlot.load(std::memory_order_acquire);
+  inline void          destroy_request(qtz_request_t message) noexcept {
+    message->flags.clear_and_set(QTZ_MESSAGE_NOT_PRESERVED);
+    // NOTE: This was an EVIL bug caused by improper naming
+    //
+    //       flags.reset(QTZ_MESSAGE_NOT_PRESERVED);
+    //
+    //
+    message->fromForeignProcess = false;
+    message->messageKind = (qtz_message_kind_t)-1;
+    const jem_size_t thisSlot = get_slot(message);
+    jem_size_t newNextSlot = nextFreeSlot.load(std::memory_order_acquire);
     do {
-      //message->nextSlot = lastQueuedSlot;
-    } while ( !lastQueuedSlot.compare_exchange_weak(prevLastQueuedSlot, slot) );*/
-    get_request(prevLastQueuedSlot)->nextSlot = slot;
-    queuedMessages.increase(1);
-    /*queuedSinceLastCheck.fetch_add(1, std::memory_order_release);
-    queuedSinceLastCheck.notify_one();*/
-  }
-  inline void          discard_request(qtz_request_t message) noexcept {
-    message->discard();
-    if ( message->is_ready_to_die() ) {
-      message->reset();
-      release_request_slot(message);
-    }
+      message->nextSlot = newNextSlot;
+    } while( !nextFreeSlot.compare_exchange_weak(newNextSlot, thisSlot) );
+    slotSemaphore.release();
   }
 
   inline bool          should_close() const noexcept {
@@ -1495,48 +1458,17 @@ public:
       return;*/
 
     switch ( (this->*(global_dispatch_table[message->messageKind]))(message) ) {
-      case QTZ_ACTION_DISCARD:
-        // FIXME: Messages are not being properly discarded :(
-        message->discard();
+      case QTZ_MESSAGE_ACTION_DO_NOTHING:
         break;
-      case QTZ_ACTION_NOTIFY_LISTENER:
-        message->finalize_and_return();
+      case QTZ_MESSAGE_ACTION_NOTIFY_SENDER:
+        message->action_notify_sender(this);
         break;
-      case QTZ_ACTION_DEFERRED:
-        message->finalize();
+      case QTZ_MESSAGE_ACTION_DESTROY:
+        message->action_destroy(this);
         break;
         JEM_no_default;
     }
   }
-
-
-  /*
-   * GLOBAL_MESSAGE_KIND_NOOP,
-GLOBAL_MESSAGE_KIND_1,
-GLOBAL_MESSAGE_KIND_2,
-GLOBAL_MESSAGE_KIND_ALLOCATE_MAILBOX,
-GLOBAL_MESSAGE_KIND_FREE_MAILBOX,
-GLOBAL_MESSAGE_KIND_3,
-GLOBAL_MESSAGE_KIND_4,
-GLOBAL_MESSAGE_KIND_5,
-GLOBAL_MESSAGE_KIND_6,
-GLOBAL_MESSAGE_KIND_7,
-GLOBAL_MESSAGE_KIND_8,
-GLOBAL_MESSAGE_KIND_9,
-GLOBAL_MESSAGE_KIND_10,
-GLOBAL_MESSAGE_KIND_11,
-GLOBAL_MESSAGE_KIND_REGISTER_OBJECT,
-GLOBAL_MESSAGE_KIND_UNREGISTER_OBJECT,
-GLOBAL_MESSAGE_KIND_LINK_OBJECTS,
-GLOBAL_MESSAGE_KIND_UNLINK_OBJECTS,
-GLOBAL_MESSAGE_KIND_OPEN_OBJECT_HANDLE,
-GLOBAL_MESSAGE_KIND_DESTROY_OBJECT,
-GLOBAL_MESSAGE_KIND_LOG_MESSAGE,
-GLOBAL_MESSAGE_KIND_EXECUTE_CALLBACK,
-GLOBAL_MESSAGE_KIND_EXECUTE_CALLBACK_WITH_BUFFER
-   *
-   * */
-
 
   qtz_message_action_t proc_noop(qtz_request_t request) noexcept;
   qtz_message_action_t proc_kill(qtz_request_t request) noexcept;
@@ -1562,7 +1494,69 @@ GLOBAL_MESSAGE_KIND_EXECUTE_CALLBACK_WITH_BUFFER
   qtz_message_action_t proc_execute_callback(qtz_request_t request) noexcept;
   qtz_message_action_t proc_execute_callback_with_buffer(qtz_request_t request) noexcept;
 
+  friend struct qtz_request;
+
+  friend qtz_exit_code_t qtz_mailbox_main_thread_proc(void *params);
+
+public:
+
+
+
+  inline qtz_request_t acquire_slot(jem_u64_t timeout_us) noexcept {
+    switch ( timeout_us ) {
+      case JEM_DO_NOT_WAIT:
+        return this->try_acquire_free_slot();
+        break;
+      case JEM_WAIT:
+        return this->acquire_free_slot();
+        break;
+      default:
+        return this->try_acquire_free_slot_for(timeout_us);
+    }
+  }
+
+  inline void          enqueue_request(qtz_request_t message) noexcept {
+    const jem_size_t slot = get_slot(message);
+    jem_size_t prevLastQueuedSlot = lastQueuedSlot.exchange(slot);
+    /*jem_size_t prevLastQueuedSlot = lastQueuedSlot.load(std::memory_order_acquire);
+    do {
+      //message->nextSlot = lastQueuedSlot;
+    } while ( !lastQueuedSlot.compare_exchange_weak(prevLastQueuedSlot, slot) );*/
+    get_request(prevLastQueuedSlot)->nextSlot = slot;
+    queuedMessages.increase(1);
+    /*queuedSinceLastCheck.fetch_add(1, std::memory_order_release);
+    queuedSinceLastCheck.notify_one();*/
+  }
+
 };
+
+
+inline void qtz_request::discard(qtz_mailbox_t mailbox) noexcept  {
+  constexpr static jem_u32_t DeathFlags = QTZ_MESSAGE_NOT_PRESERVED | QTZ_MESSAGE_IS_READY;
+  if ((flags.fetch_and_set(QTZ_MESSAGE_IS_DISCARDED) & DeathFlags) == DeathFlags) {
+    mailbox->destroy_request(this);
+  }
+}
+inline void qtz_request::action_notify_sender(qtz_mailbox_t mailbox) noexcept {
+  constexpr static jem_u32_t DeathFlags = QTZ_MESSAGE_NOT_PRESERVED | QTZ_MESSAGE_IS_DISCARDED;
+  jem_u32_t oldFlags = flags.fetch_and_set(QTZ_MESSAGE_IS_READY);
+  if ((oldFlags & DeathFlags) == DeathFlags) {
+    mailbox->destroy_request(this);
+  }
+  else if ( !(oldFlags & QTZ_MESSAGE_IS_DISCARDED) )
+    flags.notify_all();
+}
+inline void qtz_request::action_destroy(qtz_mailbox_t mailbox) noexcept {
+  jem_u32_t oldFlags = flags.fetch_and_set(QTZ_MESSAGE_IS_READY | QTZ_MESSAGE_IS_DISCARDED);
+  if (oldFlags & QTZ_MESSAGE_NOT_PRESERVED)
+    mailbox->destroy_request(this);
+}
+inline void qtz_request::unlock(qtz_mailbox_t mailbox) noexcept {
+  constexpr static jem_u32_t DeathFlags = QTZ_MESSAGE_IS_READY | QTZ_MESSAGE_IS_DISCARDED;
+  jem_u32_t oldFlags = flags.fetch_and_set(QTZ_MESSAGE_NOT_PRESERVED);
+  if ((oldFlags & DeathFlags) == DeathFlags)
+    mailbox->destroy_request(this);
+}
 
 inline struct qtz_mailbox* qtz_request::parent_mailbox() const noexcept {
   return const_cast<qtz_mailbox*>(reinterpret_cast<const qtz_mailbox*>(this - (thisSlot + 1)));
