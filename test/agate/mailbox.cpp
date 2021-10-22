@@ -26,8 +26,6 @@ TEST_CASE("Create an MPMC mailbox synchronously", "[agate][mailbox]") {
   agt_mailbox_t mailbox;
   agt_create_mailbox_params_t params;
 
-
-
   params.scope = AGT_MAILBOX_SCOPE_LOCAL;
   params.min_slot_size = JEM_CACHE_LINE;
   params.min_slot_count = 120;

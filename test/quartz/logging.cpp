@@ -3,6 +3,7 @@
 //
 
 #include <quartz.h>
+#include <agate.h>
 
 #include <thread>
 #include <barrier>
@@ -72,11 +73,13 @@ inline void execute_ops_on_threads(jem_size_t N) noexcept {
   for ( size_t i = 0; i < N; ++i ) {
     threads.emplace_back([=](std::barrier<>& barrier){
 
-      void* threadId = get_thread_id();
+      agt_set_self((agt_agent_t)get_thread_id());
 
       barrier.arrive_and_wait();
 
-      for ( jem_size_t j = 0; j < N; ++j ) {
+      jem_size_t N2 = N * N;
+
+      for ( jem_size_t j = 0; j < N2; ++j ) {
         struct buffer_t{
           size_t bufferLength;
           char   data[72];
@@ -93,7 +96,7 @@ inline void execute_ops_on_threads(jem_size_t N) noexcept {
         buffer.bufferLength = cursor - reinterpret_cast<char*>(&buffer);
         // end_string(cursor);
 
-        qtz_send(threadId, 20, &buffer, 0, JEM_WAIT);
+        qtz_send(QTZ_THIS_PROCESS, QTZ_DEFAULT_PRIORITY, 20, &buffer, JEM_WAIT);
 
         // log("thread#{}, msg#{}, @{}", i, j, std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - startTime));
       }

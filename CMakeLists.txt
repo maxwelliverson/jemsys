@@ -48,6 +48,9 @@ add_executable(TEST.jemsys test/catch.cpp #[[test/quartz/init_test.cpp]] test/si
 target_include_directories(TEST.jemsys PUBLIC include src)
 
 
+
+#target_link_libraries(jemsys.old.agate PUBLIC jemsys.internal)
+
 target_link_libraries(jemsys.quartz PUBLIC jemsys.internal)
 target_link_libraries(jemsys.old.agate PUBLIC jemsys.internal)
 target_link_libraries(jemsys.agate  PUBLIC jemsys.internal jemsys.quartz)

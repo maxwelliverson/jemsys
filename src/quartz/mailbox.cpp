@@ -214,26 +214,15 @@ qtz_message_action_t qtz_mailbox::proc_execute_callback_with_buffer(qtz_request_
 }
 
 
-namespace {
-  inline void fill_request(qtz_request_t request, qtz_local_id_t msgId, jem_u32_t priority, const void* buffer) noexcept {
 
-    request->messageKind = static_cast<qtz_message_kind_t>(msgId);
 
-    if ( priority == 0 ) [[likely]]
-      request->queuePriority = g_qtzGlobalMailbox->defaultPriority;
-    else
-      request->queuePriority = priority;
 
-    if ( msgId != GLOBAL_MESSAGE_KIND_NOOP ) {
-      std::memcpy(request->payload, buffer, *static_cast<const size_t*>(buffer));
-    }
-  }
 
 extern "C" {
 
   qtz_exit_code_t       JEM_stdcall qtz_mailbox_main_thread_proc(void*) {
 
-  /*using PFN_request_proc = qtz_message_action_t(qtz_mailbox::*)(qtz_request_t) noexcept;
+    /*using PFN_request_proc = qtz_message_action_t(qtz_mailbox::*)(qtz_request_t) noexcept;
 
   constexpr static PFN_request_proc global_dispatch_table[] = {
     &qtz_mailbox::proc_noop,
@@ -252,7 +241,7 @@ extern "C" {
     &qtz_mailbox::proc_unregister_agent
   };*/
 
-  /*qtz_request_t previousMsg = nullptr;
+    /*qtz_request_t previousMsg = nullptr;
   const auto    mailbox     = g_qtzGlobalMailbox;
 
 
