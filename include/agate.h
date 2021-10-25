@@ -140,18 +140,11 @@ typedef struct {
 typedef agt_status_t(*agt_actor_proc_t)(jem_u64_t messageId, void* messageData, void* actorState);
 typedef void(*agt_actor_dtor_t)(void* actorState);
 
-/*typedef const struct agt_mailbox_vtable{
-  agt_mailslot_t(   JEM_stdcall* pfn_acquire_slot)(agt_mailbox_t mailbox, jem_size_t messageSize, jem_u64_t timeout_us) JEM_noexcept;
-  void(         JEM_stdcall* pfn_release_slot)(agt_mailbox_t mailbox, agt_mailslot_t slot) JEM_noexcept;
-  agt_signal_t( JEM_stdcall* pfn_send)(agt_mailbox_t mailbox, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
-  agt_message_t(JEM_stdcall* pfn_receive)(agt_mailbox_t mailbox, jem_u64_t timeout_us) JEM_noexcept;
-}* agt_mailbox_vtable_t;*/
 
 
 
 struct agt_mailslot {
   char        reserved[JEM_CACHE_LINE - sizeof(void*)];
-
   jem_u64_t   messageId;
   char        payload[];
 };
@@ -162,9 +155,9 @@ struct agt_actor{
 };
 
 typedef struct agt_message_info_t{
-  jem_size_t size;
+  jem_size_t      size;
   jem_global_id_t messageId;
-  void* payload;
+  void*           payload;
 } agt_message_info_t;
 
 
@@ -213,7 +206,9 @@ JEM_api agt_message_t  JEM_stdcall agt_mailbox_receive(agt_mailbox_t mailbox, je
  * Messages
  * */
 
+// Mode: backend
 JEM_api void          JEM_stdcall agt_return_message(agt_message_t message, agt_status_t status) JEM_noexcept;
+// Mode: backend
 JEM_api void          JEM_stdcall agt_read_message(agt_message_t message, agt_message_info_t* messageInfo) JEM_noexcept;
 
 
@@ -222,15 +217,19 @@ JEM_api void          JEM_stdcall agt_read_message(agt_message_t message, agt_me
  * Agents
  * */
 
+// Mode: backend
 JEM_api void           JEM_stdcall agt_set_self(agt_agent_t self) JEM_noexcept;
 
 
 
 ///
 
+// Mode: frontend
 JEM_api agt_agent_t    JEM_stdcall agt_self() JEM_noexcept;
 
+// Mode: frontend
 JEM_api agt_mailslot_t JEM_stdcall agt_agent_acquire_slot(agt_agent_t agent, jem_size_t slot_size, jem_u64_t timeout_us) JEM_noexcept;
+// Mode: frontend
 JEM_api agt_signal_t   JEM_stdcall agt_agent_send(agt_agent_t agent, agt_mailslot_t slot, agt_send_flags_t flags) JEM_noexcept;
 
 
