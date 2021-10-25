@@ -18,7 +18,99 @@
 #include <cstdlib>
 #include <cstring>
 
+
+#pragma warning(push)
+#pragma warning(disable:4624)
+#include <llvm/Support/CommandLine.h>
+#pragma warning(pop)
+
+
+#define JEMSYS_KERNEL_VERSION ((JEMSYS_KERNEL_VERSION_MAJOR << 22) | (JEMSYS_KERNEL_VERSION_MINOR << 12) | JEMSYS_KERNEL_VERSION_PATCH)
+
+using namespace llvm::cl;
+
+
+template <typename DataType>
+class llvm::cl::basic_parser<DataType*> : public parser<uintptr_t> {
+public:
+  using parser_data_type = DataType*;
+  using OptVal = OptionValue<DataType*>;
+
+  basic_parser(Option &O) : parser<uintptr_t>(O) {}
+};
+
+template <typename DataType>
+class llvm::cl::parser<DataType*> : public basic_parser<DataType*> {
+  using StringRef = llvm::StringRef;
+public:
+  parser(Option& O) : basic_parser<DataType*>(O) {}
+
+
+
+  // parse - Return true on error.
+  bool parse(Option &O, StringRef ArgName, StringRef Arg, DataType* &Val) {
+    return parser<uintptr_t>::parse(O, ArgName, Arg, reinterpret_cast<uintptr_t&>(Val));
+    // return this->parse(O, ArgName, Arg, reinterpret_cast<uintptr_t&>(Val));
+  }
+
+  // getValueName - Overload in subclass to provide a better default value.
+  StringRef getValueName() const override { return "address"; }
+
+  void printOptionDiff(const Option &O, DataType* V, OptionValue<DataType*> Default, size_t GlobalWidth) const {
+    parser<uintptr_t>::printOptionDiff(O, (uintptr_t)V, *(OptionValue<uintptr_t>*)&Default, GlobalWidth);
+  }
+};
+
+class version_parser : public parser<unsigned> {
+  using StringRef = llvm::StringRef;
+public:
+  version_parser(Option& O) : parser<unsigned>(O){}
+
+  // parse - Return true on error.
+  bool parse(Option &O, StringRef ArgName, StringRef Arg, unsigned &Val) {
+
+    using std::tie;
+
+    unsigned long major = 0;
+    unsigned long minor = 0;
+    unsigned long patch = 0;
+
+    if (Arg.front() == 'v')
+      Arg = Arg.drop_front();
+
+    const char* strPos = Arg.data();
+    char* dotPos;
+
+
+    StringRef tok;
+    StringRef remaining = Arg;
+
+    tie(tok, remaining) = getToken(remaining, ".");
+    if (tok.empty() || !tok.getAsInteger(10, major))
+      return true;
+    tie(tok, remaining) = getToken(remaining, ".");
+    if (!tok.empty()) {
+      if (!tok.getAsInteger(10, minor))
+        return true;
+      tie(tok, remaining) = getToken(remaining, ".");
+      if (!tok.empty()) {
+        if (!remaining.empty() || !tok.getAsInteger(10, patch))
+          return true;
+      }
+    }
+    Val = ((major << 22) | (minor << 12) | patch);
+    return false;
+  }
+
+  // getValueName - Overload in subclass to provide a better default value.
+  StringRef getValueName() const override { return "version"; }
+
+  // void printOptionDiff(const Option &O, unsigned V, OptVal Default, size_t GlobalWidth) const;
+};
+
 namespace {
+
+  inline constexpr jem_size_t DefaultSharedAddressSpaceSize = 1024 * 1024 * 1024 * 16ULL;
   
   using process_id_t = int;
 
@@ -48,11 +140,21 @@ namespace {
 
   };
 
-  struct deputy_info {
+
+  struct local_entity_info {
+
+  };
+  struct agent_info {
     std::string  name;
 
     visibility_t visibility;
   };
+  struct mailbox_info {
+    std::string  name;
+
+    visibility_t visibility;
+  };
+
   struct thread_info {
 
   };
@@ -65,18 +167,27 @@ namespace {
   using handle_map_t = std::unordered_map<uintptr_t, std::unique_ptr<local_handle>>;
 
   struct process_info {
-    std::string  name;
+    char                       name[JEM_CACHE_LINE*2];
+    jem_global_id_t            jemId;
+    qtz_pid_t                  osId;
+    handle_map_t               handles;
+    uintptr_t                  useCount;
 
-    process_id_t   id;
-    handle_map_t handles;
-    uintptr_t    useCount;
+    jem_ptrdiff_t              mailboxAddrOffset;
+    qtz_mailbox_t              mailbox;
 
 
+
+    qtz::kernel_control_block* localKcb;
   };
 
   struct kernel_statistics {
     timepoint_t creationTime;
-
+    jem_size_t  messagesProcessed;
+    jem_u32_t   processesAttached;
+    jem_u32_t   processesDetached;
+    jem_size_t  sharedAgentsAttached;
+    jem_size_t  sharedAgentsDetached;
   };
 
   struct kernel_mailbox {
@@ -84,27 +195,32 @@ namespace {
   };
 
   struct kernel_state {
-    timepoint_t                           creationTime;
-    process_id_t                            creatingProcessId;
-    std::unordered_map<int, process_info> processes;
+    qtz::kernel_control_block*                        kcb;
+    timepoint_t                                       creationTime;
+    process_id_t                                      creatingProcessId;
+    std::unordered_map<jem_global_id_t, process_info> processes;
 
-    void*                                 fileMappingHandle;
-    void*                                 address;
-    size_t                                totalSize;
+    kernel_statistics                                 stats;
+
+    void*                                             fileMappingHandle;
+    void*                                             address;
+    size_t                                            totalSize;
+
+    qtz_exit_code_t                                   exitCode;
   };
 
   struct init_kernel_args {
-    process_id_t        srcProcessId;
-    uintptr_t         inboxAddress;
-    int*              result;
-    std::atomic_flag* isReady;
-    uintptr_t*        kernelInboxAddress;
+    process_id_t          srcProcessId;
+    uintptr_t             inboxAddress;
+    int*                  result;
+    std::atomic_flag*     isReady;
+    uintptr_t*            kernelInboxAddress;
 
     std::optional<size_t> sharedAddressSpaceSize;
 
 
-    jem_size_t        srcProcNameLength;
-    char              srcProcName[];
+    jem_size_t            srcProcNameLength;
+    char                  srcProcName[];
   };
 
 
@@ -114,6 +230,42 @@ namespace {
     size_t totalSize;
 
   };
+
+  opt<unsigned, false, version_parser> o_minVersion{"min", Optional, ValueRequired, init(0), desc("kernel version must be at least this")};
+
+  opt<unsigned, false, version_parser> o_maxVersion{"max", Optional, ValueRequired, init(std::numeric_limits<unsigned>::max()), desc("kernel version cannot be any greater than this")};
+
+  opt<size_t>         o_sharedAddressSpaceSize{"s", Optional, ValueRequired, init(DefaultSharedAddressSpaceSize), desc("size of the shared address space")};
+
+
+
+  // opt<std::string>    o_srcProcessInboxName{"mailbox", Required, desc("Mailbox identifier of the calling process")};
+
+  // opt<std::string>    o_srcProcessName{Positional, Required, desc("proc-name")};
+
+  opt<std::string>    o_kernelAccessCode{Positional, Required, desc("<kernel-id>")};
+
+  // opt<qtz_handle_t>   o_kernelMemoryBlockHandle{Positional, Required, desc("<kernel-handle>")};
+
+  /*opt<qtz_handle_t>   o_procInboxOsHandle{Positional, Required,
+                                value_desc("proc-inbox-handle"),
+                                desc("OS handle of the source process' inbox memory block")};
+  opt<void*>          o_procInboxAddr{Positional, Required,
+                                value_desc("proc-inbox-addr"),
+                                desc("address (in the source process) of the source process' inbox")};
+  opt<int*>           o_resultAddr{Positional, Required,
+                                value_desc("result-addr"),
+                                desc("address (in the source process) where the result of kernel initialization should be stored")};
+  opt<atomic_flag_t*> o_isReadyAddr{Positional, Required,
+                                value_desc("is-ready-addr"),
+                                desc("address (in the source process) of the flag used to indicate kernel initialization has completed")};
+  opt<void**>         o_kernelInboxAddr{Positional, Required,
+                                value_desc("kernel-inbox-addr"),
+                                desc("address (in the source process) where the kernel's inbox address will be stored")};
+*/
+
+
+
 
 
   bool decode_params(init_kernel_args*& args, int argc, char** argv) noexcept {
@@ -187,53 +339,42 @@ namespace {
   }
 
 
+  bool init_kernel(kernel_state& state) noexcept {
+    using clock = std::chrono::high_resolution_clock;
+
+    state.creationTime = clock::now();
+    // state.creatingProcessId = o_srcProcessId;
+    state.exitCode = 0;
+    return true;
+  }
+
+  void kernel_event_loop(kernel_state& state) {
+
+  }
+
 }
 
 
 
+#define JEMSYS_KERNEL_VERSION_MAJOR 0
+#define JEMSYS_KERNEL_VERSION_MINOR 0
+#define JEMSYS_KERNEL_VERSION_PATCH 0
 
 
 int main(int argc, char** argv) {
+  SetVersionPrinter([](llvm::raw_ostream& os){
+    os << "v" << JEMSYS_KERNEL_VERSION_MAJOR <<
+          "." << JEMSYS_KERNEL_VERSION_MINOR <<
+          "." << JEMSYS_KERNEL_VERSION_PATCH;
+  });
+  ParseCommandLineOptions(argc, argv, "A interprocess communication mediator for use by Jemsys libraries. "
+                                      "This program should never be invoked directly.");
 
-  using clock = std::chrono::high_resolution_clock;
-
-  init_kernel_args* args;
-  address_space     kernel;
   kernel_state      state;
 
-  if ( !decode_params(args, argc, argv) ) {
-
-    if ( args ) {
-      if ( args->result ) {
-        *args->result = 0;
-      }
-      if ( args->isReady ) {
-        args->isReady->test_and_set();
-      }
-    }
-
-    free(args);
-
-    return 1;
+  if (init_kernel(state)) {
+    kernel_event_loop(state);
   }
 
-  assert( args != nullptr );
-
-
-  state.creationTime      = clock::now();
-  state.creatingProcessId = args->srcProcessId;
-
-  if ( !init_address_space(args, kernel) ) {
-
-  }
-
-  // ... Initialize Kernel State
-
-
-  free(args);
-
-
-  // ... Event loop
-
-  return 0;
+  return (int)state.exitCode;
 }

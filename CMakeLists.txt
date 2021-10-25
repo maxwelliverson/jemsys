@@ -4,6 +4,10 @@ project(jemsys C CXX)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 23)
 
+#set(LLVM_DIR $ENV{LLVM_CMAKE_DIR})
+set(LLVM_DIR "C:/Users/maxwe/git/vcpkg/installed/x64-windows/share/llvm")
+find_package(LLVM REQUIRED)
+#find_library(LLVM_SUPPORT_LIB LLVMSupport.lib REQUIRED)
 
 add_library(asan INTERFACE)
 if (CMAKE_ASAN_ENABLED)
@@ -170,6 +174,8 @@ add_jemsys_executable(
         quartz_kernel
             SOURCES
                 quartz/kernel.cpp
+            DEPENDENCIES
+                LLVMSupport
 )
 
 add_jemsys_executable(
