@@ -5,8 +5,6 @@
 #ifndef JEMSYS_QUARTZ_INTERNAL_H
 #define JEMSYS_QUARTZ_INTERNAL_H
 
-#define JEM_SHARED_LIB_EXPORT
-
 #include <quartz.h>
 
 

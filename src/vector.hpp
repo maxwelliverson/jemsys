@@ -5,8 +5,6 @@
 #ifndef JEMSYS_INTERNAL_VECTOR_HPP
 #define JEMSYS_INTERNAL_VECTOR_HPP
 
-#define JEM_SHARED_LIB_EXPORT
-
 #include <jemsys.h>
 
 

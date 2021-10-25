@@ -5,7 +5,6 @@
 #ifndef JEMSYS_AGATE_COMMON_HPP
 #define JEMSYS_AGATE_COMMON_HPP
 
-#define JEM_SHARED_LIB_EXPORT
 #include <agate.h>
 
 #include "atomicutils.hpp"

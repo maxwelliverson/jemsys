@@ -19,6 +19,8 @@
 #include <cstring>
 
 namespace {
+  
+  using process_id_t = int;
 
   using timepoint_t = std::chrono::high_resolution_clock::time_point;
 
@@ -33,9 +35,9 @@ namespace {
   class local_handle {
 
   protected:
-    qtz::pid_t processId;
+    int processId;
 
-    explicit local_handle(qtz::pid_t id) noexcept : processId(id){ }
+    explicit local_handle(int id) noexcept : processId(id){ }
 
   public:
 
@@ -65,7 +67,7 @@ namespace {
   struct process_info {
     std::string  name;
 
-    qtz::pid_t   id;
+    process_id_t   id;
     handle_map_t handles;
     uintptr_t    useCount;
 
@@ -83,7 +85,7 @@ namespace {
 
   struct kernel_state {
     timepoint_t                           creationTime;
-    qtz::pid_t                            creatingProcessId;
+    process_id_t                            creatingProcessId;
     std::unordered_map<int, process_info> processes;
 
     void*                                 fileMappingHandle;
@@ -92,7 +94,7 @@ namespace {
   };
 
   struct init_kernel_args {
-    qtz::pid_t        srcProcessId;
+    process_id_t        srcProcessId;
     uintptr_t         inboxAddress;
     int*              result;
     std::atomic_flag* isReady;
@@ -174,14 +176,17 @@ namespace {
       .bInheritHandle       = true
     };
 
-    addrSpace.handle = CreateFileMapping2(INVALID_HANDLE_VALUE,
+    /*addrSpace.handle = CreateFileMapping2(INVALID_HANDLE_VALUE,
                                           &secAttr,
                                           FILE_MAP_WRITE,
                                           PAGE_READWRITE,
                                           0,
-                                          );
+                                          );*/
 
+    return false;
   }
+
+
 }
 
 

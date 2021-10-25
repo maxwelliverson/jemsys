@@ -82,6 +82,7 @@ typedef struct agt_agent*    agt_agent_t;
 typedef struct agt_mailslot* agt_mailslot_t;
 typedef struct agt_actor*    agt_actor_t;
 
+
 typedef enum agt_status_t {
   AGT_SUCCESS,
   AGT_NOT_READY,

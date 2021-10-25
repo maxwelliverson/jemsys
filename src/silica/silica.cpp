@@ -2,6 +2,8 @@
 // Created by maxwe on 2021-08-30.
 //
 
+// #define JEM_SHARED_LIB_EXPORT
+
 #include "silica.h"
 
 #include "vector.hpp"
@@ -9,8 +11,11 @@
 
 
 #define NOMINMAX
-#include <silica.h>
-#include <windows.h>
+#include "silica.h"
+#include <Windows.h>
+
+
+#pragma comment(lib, "mincore")
 
 namespace impl{
   namespace {

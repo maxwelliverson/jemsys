@@ -21,7 +21,8 @@ inline void log(std::string_view fmt, Args&& ...args) noexcept {
   auto buffer = new char[bufferLength];
   std::memcpy(buffer, &bufferLength, sizeof(size_t));
   std::memcpy(buffer + sizeof(size_t), str.data(), length + 1);
-  qtz_send(threadId, 20, buffer, 100, JEM_WAIT);
+  qtz_send(QTZ_THIS_PROCESS, 100, 20, buffer, JEM_WAIT);
+  // qtz_send(threadId, 20, buffer, 100, JEM_WAIT);
   delete[] buffer;
 }
 
