@@ -12,7 +12,7 @@
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 
-#include <windows.h>
+#include <Windows.h>
 
 #pragma comment(lib, "mincore")
 
@@ -40,6 +40,20 @@
     return std::nullopt;
 }*/
 
+
+namespace {
+class this_process_class_ : public ipc::process {
+public:
+  this_process_class_() noexcept : ipc::process(){
+    this->handle_ = GetCurrentProcess();
+    this->id_     = GetCurrentProcessId();
+    this->permissions_ = ipc::all_process_permissions;
+  }
+};
+inline this_process_class_ this_process_{};
+}
+
+ipc::process& ipc::this_process = this_process_;
 
 
 

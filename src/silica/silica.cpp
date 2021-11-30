@@ -6,8 +6,8 @@
 
 #include "silica.h"
 
-#include "vector.hpp"
-#include "dictionary.hpp"
+#include "support/dictionary.hpp"
+#include "support/vector.hpp"
 
 
 #define NOMINMAX

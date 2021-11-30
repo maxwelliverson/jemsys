@@ -41,7 +41,8 @@ namespace ipc{
     can_read_process_security      = 0x00020000,
     can_modify_process_security    = 0x00040000,
     can_change_process_owner       = 0x00080000,
-    can_synchronize_with_process   = 0x00100000
+    can_synchronize_with_process   = 0x00100000,
+    all_process_permissions        = 0x001FFFFF
   };
 
 
@@ -567,7 +568,7 @@ namespace ipc{
       return handle_;
     }
 
-  private:
+  protected:
     native_handle_t       handle_;
     id                    id_;
     process_permissions_t permissions_;

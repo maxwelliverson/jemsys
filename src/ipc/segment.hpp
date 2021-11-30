@@ -127,7 +127,7 @@ namespace ipc{
 
 
 
-  class segment{
+  class segment {
   public:
 
     segment() = default;

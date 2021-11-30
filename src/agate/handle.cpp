@@ -117,19 +117,19 @@ namespace {
   void destroy_object(agt_object* object) noexcept;
 
 
-  agt_message_t create_mailbox(agt_handle_t& handle, const mailbox_params_t& params) noexcept;
+  agt_cookie_t create_mailbox(agt_handle_t& handle, const mailbox_params_t& params) noexcept;
 
-  agt_message_t lookup_handle_by_name(agt_handle_t& handle, std::string_view name, bool isExplicitlyIpc) noexcept;
+  agt_cookie_t lookup_handle_by_name(agt_handle_t& handle, std::string_view name, bool isExplicitlyIpc) noexcept;
 
   struct create_deputy_t{
     agt_handle_t& handle;
     mailbox_params_t& mailboxParams;
-    agt_message_t operator()(agt_create_thread_deputy_params_t* params) noexcept;
-    agt_message_t operator()(agt_create_thread_pool_deputy_params_t* params) noexcept;
-    agt_message_t operator()(agt_create_lazy_deputy_params_t* params) noexcept;
-    agt_message_t operator()(agt_create_proxy_deputy_params_t* params) noexcept;
-    agt_message_t operator()(agt_create_virtual_deputy_params_t* params) noexcept;
-    agt_message_t operator()(agt_create_collective_deputy_params_t* params) noexcept;
+    agt_cookie_t operator()(agt_create_thread_deputy_params_t* params) noexcept;
+    agt_cookie_t operator()(agt_create_thread_pool_deputy_params_t* params) noexcept;
+    agt_cookie_t operator()(agt_create_lazy_deputy_params_t* params) noexcept;
+    agt_cookie_t operator()(agt_create_proxy_deputy_params_t* params) noexcept;
+    agt_cookie_t operator()(agt_create_virtual_deputy_params_t* params) noexcept;
+    agt_cookie_t operator()(agt_create_collective_deputy_params_t* params) noexcept;
   };
 
   jem_u32_t defaultMaxConsumers(open_handle_op_t) noexcept;
@@ -139,7 +139,7 @@ namespace {
 
 extern "C" {
 
-  JEM_api agt_message_t JEM_stdcall agt_open_handle(agt_handle_t* pHandle, const agt_open_handle_params_t* params) JEM_noexcept {
+  JEM_api agt_cookie_t JEM_stdcall agt_open_handle(agt_handle_t* pHandle, const agt_open_handle_params_t* params) JEM_noexcept {
 
 
 

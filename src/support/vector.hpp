@@ -5,10 +5,10 @@
 #ifndef JEMSYS_INTERNAL_VECTOR_HPP
 #define JEMSYS_INTERNAL_VECTOR_HPP
 
-#include <jemsys.h>
+#include "jemsys.h"
 
 
-#include "allocator.hpp"
+#include "support/allocator.hpp"
 
 #include <initializer_list>
 

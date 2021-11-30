@@ -22,12 +22,9 @@
 #include <charconv>
 
 
-#include "atomicutils.hpp"
-#include "dictionary.hpp"
-#include "handles.hpp"
-
-
-
+#include "support/atomicutils.hpp"
+#include "support/dictionary.hpp"
+#include "support/handles.hpp"
 
 
 /*using atomic_u32_t  = std::atomic_uint32_t;

@@ -75,9 +75,9 @@ typedef jem_flags32_t agt_handle_flags_t;
 
 typedef void(JEM_stdcall*      agt_cleanup_callback_t)(agt_handle_t handle, void* user_data);
 typedef void(JEM_stdcall*      agt_thread_deputy_proc_t)(agt_handle_t deputy, void* userData);
-typedef void(JEM_stdcall*      agt_message_proc_t)(agt_handle_t deputy, agt_message_t message, void* payload, void* userData);
+typedef void(JEM_stdcall*      agt_message_proc_t)(agt_handle_t deputy, agt_cookie_t message, void* payload, void* userData);
 typedef jem_u32_t(JEM_stdcall* agt_message_filter_t)(agt_handle_t deputy, const void* filterParam, void* userData);
-typedef bool(JEM_stdcall*      agt_lazy_deputy_status_proc_t)(agt_handle_t deputy, agt_message_t message, jem_size_t checkStatusCount, void* userData);
+typedef bool(JEM_stdcall*      agt_lazy_deputy_status_proc_t)(agt_handle_t deputy, agt_cookie_t message, jem_size_t checkStatusCount, void* userData);
 
 
 
@@ -128,13 +128,13 @@ typedef struct {
   agt_send_message_flags_t flags;
   jem_size_t               count;
   void**                   slots;
-  agt_message_t*           messages;
+  agt_cookie_t*           messages;
   jem_size_t               ext_param_count;
   const agt_ext_param_t*   ext_params;
 } agt_send_ex_params_t;
 typedef struct {
   jem_size_t             count;
-  agt_message_t*         messages;
+  agt_cookie_t*         messages;
   jem_u64_t              timeout_us;
   jem_size_t             ext_param_count;
   const agt_ext_param_t* ext_params;
@@ -146,8 +146,8 @@ typedef agt_status_t(JEM_stdcall* agt_virtual_acquire_slot_proc_t)(agt_handle_t 
 typedef agt_status_t(JEM_stdcall* agt_virtual_release_slot_proc_t)(agt_handle_t handle, const agt_release_slot_ex_params_t* params, void* userData);
 typedef agt_status_t(JEM_stdcall* agt_virtual_send_proc_t)(agt_handle_t handle, const agt_send_ex_params_t* params, void* userData);
 typedef agt_status_t(JEM_stdcall* agt_virtual_receive_proc_t)(agt_handle_t handle, const agt_receive_ex_params_t* params, void* userData);
-typedef agt_status_t(JEM_stdcall* agt_virtual_discard_proc_t)(agt_handle_t handle, agt_message_t message, void* userData);
-typedef agt_status_t(JEM_stdcall* agt_virtual_cancel_proc_t)(agt_handle_t handle, agt_message_t message, void* userData);
+typedef agt_status_t(JEM_stdcall* agt_virtual_discard_proc_t)(agt_handle_t handle, agt_cookie_t message, void* userData);
+typedef agt_status_t(JEM_stdcall* agt_virtual_cancel_proc_t)(agt_handle_t handle, agt_cookie_t message, void* userData);
 typedef agt_status_t(JEM_stdcall* agt_virtual_query_attributes_proc_t)(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeKinds, agt_handle_attribute_t* attributes, void* userData);
 
 
@@ -207,7 +207,7 @@ JEM_api jem_size_t          JEM_stdcall agt_get_dynamic_mailbox_granularity();
 
 
 
-JEM_api agt_message_t JEM_stdcall agt_open_handle(agt_handle_t* pHandle, const agt_open_handle_params_t* params) JEM_noexcept;
+JEM_api agt_cookie_t JEM_stdcall agt_open_handle(agt_handle_t* pHandle, const agt_open_handle_params_t* params) JEM_noexcept;
 JEM_api void          JEM_stdcall agt_close_handle(agt_handle_t handle) JEM_noexcept;
 
 
@@ -217,19 +217,19 @@ JEM_api void          JEM_stdcall agt_close_handle(agt_handle_t handle) JEM_noex
 
 JEM_api void*         JEM_stdcall agt_acquire_slot(agt_handle_t handle, jem_size_t slotSize) JEM_noexcept;
 JEM_api void          JEM_stdcall agt_release_slot(agt_handle_t handle, void* slot) JEM_noexcept;
-JEM_api agt_message_t JEM_stdcall agt_send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags) JEM_noexcept;
-JEM_api agt_message_t JEM_stdcall agt_receive(agt_handle_t handle) JEM_noexcept;
+JEM_api agt_cookie_t JEM_stdcall agt_send(agt_handle_t handle, void* messageSlot, agt_send_message_flags_t flags) JEM_noexcept;
+JEM_api agt_cookie_t JEM_stdcall agt_receive(agt_handle_t handle) JEM_noexcept;
 
 JEM_api agt_status_t  JEM_stdcall agt_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots) JEM_noexcept;
 JEM_api void          JEM_stdcall agt_release_many_slots(agt_handle_t handle, jem_size_t slotCount, void** slots) JEM_noexcept;
-JEM_api void          JEM_stdcall agt_send_many(agt_handle_t handle, jem_size_t messageCount, void** messageSlots, agt_message_t* messages, agt_send_message_flags_t flags) JEM_noexcept;
-JEM_api agt_status_t  JEM_stdcall agt_receive_many(agt_handle_t handle, jem_size_t count, agt_message_t* messages) JEM_noexcept;
+JEM_api void          JEM_stdcall agt_send_many(agt_handle_t handle, jem_size_t messageCount, void** messageSlots, agt_cookie_t* messages, agt_send_message_flags_t flags) JEM_noexcept;
+JEM_api agt_status_t  JEM_stdcall agt_receive_many(agt_handle_t handle, jem_size_t count, agt_cookie_t* messages) JEM_noexcept;
 
 
 JEM_api agt_status_t  JEM_stdcall agt_try_acquire_slot(agt_handle_t handle, jem_size_t slotSize, void** pSlot, jem_u64_t timeout_us) JEM_noexcept;
-JEM_api agt_status_t  JEM_stdcall agt_try_receive(agt_handle_t handle, agt_message_t* pMessage, jem_u64_t timeout_us) JEM_noexcept;
+JEM_api agt_status_t  JEM_stdcall agt_try_receive(agt_handle_t handle, agt_cookie_t* pMessage, jem_u64_t timeout_us) JEM_noexcept;
 JEM_api agt_status_t  JEM_stdcall agt_try_acquire_many_slots(agt_handle_t handle, jem_size_t slotSize, jem_size_t slotCount, void** slots, jem_u64_t timeout_us) JEM_noexcept;
-JEM_api agt_status_t  JEM_stdcall agt_try_receive_many(agt_handle_t handle, jem_size_t slotCount, agt_message_t* message, jem_u64_t timeout_us) JEM_noexcept;
+JEM_api agt_status_t  JEM_stdcall agt_try_receive_many(agt_handle_t handle, jem_size_t slotCount, agt_cookie_t* message, jem_u64_t timeout_us) JEM_noexcept;
 
 
 JEM_api agt_status_t  JEM_stdcall agt_acquire_slot_ex(agt_handle_t handle, const agt_acquire_slot_ex_params_t* params) JEM_noexcept;
@@ -242,19 +242,19 @@ JEM_api agt_status_t  JEM_stdcall agt_receive_ex(agt_handle_t handle, const agt_
 
 
 
-JEM_api bool          JEM_stdcall agt_discard(agt_message_t message) JEM_noexcept;
-JEM_api agt_status_t  JEM_stdcall agt_cancel(agt_message_t message) JEM_noexcept;
+JEM_api bool          JEM_stdcall agt_discard(agt_cookie_t message) JEM_noexcept;
+JEM_api agt_status_t  JEM_stdcall agt_cancel(agt_cookie_t message) JEM_noexcept;
 JEM_api void          JEM_stdcall agt_query_attributes(agt_handle_t handle, jem_size_t attributeCount, const agt_handle_attribute_type_t* attributeKinds, agt_handle_attribute_t* attributes) JEM_noexcept;
 
 
 
 
 
-JEM_api agt_status_t        JEM_stdcall agt_get_status(agt_message_t message);
-JEM_api void                JEM_stdcall agt_set_status(agt_message_t message, agt_status_t status);
-JEM_api agt_status_t        JEM_stdcall agt_notify_sender(agt_message_t message);
-JEM_api agt_status_t        JEM_stdcall agt_wait(agt_message_t message, jem_u64_t timeout_us);
-JEM_api void*               JEM_stdcall agt_get_payload(agt_message_t message, jem_size_t* pMessageSize);
+JEM_api agt_status_t        JEM_stdcall agt_get_status(agt_cookie_t message);
+JEM_api void                JEM_stdcall agt_set_status(agt_cookie_t message, agt_status_t status);
+JEM_api agt_status_t        JEM_stdcall agt_notify_sender(agt_cookie_t message);
+JEM_api agt_status_t        JEM_stdcall agt_wait(agt_cookie_t message, jem_u64_t timeout_us);
+JEM_api void*               JEM_stdcall agt_get_payload(agt_cookie_t message, jem_size_t* pMessageSize);
 
 
 

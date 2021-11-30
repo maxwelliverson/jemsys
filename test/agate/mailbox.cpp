@@ -41,24 +41,24 @@ TEST_CASE("Create an MPMC mailbox synchronously", "[agate][mailbox]") {
 
 
   for (jem_u32_t senders = 0; senders < params.max_senders; ++senders) {
-    REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+    REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
   }
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
 
   for (jem_u32_t receivers = 0; receivers < params.max_receivers; ++receivers) {
-    REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+    REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
   }
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
 
-  agt_mailbox_detach_sender(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  agt_mailbox_detach_receiver(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
   agt_close_mailbox(mailbox);
 }
@@ -82,21 +82,21 @@ TEST_CASE("Create an MPSC mailbox synchronously", "[agate][mailbox]") {
 
 
   for (jem_u32_t senders = 0; senders < params.max_senders; ++senders) {
-    REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+    REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
   }
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
 
-  agt_mailbox_detach_sender(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  agt_mailbox_detach_receiver(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
   agt_close_mailbox(mailbox);
 }
@@ -117,22 +117,22 @@ TEST_CASE("Create an SPMC mailbox synchronously", "[agate][mailbox]") {
   REQUIRE( agt_create_mailbox(&mailbox, &params) == AGT_SUCCESS );
   REQUIRE( mailbox != nullptr );
   REQUIRE( mailbox_kind == mailbox_kind_local_spmc );
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
 
   for (jem_u32_t receivers = 0; receivers < params.max_receivers; ++receivers) {
-    REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+    REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
   }
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
 
-  agt_mailbox_detach_sender(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  agt_mailbox_detach_receiver(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
   agt_close_mailbox(mailbox);
 }
@@ -153,18 +153,18 @@ TEST_CASE("Create an SPSC mailbox synchronously", "[agate][mailbox]") {
   REQUIRE( agt_create_mailbox(&mailbox, &params) == AGT_SUCCESS );
   REQUIRE( mailbox != nullptr );
   REQUIRE( mailbox_kind == mailbox_kind_local_spsc );
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
 
-  agt_mailbox_detach_sender(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  agt_mailbox_detach_receiver(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
   agt_close_mailbox(mailbox);
 }
@@ -183,18 +183,18 @@ TEST_CASE("Create a private mailbox synchronously", "[agate][mailbox]") {
   REQUIRE( agt_create_mailbox(&mailbox, &params) == AGT_SUCCESS );
   REQUIRE( mailbox != nullptr );
   REQUIRE( mailbox_kind == mailbox_kind_private );
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
 
-  agt_mailbox_detach_sender(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  agt_mailbox_detach_receiver(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
   agt_close_mailbox(mailbox);
 }
@@ -222,24 +222,24 @@ TEST_CASE("Create an MPMC mailbox asynchronously", "[agate][mailbox]") {
 
 
   for (jem_u32_t senders = 0; senders < params.max_senders; ++senders) {
-    REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+    REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
   }
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
 
   for (jem_u32_t receivers = 0; receivers < params.max_receivers; ++receivers) {
-    REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+    REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
   }
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
 
-  agt_mailbox_detach_sender(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  agt_mailbox_detach_receiver(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
   agt_close_mailbox(mailbox);
 }
@@ -265,21 +265,21 @@ TEST_CASE("Create an MPSC mailbox asynchronously", "[agate][mailbox]") {
 
 
   for (jem_u32_t senders = 0; senders < params.max_senders; ++senders) {
-    REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+    REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
   }
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
 
-  agt_mailbox_detach_sender(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  agt_mailbox_detach_receiver(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
   agt_close_mailbox(mailbox);
 }
@@ -303,22 +303,22 @@ TEST_CASE("Create an SPMC mailbox asynchronously", "[agate][mailbox]") {
   REQUIRE( qtz_wait(request, JEM_WAIT) == QTZ_SUCCESS );
   REQUIRE( mailbox != nullptr );
   REQUIRE( mailbox_kind == mailbox_kind_local_spmc );
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
 
   for (jem_u32_t receivers = 0; receivers < params.max_receivers; ++receivers) {
-    REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+    REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
   }
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
 
-  agt_mailbox_detach_sender(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  agt_mailbox_detach_receiver(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
   agt_close_mailbox(mailbox);
 }
@@ -342,18 +342,18 @@ TEST_CASE("Create an SPSC mailbox asynchronously", "[agate][mailbox]") {
   REQUIRE( qtz_wait(request, JEM_WAIT) == QTZ_SUCCESS );
   REQUIRE( mailbox != nullptr );
   REQUIRE( mailbox_kind == mailbox_kind_local_spsc );
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
 
-  agt_mailbox_detach_sender(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  agt_mailbox_detach_receiver(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
   agt_close_mailbox(mailbox);
 }
@@ -375,18 +375,18 @@ TEST_CASE("Create a private mailbox asynchronously", "[agate][mailbox]") {
   REQUIRE( qtz_wait(request, JEM_WAIT) == QTZ_SUCCESS );
   REQUIRE( mailbox != nullptr );
   REQUIRE( mailbox_kind == mailbox_kind_private );
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_SENDERS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_ERROR_TOO_MANY_RECEIVERS );
 
-  agt_mailbox_detach_sender(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_sender(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_SENDER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  agt_mailbox_detach_receiver(mailbox);
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_DETACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
-  REQUIRE( agt_mailbox_attach_receiver(mailbox, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
+  REQUIRE( agt_mailbox_connect(mailbox, AGT_ATTACH_RECEIVER, JEM_DO_NOT_WAIT) == AGT_SUCCESS );
 
   agt_close_mailbox(mailbox);
 }

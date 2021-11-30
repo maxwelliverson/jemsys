@@ -7,8 +7,8 @@
 
 #include <jemsys.h>
 
-#include <atomicutils.hpp>
-#include <memutils.hpp>
+#include "support/atomicutils.hpp"
+#include "support/memutils.hpp"
 
 #include "offset_ptr.hpp"
 #include "segment.hpp"

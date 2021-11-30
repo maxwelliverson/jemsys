@@ -245,7 +245,7 @@ namespace agt::impl{
       }
     };
 
-    class collective_marshal final{
+    class collective_marshal final {
       collective_deputy*     deputies;
       agt_deputy_t*          deputyList;
       native_thread_handle_t threadHandle;
@@ -254,7 +254,7 @@ namespace agt::impl{
 
 
 
-    struct execution_context{
+    struct execution_context {
       agt_deputy_t deputy;
       /*CONTEXT      context;
       char*        inst_ptr;

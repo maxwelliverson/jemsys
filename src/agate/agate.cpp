@@ -4,7 +4,6 @@
 
 #include "common.hpp"
 
-
 #include <quartz.h>
 
 
@@ -30,6 +29,8 @@ namespace {
     inline_callback_args args;
   };
 
+
+
   inline void init_slots(agt_mailbox_t mailbox, const create_mailbox_params& params) noexcept {
     jem_size_t slotCount = params.slotCount;
     jem_size_t slotSize = params.slotSize;
@@ -38,8 +39,8 @@ namespace {
     // std::memset(messageSlots, 0, slotSize * slotCount);
 
     for ( jem_size_t i = 0; i < slotCount; ++i ) {
-      auto message = new(messageSlots + (slotSize * i)) agt_message;
-      message->next.address = (agt_message_t)((std::byte*)message + slotSize);
+      auto message = new(messageSlots + (slotSize * i)) agt_cookie;
+      message->next.address = (agt_cookie_t)((std::byte*)message + slotSize);
       message->mailbox.address = mailbox;
       message->thisIndex = i;
       message->signal.openHandles.store(1);
@@ -53,9 +54,9 @@ namespace {
     jem_size_t slotCount = params.slotCount;
     jem_size_t slotSize = params.slotSize;
     auto messageSlots = static_cast<std::byte*>(params.slotsAddress);
-    auto firstMessage = (agt_message_t)messageSlots;
-    auto lastMessage  = (agt_message_t)(messageSlots + (slotSize * (slotCount - 1)));
-    auto penultimateMessage  = (agt_message_t)(messageSlots + (slotSize * (slotCount - 2)));
+    auto firstMessage = (agt_cookie_t)messageSlots;
+    auto lastMessage  = (agt_cookie_t)(messageSlots + (slotSize * (slotCount - 1)));
+    auto penultimateMessage  = (agt_cookie_t)(messageSlots + (slotSize * (slotCount - 2)));
 
 
     auto mailbox = new(memory) agt::local_spsc_mailbox{
@@ -84,9 +85,9 @@ namespace {
     jem_size_t slotCount = params.slotCount;
     jem_size_t slotSize = params.slotSize;
     auto messageSlots = static_cast<std::byte*>(params.slotsAddress);
-    auto firstMessage = (agt_message_t)messageSlots;
-    auto lastMessage  = (agt_message_t)(messageSlots + (slotSize * (slotCount - 1)));
-    auto penultimateMessage  = (agt_message_t)(messageSlots + (slotSize * (slotCount - 2)));
+    auto firstMessage = (agt_cookie_t)messageSlots;
+    auto lastMessage  = (agt_cookie_t)(messageSlots + (slotSize * (slotCount - 1)));
+    auto penultimateMessage  = (agt_cookie_t)(messageSlots + (slotSize * (slotCount - 2)));
 
 
     auto mailbox = new(memory) agt::local_mpsc_mailbox{
@@ -115,9 +116,9 @@ namespace {
     jem_size_t slotCount = params.slotCount;
     jem_size_t slotSize = params.slotSize;
     auto messageSlots = static_cast<std::byte*>(params.slotsAddress);
-    auto firstMessage = (agt_message_t)messageSlots;
-    auto lastMessage  = (agt_message_t)(messageSlots + (slotSize * (slotCount - 1)));
-    auto penultimateMessage  = (agt_message_t)(messageSlots + (slotSize * (slotCount - 2)));
+    auto firstMessage = (agt_cookie_t)messageSlots;
+    auto lastMessage  = (agt_cookie_t)(messageSlots + (slotSize * (slotCount - 1)));
+    auto penultimateMessage  = (agt_cookie_t)(messageSlots + (slotSize * (slotCount - 2)));
 
 
     auto mailbox = new(memory) agt::local_spmc_mailbox{
@@ -146,9 +147,9 @@ namespace {
     jem_size_t slotCount = params.slotCount;
     jem_size_t slotSize = params.slotSize;
     auto messageSlots = static_cast<std::byte*>(params.slotsAddress);
-    auto firstMessage = (agt_message_t)messageSlots;
-    auto lastMessage  = (agt_message_t)(messageSlots + (slotSize * (slotCount - 1)));
-    auto penultimateMessage  = (agt_message_t)(messageSlots + (slotSize * (slotCount - 2)));
+    auto firstMessage = (agt_cookie_t)messageSlots;
+    auto lastMessage  = (agt_cookie_t)(messageSlots + (slotSize * (slotCount - 1)));
+    auto penultimateMessage  = (agt_cookie_t)(messageSlots + (slotSize * (slotCount - 2)));
 
 
     auto mailbox = new(memory) agt::local_mpmc_mailbox{
@@ -178,8 +179,8 @@ namespace {
     jem_size_t slotCount = params.slotCount;
     jem_size_t slotSize = params.slotSize;
     auto messageSlots = static_cast<std::byte*>(params.slotsAddress);
-    auto firstMessage = (agt_message_t)messageSlots;
-    auto lastMessage  = (agt_message_t)(messageSlots + (slotSize * (slotCount - 1)));
+    auto firstMessage = (agt_cookie_t)messageSlots;
+    auto lastMessage  = (agt_cookie_t)(messageSlots + (slotSize * (slotCount - 1)));
 
     auto mailbox = new(memory) agt::private_mailbox{
       .availableSlotCount = slotCount - 1,
@@ -277,7 +278,7 @@ namespace {
   }
 
 
-  JEM_noinline void async_create_mailbox(agt_mailbox_t* pMailbox, const agt_create_mailbox_params_t& params) {
+  JEM_noinline void         async_create_mailbox(agt_mailbox_t* pMailbox, const agt_create_mailbox_params_t& params) {
 
     qtz_execute_callback_args callbackArgs{
       .structSize = sizeof(qtz_execute_callback_args),
@@ -299,7 +300,7 @@ namespace {
 
     *(qtz_request_t*)params.async_handle_address = qtz_send(QTZ_THIS_PROCESS, QTZ_DEFAULT_PRIORITY, 22, &callbackArgs, JEM_WAIT);
   }
-  JEM_noinline agt_status_t sync_create_mailbox(agt_mailbox_t* pMailbox, const agt_create_mailbox_params_t& params) {
+  JEM_noinline agt_status_t  sync_create_mailbox(agt_mailbox_t* pMailbox, const agt_create_mailbox_params_t& params) {
 
     create_mailbox_params mailboxParams{
       .slotsAddress = nullptr,
@@ -410,14 +411,5 @@ JEM_api void          JEM_stdcall agt_close_mailbox(agt_mailbox_t mailbox) JEM_n
   if (!--mailbox->refCount)
     destroy_mailbox(mailbox);
 }
-
-
-// TODO: Implement agt_create_agent
-// TODO: Implement agt_destroy_agent
-JEM_api agt_status_t  JEM_stdcall agt_create_agent(agt_agent_t* pAgent) JEM_noexcept {
-  return AGT_ERROR_NOT_YET_IMPLEMENTED;
-}
-JEM_api void          JEM_stdcall agt_destroy_agent(agt_agent_t agent) JEM_noexcept {}
-
 
 }

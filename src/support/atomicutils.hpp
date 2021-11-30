@@ -5,7 +5,7 @@
 #ifndef JEMSYS_ATOMICUTILS_INTERNAL_HPP
 #define JEMSYS_ATOMICUTILS_INTERNAL_HPP
 
-#include <jemsys.h>
+#include "jemsys.h"
 
 #include <atomic>
 #include <semaphore>
@@ -13,7 +13,7 @@
 
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#include <Windows.h>
 
 #define REPEAT_STMT_x2(stmt) stmt stmt
 #define REPEAT_STMT_x4(stmt) REPEAT_STMT_x2(REPEAT_STMT_x2(stmt))
@@ -29,6 +29,8 @@
 #define PAUSE_x32() do { REPEAT_STMT_x32(PAUSE_x1();) } while(false)
 
 #define TIMEOUT_US_LONG_WAIT_THRESHOLD 20000
+
+
 
 namespace {
 
@@ -198,11 +200,12 @@ namespace {
     return false;
   }
 */
+
   class simple_mutex_t {
     long value_ = 0;
-    std::atomic_uint32_t waiters_ = 0;
 
-    void acquire_duffs_spinlock() {
+  public:
+    void acquire() noexcept {
       jem_u32_t backoff = 0;
       while(_InterlockedExchange(&value_, 1) != 0) {
         while (__iso_volatile_load32(&reinterpret_cast<int&>(value_)) != 0) {
@@ -231,23 +234,6 @@ namespace {
           ++backoff;
         }
       }
-    }
-    bool try_acquire_duffs_spinlock() {
-      return _InterlockedExchange(&value_, 1) == 0;
-    }
-    bool try_acquire_duffs_spinlock_until(deadline_t deadline) {
-      return _InterlockedExchange(&value_, 1) == 0;
-    }
-    bool try_acquire_duffs_spinlock_for(jem_u64_t timeout_us) {
-      return try_acquire_duffs_spinlock_until(deadline_t::from_timeout_us(timeout_us));
-    }
-    void release_duffs_spinlock() {
-      _InterlockedExchange(&value_, 0);
-    }
-
-  public:
-    void acquire() noexcept {
-
     }
     void release() noexcept {
       _InterlockedExchange(&value_, 0);

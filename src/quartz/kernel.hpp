@@ -8,8 +8,8 @@
 #include <agate/core.h>
 #include <quartz.h>
 
-#include "atomicutils.hpp"
 #include "internal.hpp"
+#include "support/atomicutils.hpp"
 
 namespace qtz{
 

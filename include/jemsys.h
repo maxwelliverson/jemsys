@@ -311,6 +311,9 @@ typedef jem_u32_t          jem_local_id_t;
 typedef jem_u64_t          jem_global_id_t;
 
 
+typedef void*              jem_handle_t;
+
+
 
 typedef enum {
   JEM_SUCCESS,

@@ -49,8 +49,22 @@ JEM_api void         JEM_stdcall agt_signal_discard(agt_signal_t signal) JEM_noe
 }
 
 
+JEM_api void         JEM_stdcall agt_reply(const agt_message_t* message, agt_status_t status) JEM_noexcept {
+  JEM_assert( message != nullptr );
+  JEM_assume( message != nullptr );
 
-JEM_api void JEM_stdcall agt_return_message(agt_message_t message, agt_status_t status) JEM_noexcept {
+  auto kookie = message->cookie;
+
+  if ( kookie->signal.flags.test(agt::message_ignore_result) ) {
+    condemn(kookie);
+    return;
+  }
+
+  kookie->signal.status = status;
+  kookie->signal.isReady.set();
+}
+
+/*JEM_api void JEM_stdcall agt_return_message(agt_cookie_t message, agt_status_t status) JEM_noexcept {
 
   JEM_assert( message != nullptr );
   JEM_assume( message != nullptr );
@@ -63,7 +77,7 @@ JEM_api void JEM_stdcall agt_return_message(agt_message_t message, agt_status_t 
   message->signal.status = status;
   message->signal.isReady.set();
 }
-JEM_api void JEM_stdcall agt_read_message(agt_message_t message, agt_message_info_t* messageInfo) JEM_noexcept {
+JEM_api void JEM_stdcall agt_read_message(agt_cookie_t message, agt_message_info_t* messageInfo) JEM_noexcept {
   JEM_assert( message != nullptr );
   JEM_assert( messageInfo != nullptr );
   JEM_assume( message != nullptr );
@@ -72,6 +86,6 @@ JEM_api void JEM_stdcall agt_read_message(agt_message_t message, agt_message_inf
   messageInfo->messageId = message->id;
   messageInfo->size      = message->payloadSize;
   messageInfo->payload   = message->payload;
-}
+}*/
 
 }

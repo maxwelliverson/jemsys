@@ -10,45 +10,38 @@ using namespace agt;
 #define mailbox ((private_mailbox*)_mailbox)
 
 
-agt_status_t JEM_stdcall impl::private_try_operation(agt_mailbox_t _mailbox, mailbox_role_t role, mailbox_op_kind_t opKind, jem_u64_t timeout_us) noexcept {
-  switch (opKind) {
-    case MAILBOX_OP_KIND_ATTACH:
-      if ( role == MAILBOX_ROLE_SENDER ) {
-        if ( std::exchange(mailbox->isSenderClaimed, true) )
-          return AGT_ERROR_TOO_MANY_SENDERS;
-      }
-      else {
-        if ( std::exchange(mailbox->isReceiverClaimed, true) )
-          return AGT_ERROR_TOO_MANY_RECEIVERS;
-      }
-      return AGT_SUCCESS;
-    case MAILBOX_OP_KIND_DETACH:
-      if ( role == MAILBOX_ROLE_SENDER )
-        mailbox->isSenderClaimed = false;
-      else
-        mailbox->isReceiverClaimed = false;
-      return AGT_SUCCESS;
-      JEM_no_default;
+agt_status_t JEM_stdcall impl::private_connect(agt_mailbox_t _mailbox, agt_connect_action_t action, jem_u64_t timeout_us) JEM_noexcept {
+  switch (action) {
+    case AGT_ATTACH_SENDER:
+      if ( std::exchange(mailbox->isSenderClaimed, true) )
+        return AGT_ERROR_TOO_MANY_SENDERS;
+      break;
+    case AGT_DETACH_SENDER:
+      mailbox->isSenderClaimed = false;
+      break;
+    case AGT_ATTACH_RECEIVER:
+      if ( std::exchange(mailbox->isReceiverClaimed, true) )
+        return AGT_ERROR_TOO_MANY_RECEIVERS;
+      break;
+    case AGT_DETACH_RECEIVER:
+      mailbox->isReceiverClaimed = false;
+      break;
   }
+  return AGT_SUCCESS;
 }
-
-agt_mailslot_t JEM_stdcall impl::private_acquire_slot(agt_mailbox_t _mailbox, jem_size_t slot_size, jem_u64_t timeout_us) noexcept {
-  if ( mailbox->availableSlotCount == 0 || slot_size > mailbox->slotSize)
-    return nullptr;
+agt_status_t JEM_stdcall impl::private_acquire_slot(agt_mailbox_t _mailbox, agt_slot_t* slot, jem_size_t slotSize, jem_u64_t timeout_us) JEM_noexcept {
+  if ( mailbox->availableSlotCount == 0 ) [[unlikely]]
+    return AGT_ERROR_MAILBOX_IS_FULL;
+  if ( slotSize > mailbox->slotSize)
+    return AGT_ERROR_MESSAGE_TOO_LARGE;
   --mailbox->availableSlotCount;
-  agt_message_t acquiredMsg = mailbox->nextFreeSlot;
+  agt_cookie_t acquiredMsg = mailbox->nextFreeSlot;
   mailbox->nextFreeSlot = acquiredMsg->next.address;
-  acquiredMsg->payloadSize = slot_size;
-  return (agt_mailslot_t)acquiredMsg;
+  AGT_init_slot(slot, acquiredMsg, slotSize);
+  return AGT_SUCCESS;
 }
-void JEM_stdcall impl::private_release_slot(agt_mailbox_t _mailbox, agt_mailslot_t slot) noexcept {
-  auto msg = to_message(slot);
-  ++mailbox->availableSlotCount;
-  msg->next.address = mailbox->nextFreeSlot;
-  mailbox->nextFreeSlot = msg;
-}
-agt_signal_t JEM_stdcall impl::private_send(agt_mailbox_t _mailbox, agt_mailslot_t slot, agt_send_flags_t flags) noexcept {
-  auto msg = to_message(slot);
+agt_signal_t JEM_stdcall impl::private_send(agt_mailbox_t _mailbox, const agt_slot_t* slot, agt_send_flags_t flags) JEM_noexcept {
+  auto msg = slot->cookie;
   msg->signal.flags.set(agt::message_in_use | flags);
   mailbox->prevQueuedMessage->next.address = msg;
   mailbox->prevQueuedMessage = msg;
@@ -57,15 +50,17 @@ agt_signal_t JEM_stdcall impl::private_send(agt_mailbox_t _mailbox, agt_mailslot
     return nullptr;
   return &msg->signal;
 }
-agt_message_t JEM_stdcall impl::private_receive(agt_mailbox_t _mailbox, jem_u64_t timeout_us) noexcept {
+agt_status_t JEM_stdcall impl::private_receive(agt_mailbox_t _mailbox, agt_message_t* message, jem_u64_t timeout_us) JEM_noexcept {
   if ( mailbox->queuedMessageCount == 0 )
-    return nullptr;
-  agt_message_t message = mailbox->prevReceivedMessage->next.address;
+    return AGT_ERROR_MAILBOX_IS_EMPTY;
+  agt_cookie_t kookie = mailbox->prevReceivedMessage->next.address;
   free_hold(mailbox, mailbox->prevReceivedMessage);
-  mailbox->prevReceivedMessage = message;
-  return message;
+  mailbox->prevReceivedMessage = kookie;
+  AGT_read_msg(message, kookie);
+  return AGT_SUCCESS;
 }
-
-void JEM_stdcall impl::private_return_message(agt_mailbox_t _mailbox, agt_message_t message) noexcept {
-  private_release_slot(_mailbox, (agt_mailslot_t)message);
+void         JEM_stdcall impl::private_return_message(agt_mailbox_t _mailbox, agt_cookie_t message) JEM_noexcept {
+  ++mailbox->availableSlotCount;
+  message->next.address = mailbox->nextFreeSlot;
+  mailbox->nextFreeSlot = message;
 }

@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.19)
-project(jemsys C CXX)
+project(jemsys C CXX CUDA)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CUDA_STANDARD 17)
 
 #set(LLVM_DIR $ENV{LLVM_CMAKE_DIR})
 set(LLVM_DIR "C:/Users/maxwe/git/vcpkg/installed/x64-windows/share/llvm")
@@ -22,8 +23,8 @@ function(add_jemsys_library target_)
     set(singleValueArgs)
     set(multiValueArgs SOURCES DEPENDENCIES)
     cmake_parse_arguments(JEMSYS_LIB "${optionalArgs}" "${singleValueArgs}" "${multiValueArgs}" ${ARGN})
+    list(TRANSFORM JEMSYS_LIB_SOURCES PREPEND src/${target_}/)
     if(JEMSYS_LIB_PRIVATE)
-        list(TRANSFORM JEMSYS_LIB_SOURCES PREPEND src/)
         add_library(${target_} STATIC ${JEMSYS_LIB_SOURCES})
         target_include_directories(${target_} PRIVATE include src)
         if(DEFINED JEMSYS_LIB_DEPENDENCIES)
@@ -34,7 +35,7 @@ function(add_jemsys_library target_)
         set(JEMSYS_LIBRARIES ${JEMSYS_LIBRARIES} PARENT_SCOPE)
         set(JEMSYS_LIB_SHARED_NAME ${target_}_shared)
         set(JEMSYS_LIB_STATIC_NAME ${target_}_static)
-        list(TRANSFORM JEMSYS_LIB_SOURCES PREPEND src/${target_}/)
+
         add_library(${JEMSYS_LIB_SHARED_NAME} SHARED ${JEMSYS_LIB_SOURCES})
         add_library(${JEMSYS_LIB_STATIC_NAME} STATIC ${JEMSYS_LIB_SOURCES})
 
@@ -59,20 +60,22 @@ function(add_jemsys_library target_)
                 OUTPUT_NAME ${target_})
         target_include_directories(${JEMSYS_LIB_SHARED_NAME} PRIVATE include src)
         target_include_directories(${JEMSYS_LIB_STATIC_NAME} PRIVATE include src)
-        target_compile_definitions(${JEMSYS_LIB_SHARED_NAME} PRIVATE JEM_SHARED_LIB JEM_SHARED_LIB_EXPORT)
-
+        target_compile_definitions(${JEMSYS_LIB_SHARED_NAME} PUBLIC JEM_SHARED_LIB PRIVATE JEM_SHARED_LIB_EXPORT)
     endif()
 endfunction()
 
 
 function(add_jemsys_executable target_)
-    set(optionalArgs TEST)
+    set(optionalArgs TEST SAMPLE)
     set(singleValueArgs LINK)
     set(multiValueArgs SOURCES DEPENDENCIES)
     cmake_parse_arguments(JEMSYS_EXE "${optionalArgs}" "${singleValueArgs}" "${multiValueArgs}" ${ARGN})
     if(JEMSYS_EXE_TEST)
         set(JEMSYS_EXE_TARGET test.${target_})
         list(TRANSFORM JEMSYS_EXE_SOURCES PREPEND test/)
+    elseif(JEMSYS_EXE_SAMPLE)
+        set(JEMSYS_EXE_TARGET sample.${target_})
+        list(TRANSFORM JEMSYS_EXE_SOURCES PREPEND sample/)
     else()
         set(JEMSYS_EXE_TARGET ${target_})
         list(TRANSFORM JEMSYS_EXE_SOURCES PREPEND src/)
@@ -111,6 +114,7 @@ add_jemsys_library(
             SOURCES
                 dictionary.cpp
                 vector.cpp
+                object_manager.cpp
 )
 
 add_jemsys_library(
@@ -136,6 +140,7 @@ add_jemsys_library(
                 agate.cpp
                 vtable.cpp
                 agent.cpp
+                message.cpp
                 spsc_mailbox.cpp
                 mpsc_mailbox.cpp
                 spmc_mailbox.cpp
@@ -147,9 +152,41 @@ add_jemsys_library(
 )
 
 add_jemsys_library(
+        agate2
+            SOURCES
+                library.cpp
+                channels.cpp
+                objects.cpp
+                context.cpp
+                handle.cpp
+                message.cpp
+                async.cpp
+                signal.cpp
+            DEPENDENCIES
+                support
+)
+
+add_jemsys_library(
+        silica2
+            SOURCES
+                interface.cpp
+            DEPENDENCIES
+                support
+)
+
+add_jemsys_library(
+        quartz2
+            SOURCES
+                init.cpp
+            DEPENDENCIES
+                support
+)
+
+add_jemsys_library(
         opal
             SOURCES
                 agent.cpp
+                coroutines.cpp
 )
 
 
@@ -227,4 +264,18 @@ add_jemsys_executable(
                 quartz/speed_test.cpp
             DEPENDENCIES
                 quartz
+)
+
+add_library(rng_kernels sample/rng/rng_lib.cu)
+target_include_directories(rng_kernels PRIVATE include src)
+
+add_jemsys_executable(
+        rng
+            SAMPLE
+            SOURCES
+                rng/main.cpp
+                rng/rng_lib.cpp
+            DEPENDENCIES
+                agate
+                rng_kernels
 )

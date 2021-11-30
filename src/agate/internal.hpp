@@ -7,9 +7,9 @@
 
 #include <agate/mailbox.h>
 
-#include <atomicutils.hpp>
+#include "support/atomicutils.hpp"
+#include "support/memutils.hpp"
 #include <ipc/offset_ptr.hpp>
-#include <memutils.hpp>
 
 #include <bit>
 
@@ -42,10 +42,10 @@ namespace agt{
 
 
   using PFN_start_send_message  = agt_status_t(JEM_stdcall*)(agt_mailbox_t mailbox, jem_size_t messageSize, void** pMessagePayload, jem_u64_t timeout_us);
-  using PFN_finish_send_message = agt_status_t(JEM_stdcall*)(agt_mailbox_t mailbox, agt_message_t* pMessage, void* messagePayload, agt_send_message_flags_t flags);
-  using PFN_receive_message     = agt_status_t(JEM_stdcall*)(agt_mailbox_t mailbox, agt_message_t* pMessage, jem_u64_t timeout_us);
-  using PFN_discard_message     = void(JEM_stdcall*)(agt_mailbox_t mailbox, agt_message_t message);
-  using PFN_cancel_message      = agt_status_t(JEM_stdcall*)(agt_mailbox_t mailbox, agt_message_t message);
+  using PFN_finish_send_message = agt_status_t(JEM_stdcall*)(agt_mailbox_t mailbox, agt_cookie_t* pMessage, void* messagePayload, agt_send_message_flags_t flags);
+  using PFN_receive_message     = agt_status_t(JEM_stdcall*)(agt_mailbox_t mailbox, agt_cookie_t* pMessage, jem_u64_t timeout_us);
+  using PFN_discard_message     = void(JEM_stdcall*)(agt_mailbox_t mailbox, agt_cookie_t message);
+  using PFN_cancel_message      = agt_status_t(JEM_stdcall*)(agt_mailbox_t mailbox, agt_cookie_t message);
 
   using PFN_mailbox_dtor        = agt_cleanup_callback_t;
 
@@ -215,7 +215,7 @@ namespace {
 
   }
   template <typename Mailbox>
-  JEM_forceinline jem_size_t    get_slot(const Mailbox* mailbox, agt_message_t message) noexcept {
+  JEM_forceinline jem_size_t    get_slot(const Mailbox* mailbox, agt_cookie_t message) noexcept {
     if constexpr ( std::is_pointer_v<std::remove_cvref_t<decltype(mailbox->messageSlots)>>) {
       return reinterpret_cast<address_t>(message) - mailbox->messageSlots;
     }
@@ -366,15 +366,15 @@ namespace agt{
     semaphore_t                availableSlotSema;    // [1]: 8;  (0,   8)
     binary_semaphore_t         producerSemaphore;    // [1]: 1;  (8,   9)
                                                      // [1]: 7;  (9,  16) - alignment
-    agt_message_t producerPreviousQueuedMsg;  // [1]: 8;  (16, 24)
+    agt_cookie_t producerPreviousQueuedMsg;  // [1]: 8;  (16, 24)
   JEM_cache_aligned
     semaphore_t                queuedMessageSema;    // [2]: 8;  (0,   8)
     binary_semaphore_t         consumerSemaphore;    // [2]: 1;  (8,   9)
                                                      // [2]: 7;  (9,  16) - alignment
-    agt_message_t              consumerPreviousMsg;  // [2]: 8;  (16, 24)
-    agt_message_t              consumerLastFreeSlot; // [2]: 8;  (24, 32)
+    agt_cookie_t              consumerPreviousMsg;  // [2]: 8;  (16, 24)
+    agt_cookie_t              consumerLastFreeSlot; // [2]: 8;  (24, 32)
   JEM_cache_aligned
-    std::atomic<agt_message_t>
+    std::atomic<agt_cookie_t>
         producerNextFreeSlot;         // [3]: 8;  (0,   8)
     PFN_mailbox_dtor           pfnDtor;              // [3]: 8;  (8,  16)
     void*                      dtorUserData;         // [3]: 8;  (16, 24)
@@ -430,7 +430,7 @@ namespace agt{
     jem_size_t         payloadOffset;
   JEM_cache_aligned
     atomic_size_t      lastQueuedSlot;
-    agt_message_t      previousMessage;
+    agt_cookie_t      previousMessage;
   JEM_cache_aligned                          // 192 - alignment
     atomic_u32_t       queuedSinceLastCheck; // 196
     jem_u32_t          minQueuedMessages;    // 200
@@ -474,18 +474,18 @@ namespace agt{
     binary_semaphore_t         producerSemaphore;    // [1]: 1;  (8,   9)
                                                      // [1]: 3;  (9,  12) - alignment
     jem_u32_t                  producerProcessId;    // [1]: 4;  (12, 16)
-    agt_message_t              producerPreviousMsg;  // [1]: 8;  (16, 24)
+    agt_cookie_t              producerPreviousMsg;  // [1]: 8;  (16, 24)
     address_t                  producerSlotsAddress; // [1]: 8;  (24, 32)
   JEM_cache_aligned
     semaphore_t                queuedMessageSema;    // [2]: 8;  (0,   8)
     binary_semaphore_t         consumerSemaphore;    // [2]: 1;  (8,   9)
                                                      // [2]: 3;  (9,  12) - alignment
     jem_u32_t                  consumerProcessId;    // [2]: 4;  (12, 16)
-    agt_message_t              consumerPreviousMsg;  // [2]: 8;  (16, 24)
+    agt_cookie_t              consumerPreviousMsg;  // [2]: 8;  (16, 24)
     address_t                  consumerSlotsAddress; // [2]: 8;  (24, 32)
-    agt_message_t              consumerLastFreeSlot; // [2]: 8;  (32, 40)
+    agt_cookie_t              consumerLastFreeSlot; // [2]: 8;  (32, 40)
   JEM_cache_aligned
-    std::atomic<agt_message_t> nextFreeSlot;         // [3]: 8;  (0,   8)
+    std::atomic<agt_cookie_t> nextFreeSlot;         // [3]: 8;  (0,   8)
     PFN_mailbox_dtor           pfnDtor;              // [3]: 8;  (8,  16)
     void*                      dtorUserData;         // [3]: 8;  (16, 24)
   };
@@ -591,7 +591,7 @@ namespace agt{
     jem_size_t         payloadOffset;
   JEM_cache_aligned
     atomic_size_t      lastQueuedSlot;
-    agt_message_t      previousMessage;
+    agt_cookie_t      previousMessage;
   JEM_cache_aligned                          // 192 - alignment
     atomic_u32_t       queuedSinceLastCheck; // 196
     jem_u32_t          minQueuedMessages;    // 200
@@ -633,18 +633,18 @@ namespace agt{
     binary_semaphore_t         producerSemaphore;    // [1]: 1;  (8,   9)
                                                      // [1]: 3;  (9,  12) - alignment
     jem_u32_t                  producerProcessId;    // [1]: 4;  (12, 16)
-    agt_message_t              producerPreviousMsg;  // [1]: 8;  (16, 24)
+    agt_cookie_t              producerPreviousMsg;  // [1]: 8;  (16, 24)
     address_t                  producerSlotsAddress; // [1]: 8;  (24, 32)
   JEM_cache_aligned
     semaphore_t                queuedMessageSema;    // [2]: 8;  (0,   8)
     binary_semaphore_t         consumerSemaphore;    // [2]: 1;  (8,   9)
                                                      // [2]: 3;  (9,  12) - alignment
     jem_u32_t                  consumerProcessId;    // [2]: 4;  (12, 16)
-    agt_message_t              consumerPreviousMsg;  // [2]: 8;  (16, 24)
+    agt_cookie_t              consumerPreviousMsg;  // [2]: 8;  (16, 24)
     address_t                  consumerSlotsAddress; // [2]: 8;  (24, 32)
-    agt_message_t              consumerLastFreeSlot; // [2]: 8;  (32, 40)
+    agt_cookie_t              consumerLastFreeSlot; // [2]: 8;  (32, 40)
   JEM_cache_aligned
-    std::atomic<agt_message_t> nextFreeSlot;         // [3]: 8;  (0,   8)
+    std::atomic<agt_cookie_t> nextFreeSlot;         // [3]: 8;  (0,   8)
     PFN_mailbox_dtor           pfnDtor;              // [3]: 8;  (8,  16)
     void*                      dtorUserData;         // [3]: 8;  (16, 24)
   };

@@ -5,10 +5,9 @@
 #ifndef JEMSYS_INTERNAL_POINTER_SET_HPP
 #define JEMSYS_INTERNAL_POINTER_SET_HPP
 
-#include <jemsys.h>
+#include "jemsys.h"
 
-#include "iterator.hpp"
-
+#include "support/iterator.hpp"
 
 
 namespace jem{
