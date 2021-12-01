@@ -31,47 +31,18 @@ namespace Agt {
 
 
 
-  /*class AsyncData : public Wrapper<AsyncData, AgtAsyncData> {
-  public:
-
-    AsyncType      getType() const noexcept;
-
-    void           reset(AgtUInt32 expectedCount, Message message) const noexcept;
-    void           reset(Signal signal) const noexcept;
-
-    void           attach(Signal signal) const noexcept;
-
-    bool           tryAttach(Signal signal) const noexcept;
-
-    void           detachSignal() const noexcept;
-
-    void           arrive() const noexcept;
-
-    AgtUInt32      getMaxExpectedCount() const noexcept;
-
-    AsyncFlags     wait(AgtUInt32 expectedCount, AgtTimeout timeout) const noexcept;
-
-
-    static AsyncData create(Context ctx) noexcept;
-
-  };*/
 
 
 
   bool         asyncDataAttach(AgtAsyncData asyncData, AgtContext ctx, AgtUInt32& key) noexcept;
   void         asyncDataArrive(AgtAsyncData asyncData, AgtContext ctx, AgtUInt32 key) noexcept;
-  // AsyncFlags   asyncDataWait(AgtAsyncData data, AgtUInt32 expectedCount, AgtTimeout timeout) noexcept;
 
-  // AgtAsyncData createAsyncData(AgtContext context) noexcept;
 
 
 
   AgtUInt32    asyncDataGetEpoch(const AgtAsyncData_st* asyncData) noexcept;
 
   AsyncType    asyncDataGetType(const AgtAsyncData_st* asyncData) noexcept;
-
-  // void         asyncDataReset(AgtAsyncData data, AgtUInt32 expectedCount, AgtMessage message) noexcept;
-  // void         asyncDataReset(AgtAsyncData data, AgtSignal signal) noexcept;
 
   void         asyncDataAttach(AgtAsyncData data, AgtSignal signal) noexcept;
   bool         asyncDataTryAttach(AgtAsyncData data, AgtSignal signal) noexcept;

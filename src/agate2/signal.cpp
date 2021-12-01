@@ -13,6 +13,7 @@ extern "C" {
 
 struct AgtSignal_st {
 
+  AgtContext context;
   AgtAsyncData asyncData;
   AgtUInt32    dataEpoch;
   bool         isRaised;

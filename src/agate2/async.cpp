@@ -17,6 +17,34 @@
 
 using namespace Agt;
 
+namespace {
+  enum class AsyncFlags : AgtUInt32 {
+    eUnbound   = 0x0,
+    eBound     = 0x1,
+    eReady     = 0x2,
+    eWaiting   = 0x4
+  };
+
+  JEM_forceinline constexpr AsyncFlags operator~(AsyncFlags a) noexcept {
+    return static_cast<AsyncFlags>(~static_cast<AgtUInt32>(a));
+  }
+  JEM_forceinline constexpr AsyncFlags operator&(AsyncFlags a, AsyncFlags b) noexcept {
+    return static_cast<AsyncFlags>(static_cast<AgtUInt32>(a) & static_cast<AgtUInt32>(b));
+  }
+  JEM_forceinline constexpr AsyncFlags operator|(AsyncFlags a, AsyncFlags b) noexcept {
+    return static_cast<AsyncFlags>(static_cast<AgtUInt32>(a) | static_cast<AgtUInt32>(b));
+  }
+  JEM_forceinline constexpr AsyncFlags operator^(AsyncFlags a, AsyncFlags b) noexcept {
+    return static_cast<AsyncFlags>(static_cast<AgtUInt32>(a) ^ static_cast<AgtUInt32>(b));
+  }
+
+  inline constexpr AsyncFlags eAsyncNoFlags          = {};
+  inline constexpr AsyncFlags eAsyncUnbound          = AsyncFlags::eUnbound;
+  inline constexpr AsyncFlags eAsyncBound            = AsyncFlags::eBound;
+  inline constexpr AsyncFlags eAsyncReady            = AsyncFlags::eBound | AsyncFlags::eReady;
+  inline constexpr AsyncFlags eAsyncWaiting          = AsyncFlags::eBound | AsyncFlags::eWaiting;
+}
+
 
 extern "C" {
 
@@ -48,32 +76,10 @@ struct AgtAsync_st {
 
 namespace {
 
-  enum class AsyncFlags : AgtUInt32 {
-    eUnbound   = 0x0,
-    eBound     = 0x1,
-    eReady     = 0x2,
-    eWaiting   = 0x4
-  };
-
-  JEM_forceinline constexpr AsyncFlags operator~(AsyncFlags a) noexcept {
-    return static_cast<AsyncFlags>(~static_cast<AgtUInt32>(a));
-  }
-  JEM_forceinline constexpr AsyncFlags operator&(AsyncFlags a, AsyncFlags b) noexcept {
-    return static_cast<AsyncFlags>(static_cast<AgtUInt32>(a) & static_cast<AgtUInt32>(b));
-  }
-  JEM_forceinline constexpr AsyncFlags operator|(AsyncFlags a, AsyncFlags b) noexcept {
-    return static_cast<AsyncFlags>(static_cast<AgtUInt32>(a) | static_cast<AgtUInt32>(b));
-  }
-  JEM_forceinline constexpr AsyncFlags operator^(AsyncFlags a, AsyncFlags b) noexcept {
-    return static_cast<AsyncFlags>(static_cast<AgtUInt32>(a) ^ static_cast<AgtUInt32>(b));
-  }
 
 
-  inline constexpr AsyncFlags eAsyncNoFlags          = {};
-  inline constexpr AsyncFlags eAsyncUnbound          = AsyncFlags::eUnbound;
-  inline constexpr AsyncFlags eAsyncBound            = AsyncFlags::eBound;
-  inline constexpr AsyncFlags eAsyncReady            = AsyncFlags::eBound | AsyncFlags::eReady;
-  inline constexpr AsyncFlags eAsyncWaiting          = AsyncFlags::eBound | AsyncFlags::eWaiting;
+
+
 
 
   void        asyncDataDoReset(AgtAsyncData data, AgtUInt32& key, AgtUInt32 maxExpectedCount) noexcept {
@@ -190,12 +196,12 @@ bool         Agt::asyncDataAttach(AgtAsyncData data, AgtContext ctx, AgtUInt32& 
 }
 
 void         Agt::asyncDataArrive(AgtAsyncData data, AgtContext ctx, AgtUInt32 key) noexcept {
-  // TODO: Potential memory leak?
-
-
-
-  if (data->epoch == epoch) {
+  if (data->currentKey == key) {
     ++data->responseCount;
+  }
+
+  if (data->refCount.release() == 0) {
+    asyncDataDestroy(data, ctx);
   }
 }
 

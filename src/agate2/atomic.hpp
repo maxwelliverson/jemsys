@@ -77,10 +77,14 @@ namespace Agt {
 
 
     AgtUInt32 operator++()    noexcept {
-      return _InterlockedExchangeAdd(&value_, 1);
+      AgtUInt32 result = _InterlockedExchangeAdd(&value_, 1);
+      notifyWaiters();
+      return result;
     }
     AgtUInt32 operator++(int) noexcept {
-      return _InterlockedExchangeAdd(&value_, 1) + 1;
+      AgtUInt32 result = _InterlockedExchangeAdd(&value_, 1) + 1;
+      notifyWaiters();
+      return result;
     }
 
 
@@ -101,6 +105,27 @@ namespace Agt {
 
 
   private:
+
+    bool doDeepWait(AgtUInt32& capturedValue, AgtUInt32 timeout) const noexcept {
+      _InterlockedIncrement(&deepSleepers_);
+      BOOL result = WaitOnAddress(&const_cast<volatile AgtUInt32&>(value_), &capturedValue, sizeof(AgtUInt32), timeout);
+      _InterlockedDecrement(&deepSleepers_);
+      if (result)
+        capturedValue = getValue();
+      return result;
+    }
+
+    void notifyWaiters() noexcept {
+      const AgtUInt32 waiters = __iso_volatile_load32(&reinterpret_cast<const int&>(deepSleepers_));
+
+      if ( waiters == 0 ) [[likely]] {
+
+      } else if ( waiters == 1 ) {
+        WakeByAddressSingle(&value_);
+      } else {
+        WakeByAddressAll(&value_);
+      }
+    }
 
     JEM_forceinline AgtUInt32 orderedLoad() const noexcept {
       return _InterlockedCompareExchange(&const_cast<volatile AgtUInt32&>(value_), 0, 0);
@@ -153,8 +178,9 @@ namespace Agt {
     JEM_noinline    void      deepWait(AgtUInt32 expectedValue) const noexcept {
       AgtUInt32 capturedValue = getValue();
       while (capturedValue < expectedValue) {
-        WaitOnAddress(&const_cast<volatile AgtUInt32&>(value_), &capturedValue, sizeof(AgtUInt32), INFINITE);
-        capturedValue = getValue();
+        doDeepWait(capturedValue, INFINITE);
+        /*WaitOnAddress(&const_cast<volatile AgtUInt32&>(value_), &capturedValue, sizeof(AgtUInt32), INFINITE);
+        capturedValue = getValue();*/
       }
     }
 
@@ -164,11 +190,8 @@ namespace Agt {
       AgtUInt32 capturedValue = getValue();
 
       while (capturedValue < expectedValue) {
-        if (!WaitOnAddress(&const_cast<volatile AgtUInt32&>(value_), &capturedValue, sizeof(AgtUInt32), deadline.to_timeout_ms())) {
-          if (GetLastError() == ERROR_TIMEOUT)
-            return false;
-        }
-        capturedValue = getValue();
+        if (!doDeepWait(capturedValue, deadline.to_timeout_ms()))
+          return false;
       }
 
       return true;
@@ -176,6 +199,7 @@ namespace Agt {
 
 
     AgtUInt32 value_ = 0;
+    mutable AgtUInt32 deepSleepers_ = 0;
   };
 }
 
