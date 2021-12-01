@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.19)
-project(jemsys C CXX CUDA)
+project(jemsys C CXX #[[CUDA]])
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CUDA_STANDARD 17)
+# set(CMAKE_CUDA_STANDARD 17)
 
 #set(LLVM_DIR $ENV{LLVM_CMAKE_DIR})
-set(LLVM_DIR "C:/Users/maxwe/git/vcpkg/installed/x64-windows/share/llvm")
-find_package(LLVM REQUIRED)
+#set(LLVM_DIR "C:/Users/maxwe/git/vcpkg/installed/x64-windows/share/llvm")
+#find_package(LLVM REQUIRED)
 #find_library(LLVM_SUPPORT_LIB LLVMSupport.lib REQUIRED)
 
 add_library(asan INTERFACE)
@@ -207,13 +207,13 @@ target_compile_definitions(jemsys PRIVATE JEM_SHARED_LIB)
 
 
 
-add_jemsys_executable(
+#[[add_jemsys_executable(
         quartz_kernel
             SOURCES
                 quartz/kernel.cpp
             DEPENDENCIES
                 LLVMSupport
-)
+)]]
 
 add_jemsys_executable(
         priority_queue
@@ -266,6 +266,7 @@ add_jemsys_executable(
                 quartz
 )
 
+#[[
 add_library(rng_kernels sample/rng/rng_lib.cu)
 target_include_directories(rng_kernels PRIVATE include src)
 
@@ -278,4 +279,4 @@ add_jemsys_executable(
             DEPENDENCIES
                 agate
                 rng_kernels
-)
+)]]

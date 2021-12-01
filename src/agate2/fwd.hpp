@@ -9,6 +9,8 @@
 
 extern "C" {
 
+AGT_DEFINE_HANDLE(AgtContextRef);
+
 AGT_DEFINE_HANDLE(AgtAsyncData);
 AGT_DEFINE_HANDLE(AgtMessageData);
 AGT_DEFINE_HANDLE(AgtQueuedMessage);

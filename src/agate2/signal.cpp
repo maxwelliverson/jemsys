@@ -13,56 +13,51 @@ extern "C" {
 
 struct AgtSignal_st {
 
-  AsyncData asyncData;
-
-  bool      isRaised;
-
-
+  AgtAsyncData asyncData;
+  AgtUInt32    dataEpoch;
+  bool         isRaised;
 
 };
 
 
 }
 
-AsyncData Signal::getAttachment() const noexcept {
-  return value->asyncData;
+AgtAsyncData Agt::signalGetAttachment(const AgtSignal_st* signal) noexcept {
+  return signal->asyncData;
 }
 
+void         Agt::signalAttach(AgtSignal signal, AgtAsync async) noexcept {
+  AgtAsyncData data = asyncGetData(async);
 
-void Signal::attach(Async handle) const noexcept {
-  AsyncData data;
-  if ((data = handle.getData())) {
-    if (data.tryAttach(*this)) {
-      goto setAttachment;
-    }
-    data.release();
+  if ( !asyncDataTryAttach(data, signal) ) {
+    asyncClear(async);
+    asyncAttach(async, signal);
   }
-  data = handle.getContext().allocAsyncData();
-  data.attach(*this);
 
-  setAttachment:
-  if (value->asyncData) {
-    value->asyncData.detachSignal();
+  if (signal->asyncData) {
+    asyncDataDetachSignal(signal->asyncData);
   }
-  value->asyncData = data;
-  value->isRaised = false;
+  signal->asyncData = data;
+  signal->dataEpoch = asyncDataGetEpoch(data);
+  signal->isRaised  = false;
+
 }
 
-void Signal::detach() const noexcept {
-  if (value->asyncData) {
-    value->asyncData.detachSignal();
-    value->asyncData = AsyncData();
-    value->isRaised = false;
+void         Agt::signalDetach(AgtSignal signal) noexcept {
+  if (signal->asyncData) {
+    asyncDataDetachSignal(signal->asyncData);
+    signal->asyncData = nullptr;
+    signal->isRaised = false;
   }
 }
 
-void Signal::raise() const noexcept {
-  if (!value->isRaised) {
-    value->asyncData.arrive();
-    value->isRaised = true;
+void         Agt::signalRaise(AgtSignal signal) noexcept {
+  if (!signal->isRaised) {
+    asyncDataArrive(signal->asyncData, signal->dataEpoch);
+    signal->isRaised = true;
   }
 }
 
-void Signal::close() const noexcept {
+void         Agt::signalClose(AgtSignal signal) noexcept {
 
 }

@@ -157,33 +157,33 @@ namespace Agt {
   struct HandleHeader {
     ObjectType  type;
     ObjectFlags flags;
-    Context     context;
+    AgtContext  context;
     Id          localId;
   };
 
   struct ObjectHeader {
-    ObjectType    type;
-    ObjectFlags   flags;
-    void*         reserved;
-    Id            id;
-    AtomicCounter refCount;
+    ObjectType     type;
+    ObjectFlags    flags;
+    void*          reserved;
+    Id             id;
+    ReferenceCount refCount;
   };
 
   struct LocalObject {
-    ObjectType    type;
-    ObjectFlags   flags;
-    Context       context;
-    Id            id;
-    AtomicCounter refCount;
-    LocalVPtr     vtable;
+    ObjectType     type;
+    ObjectFlags    flags;
+    AgtContext     context;
+    Id             id;
+    ReferenceCount refCount;
+    LocalVPtr      vtable;
   };
 
   struct SharedObject {
-    ObjectType    type;
-    ObjectFlags   flags;
-    void*         pReserved;
-    Id            exportId;
-    AtomicCounter refCount;
+    ObjectType     type;
+    ObjectFlags    flags;
+    void*          pReserved;
+    Id             exportId;
+    ReferenceCount refCount;
   };
 
 }

@@ -10,21 +10,15 @@
 
 namespace Agt {
 
-  class Signal : public Wrapper<Signal, AgtSignal> {
-  public:
+  AgtAsyncData signalGetAttachment(const AgtSignal_st* signal) noexcept;
 
-    AsyncData getAttachment() const noexcept;
+  void         signalAttach(AgtSignal signal, AgtAsync async) noexcept;
 
-    void      attach(Async handle) const noexcept;
+  void         signalDetach(AgtSignal signal) noexcept;
 
-    void      detach() const noexcept;
+  void         signalRaise(AgtSignal signal) noexcept;
 
-    void      raise() const noexcept;
-
-    void      close() const noexcept;
-
-  };
-
+  void         signalClose(AgtSignal signal) noexcept;
 
 }
 

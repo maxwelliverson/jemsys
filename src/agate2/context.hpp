@@ -11,7 +11,7 @@
 
 namespace Agt {
 
-  class Context : public Wrapper<Context, AgtContext> {
+  /*class Context : public Wrapper<Context, AgtContext> {
   public:
 
     AgtUInt32 getProcessId() const noexcept;
@@ -37,9 +37,26 @@ namespace Agt {
     SharedHandle* newSharedHandle(SharedHandle* pOtherHandle) const noexcept;
     void          destroySharedHandle(SharedHandle* pHandle) const noexcept;
 
-  };
+  };*/
+
+  using ContextId = AgtUInt64;
 
 
+  ContextId     ctxGetContextId(const AgtContext_st* ctx) noexcept;
+  AgtContextRef ctxGetContextById(const AgtContext_st* ctx, ContextId id) noexcept;
+
+  void          ctxRefFreeAsyncData(AgtContextRef ctxRef, void* memory) noexcept;
+
+
+
+  AgtUInt32     ctxGetProcessId(const AgtContext_st* ctx) noexcept;
+
+  AgtStatus     ctxRegisterHandle(AgtContext ctx) noexcept;
+
+  void          ctxReleaseObject(AgtContext ctx, ObjectHeader* object) noexcept;
+  void          ctxReleaseObject(AgtContext ctx, Id id) noexcept;
+
+  void          ctxReleaseSharedObject(AgtContext ctx, SharedObject* pSharedObject) noexcept;
 
 
   ObjectHeader* ctxLookupId(const AgtContext_st* ctx, Id id) noexcept;
@@ -51,6 +68,8 @@ namespace Agt {
   SharedHandle* ctxNewSharedHandle(AgtContext ctx, ObjectType type, ObjectFlags flags, AgtUInt32 pageId, AgtUInt32 pageOffset) noexcept;
   SharedHandle* ctxNewSharedHandle(AgtContext ctx, SharedHandle* pOtherHandle) noexcept;
   void          ctxDestroySharedHandle(AgtContext ctx, SharedHandle* pHandle) noexcept;
+
+  AgtStatus     createCtx(AgtContext& pCtx) noexcept;
 }
 
 #endif//JEMSYS_AGATE2_CONTEXT_HPP

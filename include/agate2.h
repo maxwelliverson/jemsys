@@ -249,7 +249,7 @@ JEM_api AgtStatus     JEM_stdcall agtGetSenderHandle(AgtMessage message, AgtHand
 /* ========================= [ Async ] ========================= */
 
 JEM_api AgtStatus     JEM_stdcall agtNewAsync(AgtContext ctx, AgtAsync* pAsync) JEM_noexcept;
-JEM_api void          JEM_stdcall agtCopyAsync(AgtAsync to, AgtAsync from) JEM_noexcept;
+JEM_api void          JEM_stdcall agtCopyAsync(AgtAsync from, AgtAsync to) JEM_noexcept;
 JEM_api void          JEM_stdcall agtClearAsync(AgtAsync async) JEM_noexcept;
 JEM_api void          JEM_stdcall agtDestroyAsync(AgtAsync async) JEM_noexcept;
 

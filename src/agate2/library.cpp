@@ -41,7 +41,7 @@ extern "C" {
 
 
 
-JEM_noinline static AgtStatus agtGetSharedObjectInfoById(Context context, AgtObjectInfo* pObjectInfo) noexcept;
+JEM_noinline static AgtStatus agtGetSharedObjectInfoById(AgtContext context, AgtObjectInfo* pObjectInfo) noexcept;
 
 
 extern "C" {
@@ -50,10 +50,14 @@ extern "C" {
 
 JEM_api AgtStatus     JEM_stdcall agtNewContext(AgtContext* pContext) JEM_noexcept {
 
+  if (!pContext)
+    return AGT_ERROR_INVALID_ARGUMENT;
+
+  return createCtx(*pContext);
 }
 
 JEM_api AgtStatus     JEM_stdcall agtDestroyContext(AgtContext context) JEM_noexcept {
-
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
 }
 
 
@@ -61,8 +65,6 @@ JEM_api AgtStatus     JEM_stdcall agtGetObjectInfo(AgtContext context, AgtObject
   if (!pObjectInfo) [[unlikely]] {
     return AGT_ERROR_INVALID_ARGUMENT;
   }
-
-  Context ctx = Context::wrap(context);
 
   if (pObjectInfo->id != 0) {
 
@@ -73,17 +75,17 @@ JEM_api AgtStatus     JEM_stdcall agtGetObjectInfo(AgtContext context, AgtObject
     Agt::Id id = Agt::Id::convert(pObjectInfo->id);
 
     if (!id.isShared()) [[likely]] {
-      if (id.getProcessId() != ctx.getProcessId()) {
+      if (id.getProcessId() != ctxGetProcessId(context)) {
         return AGT_ERROR_UNKNOWN_FOREIGN_OBJECT;
       }
     }
     else {
-      return agtGetSharedObjectInfoById(ctx, pObjectInfo);
+      return agtGetSharedObjectInfoById(context, pObjectInfo);
     }
 
     LocalObject* object;
 
-    if (auto objectHeader = ctx.lookup(id))
+    if (auto objectHeader = ctxLookupId(context, id))
       object = reinterpret_cast<LocalObject*>(objectHeader);
     else
       return AGT_ERROR_EXPIRED_OBJECT_ID;
@@ -177,32 +179,34 @@ JEM_api AgtStatus     JEM_stdcall agtNewAsync(AgtContext ctx, AgtAsync* pAsync) 
     return AGT_ERROR_INVALID_ARGUMENT;
   }
 
-  Context context = Context::wrap(ctx);
+  // TODO: Detect bad context?
 
-  Async async = Async::create(context);
+  *pAsync = createAsync(ctx);
 
-
+  return AGT_SUCCESS;
 }
 
-JEM_api void          JEM_stdcall agtCopyAsync(AgtAsync to, AgtAsync from) JEM_noexcept {
-
+JEM_api void          JEM_stdcall agtCopyAsync(AgtAsync from, AgtAsync to) JEM_noexcept {
+  asyncCopyTo(from, to);
 }
 
 JEM_api void          JEM_stdcall agtClearAsync(AgtAsync async) JEM_noexcept {
-
+  asyncClear(async);
 }
 
 JEM_api void          JEM_stdcall agtDestroyAsync(AgtAsync async) JEM_noexcept {
-
+  asyncDestroy(async);
 }
 
 JEM_api AgtStatus     JEM_stdcall agtWait(AgtAsync async, AgtTimeout timeout) JEM_noexcept {
-
+  return asyncWait(async, timeout);
 }
 
 JEM_api AgtStatus     JEM_stdcall agtWaitMany(const AgtAsync* pAsyncs, AgtSize asyncCount, AgtTimeout timeout) JEM_noexcept {
-
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
 }
+
+
 
 
 /* ========================= [ Signal ] ========================= */

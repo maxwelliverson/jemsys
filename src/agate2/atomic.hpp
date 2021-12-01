@@ -19,6 +19,10 @@ namespace Agt {
     explicit ReferenceCount(AgtUInt32 initialCount) noexcept : value_(initialCount) { }
 
 
+    JEM_nodiscard AgtUInt32 get() const noexcept {
+      return (AgtUInt32)__iso_volatile_load32(&reinterpret_cast<const int&>(value_));
+    }
+
 
     AgtUInt32 acquire() noexcept {
       return _InterlockedIncrement(&value_);
