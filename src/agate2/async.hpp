@@ -10,7 +10,7 @@
 
 namespace Agt {
 
-  enum class AsyncType {
+  /*enum class AsyncType {
     eUnbound,
     eDirect,
     eMessage,
@@ -26,23 +26,19 @@ namespace Agt {
     eNotReady,
     eReady,
     eReadyAndRecyclable
-  };
+  };*/
 
 
 
 
-
-
-
-  bool         asyncDataAttach(AgtAsyncData asyncData, AgtContext ctx, AgtUInt32& key) noexcept;
+  void         asyncDataAttach(AgtAsyncData asyncData, AgtContext ctx, AgtUInt32& key) noexcept;
+  void         asyncDataDrop(AgtAsyncData asyncData, AgtContext ctx, AgtUInt32 key) noexcept;
   void         asyncDataArrive(AgtAsyncData asyncData, AgtContext ctx, AgtUInt32 key) noexcept;
 
 
 
 
   AgtUInt32    asyncDataGetEpoch(const AgtAsyncData_st* asyncData) noexcept;
-
-  AsyncType    asyncDataGetType(const AgtAsyncData_st* asyncData) noexcept;
 
   void         asyncDataAttach(AgtAsyncData data, AgtSignal signal) noexcept;
   bool         asyncDataTryAttach(AgtAsyncData data, AgtSignal signal) noexcept;

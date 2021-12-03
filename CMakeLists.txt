@@ -162,6 +162,7 @@ add_jemsys_library(
                 message.cpp
                 async.cpp
                 signal.cpp
+                atomic.cpp
             DEPENDENCIES
                 support
 )

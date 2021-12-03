@@ -56,7 +56,6 @@ struct AgtAsyncData_st {
   std::atomic<AgtUInt32> waiterRefCount;
   ReferenceCount         attachedRefCount;
   AtomicMonotonicCounter responseCount;
-  std::atomic<AgtUInt32> atomicKey;
   AgtUInt32              currentKey;
   AgtUInt32              maxResponseCount;
   bool                   isShared;
@@ -66,7 +65,6 @@ struct AgtAsync_st {
   AgtContext   context;
   AgtUInt32    desiredResponseCount;
   AsyncFlags   flags;
-  AsyncState   state;
   AgtUInt32    dataKey;
   AgtAsyncData data;
 };
@@ -187,12 +185,23 @@ namespace {
 
 
 
-bool         Agt::asyncDataAttach(AgtAsyncData data, AgtContext ctx, AgtUInt32& key) noexcept {
-  data->attachedRefCount.acquire();
+void         Agt::asyncDataAttach(AgtAsyncData data, AgtContext ctx, AgtUInt32& key) noexcept {
+  // data->attachedRefCount.acquire();
+  data->refCount.acquire();
   if (data->contextId != ctxGetContextId(ctx)) {
     data->isShared = true;
   }
   key = data->currentKey;
+}
+
+void         Agt::asyncDataDrop(AgtAsyncData data, AgtContext ctx, AgtUInt32 key) noexcept {
+  if (data->currentKey == key) {
+    ++data->responseCount;
+  }
+
+  if (data->refCount.release() == 0) {
+    asyncDataDestroy(data, ctx);
+  }
 }
 
 void         Agt::asyncDataArrive(AgtAsyncData data, AgtContext ctx, AgtUInt32 key) noexcept {

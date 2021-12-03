@@ -54,7 +54,7 @@ void         Agt::signalDetach(AgtSignal signal) noexcept {
 
 void         Agt::signalRaise(AgtSignal signal) noexcept {
   if (!signal->isRaised) {
-    asyncDataArrive(signal->asyncData, signal->dataEpoch);
+    asyncDataArrive(signal->asyncData, signal->context, signal->dataEpoch);
     signal->isRaised = true;
   }
 }
