@@ -16,15 +16,17 @@ namespace Agt {
   enum class ObjectType : AgtUInt32 {
     agent,
     socket,
-    mpsc_channel,
-    mpmc_channel,
-    spmc_channel,
-    spsc_channel,
-    private_channel,
-    channel_sender,
-    channel_receiver,
+    mpscChannel,
+    mpmcChannel,
+    spmcChannel,
+    spscChannel,
+    privateChannel,
+    channelSender,
+    channelReceiver,
     thread,
     agency,
+    localAsyncData,
+    sharedAsyncData
   };
 
   JEM_forceinline static AgtHandleType toHandleType(ObjectType type) noexcept;

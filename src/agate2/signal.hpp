@@ -6,7 +6,6 @@
 #define JEMSYS_AGATE2_SIGNAL_HPP
 
 #include "fwd.hpp"
-#include "wrapper.hpp"
 
 namespace Agt {
 

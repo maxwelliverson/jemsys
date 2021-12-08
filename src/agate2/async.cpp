@@ -7,8 +7,8 @@
 
 #include "context.hpp"
 #include "message.hpp"
-#include "signal.hpp"
 #include "objects.hpp"
+#include "flags.hpp"
 
 
 #include <utility>
@@ -18,47 +18,229 @@
 using namespace Agt;
 
 namespace {
-  enum class AsyncFlags : AgtUInt32 {
+
+  AGT_BITFLAG_ENUM(AsyncFlags, AgtUInt32) {
     eUnbound   = 0x0,
     eBound     = 0x1,
     eReady     = 0x2,
     eWaiting   = 0x4
   };
 
-  JEM_forceinline constexpr AsyncFlags operator~(AsyncFlags a) noexcept {
-    return static_cast<AsyncFlags>(~static_cast<AgtUInt32>(a));
-  }
-  JEM_forceinline constexpr AsyncFlags operator&(AsyncFlags a, AsyncFlags b) noexcept {
-    return static_cast<AsyncFlags>(static_cast<AgtUInt32>(a) & static_cast<AgtUInt32>(b));
-  }
-  JEM_forceinline constexpr AsyncFlags operator|(AsyncFlags a, AsyncFlags b) noexcept {
-    return static_cast<AsyncFlags>(static_cast<AgtUInt32>(a) | static_cast<AgtUInt32>(b));
-  }
-  JEM_forceinline constexpr AsyncFlags operator^(AsyncFlags a, AsyncFlags b) noexcept {
-    return static_cast<AsyncFlags>(static_cast<AgtUInt32>(a) ^ static_cast<AgtUInt32>(b));
-  }
 
   inline constexpr AsyncFlags eAsyncNoFlags          = {};
   inline constexpr AsyncFlags eAsyncUnbound          = AsyncFlags::eUnbound;
   inline constexpr AsyncFlags eAsyncBound            = AsyncFlags::eBound;
   inline constexpr AsyncFlags eAsyncReady            = AsyncFlags::eBound | AsyncFlags::eReady;
   inline constexpr AsyncFlags eAsyncWaiting          = AsyncFlags::eBound | AsyncFlags::eWaiting;
+
+  /*struct ArrivalCount {
+    union {
+      struct {
+        AgtUInt32     arrivedCount;
+        AgtUInt32     droppedCount;
+      };
+      AgtUInt64       totalCount;
+    };
+  };
+
+  class ResponseQuery {
+    enum {
+      eRequireAny      = 0x1,
+      eRequireMinCount = 0x2,
+      eAllowDropped    = 0x4
+    };
+
+    ResponseQuery(AgtUInt32 minResponseCount, AgtUInt32 flags) noexcept
+        : minDesiredResponseCount(minResponseCount), flags(flags){}
+
+  public:
+
+
+    // ResponseQuery() noexcept : minDesiredResponseCount(), flags(){}
+
+
+
+    static ResponseQuery requireAny(bool countDropped = false) noexcept {
+      return { 0, eRequireAny | (countDropped ? eAllowDropped : 0u) };
+    }
+    static ResponseQuery requireAll(bool countDropped = false) noexcept {
+      return { 0, countDropped ? eAllowDropped : 0u };
+    }
+    static ResponseQuery requireAtLeast(AgtUInt32 minCount, bool countDropped = false) noexcept {
+      return { minCount, eRequireMinCount | (countDropped ? eAllowDropped : 0u) };
+    }
+
+  private:
+
+    friend class ResponseCount;
+
+    AgtUInt32 minDesiredResponseCount;
+    AgtUInt32 flags;
+  };
+
+  enum class ResponseQueryResult {
+    eNotReady,
+    eReady,
+    eFailed
+  };
+
+  class ResponseCount {
+  public:
+
+    ResponseCount() = default;
+
+
+    void arrive() noexcept {
+      _InterlockedIncrement(&arrivedCount_);
+      notifyWaiters();
+    }
+
+    void drop() noexcept {
+      _InterlockedIncrement(&droppedCount_);
+      notifyWaiters();
+    }
+
+    void reset(AgtUInt32 maxExpectedResponses) noexcept {
+      AgtUInt32 capturedValue = 0;
+      while ((capturedValue = _InterlockedCompareExchange(&arrivedCount_, 0, capturedValue)));
+
+    }
+
+    bool waitFor(ResponseQuery query, AgtTimeout timeout) const noexcept {
+      switch (timeout) {
+        case JEM_WAIT:
+          deepWait(expectedValue);
+          return true;
+        case JEM_DO_NOT_WAIT:
+          return tryWaitOnce(expectedValue);
+        default:
+          if (timeout < TIMEOUT_US_LONG_WAIT_THRESHOLD)
+            return shallowWaitFor(expectedValue, timeout);
+          else
+            return deepWaitFor(expectedValue, timeout);
+      }
+    }
+
+    bool waitUntil(ResponseQuery query, Deadline deadline) const noexcept {
+      if (!deadline.isLong()) [[likely]] {
+        return shallowWaitUntil(expectedValue, deadline);
+      } else {
+        return deepWaitUntil(expectedValue, deadline);
+      }
+    }
+
+
+
+  private:
+
+    bool      doDeepWait(AgtUInt32& capturedValue, AgtUInt32 timeout) const noexcept;
+    void      notifyWaiters() noexcept;
+
+
+    JEM_forceinline AgtUInt32 fastLoad() const noexcept {
+      return __iso_volatile_load32(&reinterpret_cast<const int&>(arrivedCount_));
+    }
+
+    JEM_forceinline AgtUInt32 orderedLoad() const noexcept {
+      return _InterlockedCompareExchange(&const_cast<volatile AgtUInt32&>(arrivedCount_), 0, 0);
+    }
+
+    JEM_forceinline bool      isLessThan(AgtUInt32 value) const noexcept {
+      return orderedLoad() < value;
+    }
+    JEM_forceinline bool      isAtLeast(AgtUInt32 value) const noexcept {
+      return orderedLoad() >= value;
+    }
+
+    JEM_forceinline bool      isLessThan(ResponseQuery query) const noexcept {
+      // return orderedLoad() < query.;
+    }
+    JEM_forceinline bool      isAtLeast(ResponseQuery query) const noexcept {
+      return orderedLoad() >= value;
+    }
+
+    JEM_forceinline bool      shallowWaitFor(ResponseQuery query, AgtTimeout timeout) const noexcept {
+      return shallowWaitUntil(query, Deadline::fromTimeout(timeout));
+    }
+
+    JEM_forceinline bool      shallowWaitUntil(ResponseQuery query, Deadline deadline) const noexcept {
+      AgtUInt32 backoff = 0;
+      while (isLessThan(expectedValue)) {
+        if (deadline.hasPassed())
+          return false;
+        DUFFS_MACHINE(backoff);
+      }
+      return true;
+    }
+
+    JEM_forceinline bool      tryWaitOnce(ResponseQuery query) const noexcept {
+      return orderedLoad() >= expectedValue;
+    }
+
+
+    JEM_noinline    void      deepWait(ResponseQuery query) const noexcept {
+      AgtUInt32 capturedValue = fastLoad();
+      while (capturedValue < expectedValue) {
+        doDeepWait(capturedValue, 0xFFFF'FFFF);
+      }
+    }
+
+    JEM_noinline    bool      deepWaitFor(ResponseQuery query, AgtTimeout timeout) const noexcept {
+      Deadline deadline = Deadline::fromTimeout(timeout);
+      AgtUInt32 capturedValue = fastLoad();
+
+      while (capturedValue < expectedValue) {
+        if (!doDeepWait(capturedValue, deadline.toTimeoutMs()))
+          return false;
+      }
+      return true;
+    }
+
+    JEM_noinline    bool      deepWaitUntil(ResponseQuery query, Deadline deadline) const noexcept {
+      AgtUInt32 capturedValue = fastLoad();
+
+      while (capturedValue < expectedValue) {
+        if (!doDeepWait(capturedValue, deadline.toTimeoutMs()))
+          return false;
+      }
+      return true;
+    }
+
+
+
+    union {
+      struct {
+        AgtUInt32     arrivedCount_;
+        AgtUInt32     droppedCount_;
+      };
+      AgtUInt64       totalCount_ = 0;
+    };
+
+    AgtUInt32         expectedResponses_ = 0;
+    mutable AgtUInt32 deepSleepers_ = 0;
+  };*/
 }
 
 
 extern "C" {
 
-
-
 struct AgtAsyncData_st {
   ContextId              contextId;
   ReferenceCount         refCount;
-  std::atomic<AgtUInt32> waiterRefCount;
+  AgtUInt32              waiterRefCount;
   ReferenceCount         attachedRefCount;
   AtomicMonotonicCounter responseCount;
   AgtUInt32              currentKey;
   AgtUInt32              maxResponseCount;
   bool                   isShared;
+};
+
+struct AgtSharedAsyncData_st {
+  ObjectType type;
+  ContextId  ownerCtx;
+  ReferenceCount refCount;
+  ReferenceCount waiterRefCount;
+  AgtUInt32  currentKey;
 };
 
 struct AgtAsync_st {
@@ -94,7 +276,7 @@ namespace {
     AgtUInt32 expectedWaiterCount = 1;
     AgtUInt32 expectedNextWaiterCount = 1;
 
-    while ( !data->waiterRefCount.compare_exchange_strong(expectedWaiterCount, expectedNextWaiterCount) ) {
+    while ( !Impl::atomicCompareExchange(data->waiterRefCount, expectedWaiterCount, expectedNextWaiterCount) ) {
       expectedNextWaiterCount = std::max(expectedWaiterCount - 1, 1u);
     }
 
@@ -110,7 +292,7 @@ namespace {
 
     AgtUInt32 expectedWaiterCount = 0;
 
-    if ( !data->waiterRefCount.compare_exchange_strong(expectedWaiterCount, 1) )
+    if ( !Impl::atomicCompareExchange(data->waiterRefCount, expectedWaiterCount, 1) )
       return false;
 
     asyncDataDoReset(data, key, maxExpectedCount);
@@ -149,7 +331,6 @@ namespace {
       .waiterRefCount   = 0,
       .attachedRefCount = ReferenceCount(0),
       .responseCount    = AtomicMonotonicCounter(),
-      .atomicKey        = { 0 },
       .currentKey       = 0,
       .maxResponseCount = 0,
       .isShared         = false
@@ -167,7 +348,6 @@ namespace {
       .waiterRefCount   = 1,
       .attachedRefCount = ReferenceCount(maxExpectedCount),
       .responseCount    = AtomicMonotonicCounter(),
-      .atomicKey        = { 0 },
       .currentKey       = 0,
       .maxResponseCount = maxExpectedCount,
       .isShared         = false
@@ -268,7 +448,7 @@ void         Agt::asyncReset(AgtAsync async, AgtUInt32 targetExpectedCount, AgtU
 
   if ( !( isWaiting ? asyncDataResetWaiter : asyncDataResetNonWaiter )(async->data, async->dataKey, maxExpectedCount) ) {
     if ( --async->data->refCount == 0 ) {
-      async->data->waiterRefCount.store(1);
+      Impl::atomicStore(async->data->waiterRefCount, 1);
       asyncDataDoReset(async->data, async->dataKey, maxExpectedCount);
     }
     else {
@@ -304,7 +484,6 @@ AgtAsync     Agt::createAsync(AgtContext context) noexcept {
   async->data      = data;
   async->dataKey   = data->currentKey;
   async->flags     = eAsyncUnbound;
-  async->state     = AsyncState::eEmpty;
   async->desiredResponseCount = 0;
 
   return async;

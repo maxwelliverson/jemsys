@@ -7,7 +7,6 @@
 
 #include "async.hpp"
 #include "context.hpp"
-#include "signal.hpp"
 
 
 using namespace Agt;

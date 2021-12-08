@@ -1,64 +1,34 @@
 //
-// Created by maxwe on 2021-11-29.
+// Created by maxwe on 2021-12-07.
 //
 
 #include "signal.hpp"
-
-#include "context.hpp"
 #include "async.hpp"
 
-using namespace Agt;
 
 extern "C" {
 
 struct AgtSignal_st {
-
-  AgtContext context;
+  AgtContext   context;
   AgtAsyncData asyncData;
-  AgtUInt32    dataEpoch;
-  bool         isRaised;
-
+  AgtUInt32    dataKey;
 };
 
 
 }
 
+
 AgtAsyncData Agt::signalGetAttachment(const AgtSignal_st* signal) noexcept {
   return signal->asyncData;
 }
 
-void         Agt::signalAttach(AgtSignal signal, AgtAsync async) noexcept {
-  AgtAsyncData data = asyncGetData(async);
-
-  if ( !asyncDataTryAttach(data, signal) ) {
-    asyncClear(async);
-    asyncAttach(async, signal);
-  }
-
-  if (signal->asyncData) {
-    asyncDataDetachSignal(signal->asyncData);
-  }
-  signal->asyncData = data;
-  signal->dataEpoch = asyncDataGetEpoch(data);
-  signal->isRaised  = false;
-
+void Agt::signalAttach(AgtSignal signal, AgtAsync async) noexcept {
+  Agt::asyncReset();
 }
 
-void         Agt::signalDetach(AgtSignal signal) noexcept {
-  if (signal->asyncData) {
-    asyncDataDetachSignal(signal->asyncData);
-    signal->asyncData = nullptr;
-    signal->isRaised = false;
-  }
+void Agt::signalDetach(AgtSignal signal) noexcept {
 }
-
-void         Agt::signalRaise(AgtSignal signal) noexcept {
-  if (!signal->isRaised) {
-    asyncDataArrive(signal->asyncData, signal->context, signal->dataEpoch);
-    signal->isRaised = true;
-  }
+void Agt::signalRaise(AgtSignal signal) noexcept {
 }
-
-void         Agt::signalClose(AgtSignal signal) noexcept {
-
+void Agt::signalClose(AgtSignal signal) noexcept {
 }

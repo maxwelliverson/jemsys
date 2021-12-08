@@ -11,6 +11,30 @@
 
 #define AGT_LONG_TIMEOUT_THRESHOLD 20000
 
+#define DUFFS_MACHINE_EX(backoff, ...) switch (backoff) { \
+   default:                                        \
+   { __VA_ARGS__ }                                 \
+   break;                                          \
+ case 5:                                           \
+   PAUSE_x16();                                    \
+   [[fallthrough]];                                \
+ case 4:                                           \
+   PAUSE_x8();                                     \
+   [[fallthrough]];                                \
+ case 3:                                           \
+   PAUSE_x4();                                     \
+   [[fallthrough]];                                \
+ case 2:                                           \
+   PAUSE_x2();                                     \
+   [[fallthrough]];                                \
+ case 1:                                           \
+   PAUSE_x1();                                     \
+   [[fallthrough]];                                \
+ case 0:                                           \
+   PAUSE_x1();                                     \
+   }                                               \
+   ++backoff
+
 #define DUFFS_MACHINE(backoff) switch (backoff) { \
 default:                                          \
   PAUSE_x32();                                    \
@@ -86,52 +110,635 @@ namespace Agt {
 
     AgtUInt64 timestamp;
   };
+  
+  namespace Impl {
 
-  class ResponseQuery {
-    enum {
-      eRequireAny      = 0x1,
-      eRequireMinCount = 0x2,
-      eAllowDropped    = 0x4
+    void      atomicStore(AgtUInt8& value,  AgtUInt8 newValue) noexcept;
+    void      atomicStore(AgtUInt16& value, AgtUInt16 newValue) noexcept;
+    void      atomicStore(AgtUInt32& value, AgtUInt32 newValue) noexcept;
+    void      atomicStore(AgtUInt64& value, AgtUInt64 newValue) noexcept;
+    AgtUInt8  atomicLoad(const AgtUInt8& value) noexcept;
+    AgtUInt16 atomicLoad(const AgtUInt16& value) noexcept;
+    AgtUInt32 atomicLoad(const AgtUInt32& value) noexcept;
+    AgtUInt64 atomicLoad(const AgtUInt64& value) noexcept;
+
+    void      atomicRelaxedStore(AgtUInt8& value,  AgtUInt8 newValue) noexcept;
+    void      atomicRelaxedStore(AgtUInt16& value, AgtUInt16 newValue) noexcept;
+    void      atomicRelaxedStore(AgtUInt32& value, AgtUInt32 newValue) noexcept;
+    void      atomicRelaxedStore(AgtUInt64& value, AgtUInt64 newValue) noexcept;
+    AgtUInt8  atomicRelaxedLoad(const AgtUInt8& value) noexcept;
+    AgtUInt16 atomicRelaxedLoad(const AgtUInt16& value) noexcept;
+    AgtUInt32 atomicRelaxedLoad(const AgtUInt32& value) noexcept;
+    AgtUInt64 atomicRelaxedLoad(const AgtUInt64& value) noexcept;
+
+    AgtUInt8  atomicExchange(AgtUInt8& value,  AgtUInt8 newValue) noexcept;
+    AgtUInt16 atomicExchange(AgtUInt16& value, AgtUInt16 newValue) noexcept;
+    AgtUInt32 atomicExchange(AgtUInt32& value, AgtUInt32 newValue) noexcept;
+    AgtUInt64 atomicExchange(AgtUInt64& value, AgtUInt64 newValue) noexcept;
+    bool      atomicCompareExchange(AgtUInt8& value,  AgtUInt8&  compare, AgtUInt8 newValue) noexcept;
+    bool      atomicCompareExchange(AgtUInt16& value, AgtUInt16& compare, AgtUInt16 newValue) noexcept;
+    bool      atomicCompareExchange(AgtUInt32& value, AgtUInt32& compare, AgtUInt32 newValue) noexcept;
+    bool      atomicCompareExchange(AgtUInt64& value, AgtUInt64& compare, AgtUInt64 newValue) noexcept;
+    AgtUInt8  atomicIncrement(AgtUInt8& value) noexcept;
+    AgtUInt16 atomicIncrement(AgtUInt16& value) noexcept;
+    AgtUInt32 atomicIncrement(AgtUInt32& value) noexcept;
+    AgtUInt64 atomicIncrement(AgtUInt64& value) noexcept;
+    AgtUInt8  atomicDecrement(AgtUInt8& value) noexcept;
+    AgtUInt16 atomicDecrement(AgtUInt16& value) noexcept;
+    AgtUInt32 atomicDecrement(AgtUInt32& value) noexcept;
+    AgtUInt64 atomicDecrement(AgtUInt64& value) noexcept;
+    AgtUInt8  atomicExchangeAdd(AgtUInt8&  value, AgtUInt8  newValue) noexcept;
+    AgtUInt16 atomicExchangeAdd(AgtUInt16& value, AgtUInt16 newValue) noexcept;
+    AgtUInt32 atomicExchangeAdd(AgtUInt32& value, AgtUInt32 newValue) noexcept;
+    AgtUInt64 atomicExchangeAdd(AgtUInt64& value, AgtUInt64 newValue) noexcept;
+    AgtUInt8  atomicExchangeAnd(AgtUInt8&  value, AgtUInt8  newValue) noexcept;
+    AgtUInt16 atomicExchangeAnd(AgtUInt16& value, AgtUInt16 newValue) noexcept;
+    AgtUInt32 atomicExchangeAnd(AgtUInt32& value, AgtUInt32 newValue) noexcept;
+    AgtUInt64 atomicExchangeAnd(AgtUInt64& value, AgtUInt64 newValue) noexcept;
+    AgtUInt8  atomicExchangeOr(AgtUInt8&  value, AgtUInt8 newValue) noexcept;
+    AgtUInt16 atomicExchangeOr(AgtUInt16& value, AgtUInt16 newValue) noexcept;
+    AgtUInt32 atomicExchangeOr(AgtUInt32& value, AgtUInt32 newValue) noexcept;
+    AgtUInt64 atomicExchangeOr(AgtUInt64& value, AgtUInt64 newValue) noexcept;
+    AgtUInt8  atomicExchangeXor(AgtUInt8&  value, AgtUInt8 newValue) noexcept;
+    AgtUInt16 atomicExchangeXor(AgtUInt16& value, AgtUInt16 newValue) noexcept;
+    AgtUInt32 atomicExchangeXor(AgtUInt32& value, AgtUInt32 newValue) noexcept;
+    AgtUInt64 atomicExchangeXor(AgtUInt64& value, AgtUInt64 newValue) noexcept;
+
+    void      atomicNotifyOne(void* value) noexcept;
+    void      atomicNotifyAll(void* value) noexcept;
+
+    template <std::integral T>
+    inline void      atomicNotifyOne(T& value) noexcept {
+      atomicNotifyOne(std::addressof(value));
+    }
+    template <std::integral T>
+    inline void      atomicNotifyAll(T& value) noexcept {
+      atomicNotifyAll(std::addressof(value));
+    }
+
+
+    // Deep Wait
+
+    void      atomicDeepWaitRaw(const void* atomicAddress, void* compareAddress, AgtSize addressSize) noexcept;
+    bool      atomicDeepWaitRaw(const void* atomicAddress, void* compareAddress, AgtSize addressSize, AgtUInt32 timeout) noexcept;
+
+    template <typename T>
+    inline void atomicDeepWait(const T& value, std::type_identity_t<T> waitValue) noexcept {
+      while ( atomicLoad(value) == waitValue ) {
+        atomicDeepWaitRaw(std::addressof(value), std::addressof(waitValue), sizeof(T));
+      }
+    }
+
+    template <typename T>
+    inline void atomicDeepWait(const T& value, T& capturedValue, std::type_identity_t<T> waitValue) noexcept {
+
+      T tmpValue;
+
+      while ( (tmpValue = atomicLoad(value)) == waitValue ) {
+        atomicDeepWaitRaw(std::addressof(value), std::addressof(waitValue), sizeof(T));
+      }
+
+      capturedValue = tmpValue;
+    }
+
+    template <typename T, std::predicate<const T&> Fn>
+    inline void atomicDeepWait(const T& value, Fn&& functor) noexcept {
+      T tmpValue;
+
+      while ( !functor(tmpValue = atomicLoad(value)) ) {
+        atomicDeepWaitRaw(std::addressof(value), std::addressof(tmpValue), sizeof(T));
+      }
+    }
+
+    template <typename T, std::predicate<const T&> Fn>
+    inline void atomicDeepWait(const T& value, T& capturedValue, Fn&& functor) noexcept {
+
+      T tmpValue;
+
+      while ( !functor(tmpValue = atomicLoad(value)) ) {
+        atomicDeepWaitRaw(std::addressof(value), std::addressof(tmpValue), sizeof(T));
+      }
+
+      capturedValue = tmpValue;
+    }
+
+    template <typename T>
+    inline bool atomicDeepWaitUntil(const T& value, Deadline deadline, std::type_identity_t<T> waitValue) noexcept {
+      while ( atomicLoad(value) == waitValue ) {
+        if (deadline.hasPassed())
+          return false;
+        atomicDeepWaitRaw(std::addressof(value), std::addressof(waitValue), sizeof(T));
+      }
+      return true;
+    }
+
+    template <typename T>
+    inline bool atomicDeepWaitUntil(const T& value, T& capturedValue, Deadline deadline, std::type_identity_t<T> waitValue) noexcept {
+
+      T tmpValue;
+
+      while ( (tmpValue = atomicLoad(value)) == waitValue ) {
+        if (deadline.hasPassed())
+          return false;
+        atomicDeepWaitRaw(std::addressof(value), std::addressof(waitValue), sizeof(T));
+      }
+
+      capturedValue = tmpValue;
+      return true;
+    }
+
+    template <typename T, std::predicate<const T&> Fn>
+    inline bool atomicDeepWaitUntil(const T& value, Deadline deadline, Fn&& functor) noexcept {
+
+      T capturedValue;
+
+      while ( !functor((capturedValue = atomicLoad(value))) ) {
+        if (deadline.hasPassed())
+          return false;
+        atomicDeepWaitRaw(std::addressof(value), std::addressof(capturedValue), sizeof(T));
+      }
+      return true;
+    }
+
+    template <typename T, std::predicate<const T&> Fn>
+    inline bool atomicDeepWaitUntil(const T& value, T& capturedValue, Deadline deadline, Fn&& functor) noexcept {
+
+      T tmpValue;
+
+      while ( !functor(tmpValue = atomicLoad(value)) ) {
+        if (deadline.hasPassed())
+          return false;
+        atomicDeepWaitRaw(std::addressof(value), std::addressof(tmpValue), sizeof(T));
+      }
+
+      capturedValue = tmpValue;
+      return true;
+    }
+
+
+
+    // Wait
+
+    template <typename T>
+    inline void atomicWait(const T& value, std::type_identity_t<T> waitValue) noexcept {
+      AgtUInt32 backoff = 0;
+
+      while ( atomicLoad(value) == waitValue ) {
+        DUFFS_MACHINE_EX(backoff, atomicDeepWaitRaw(std::addressof(value), std::addressof(waitValue), sizeof(T)); );
+      }
+    }
+
+    template <typename T>
+    inline void atomicWait(const T& value, T& capturedValue, std::type_identity_t<T> waitValue) noexcept {
+      T tmpValue;
+      AgtUInt32 backoff = 0;
+
+      while ( (tmpValue = atomicLoad(value)) == waitValue ) {
+        DUFFS_MACHINE_EX(backoff, atomicDeepWaitRaw(std::addressof(value), std::addressof(waitValue), sizeof(T)); );
+      }
+
+      capturedValue = tmpValue;
+    }
+
+    template <typename T, std::predicate<const T&> Fn>
+    inline void atomicWait(const T& value, Fn&& functor) noexcept {
+      T capturedValue;
+      AgtUInt32 backoff = 0;
+
+      while ( !functor((capturedValue = atomicLoad(value))) ) {
+        DUFFS_MACHINE_EX(backoff, atomicDeepWaitRaw(std::addressof(value), std::addressof(capturedValue), sizeof(T)); );
+      }
+    }
+
+    template <typename T, std::predicate<const T&> Fn>
+    inline void atomicWait(const T& value, T& capturedValue, Fn&& functor) noexcept {
+      T tmpValue;
+      AgtUInt32 backoff = 0;
+
+      while ( !functor((tmpValue = atomicLoad(value))) ) {
+        DUFFS_MACHINE_EX(backoff, atomicDeepWaitRaw(std::addressof(value), std::addressof(tmpValue), sizeof(T)); );
+      }
+
+      capturedValue = tmpValue;
+    }
+
+    template <typename T>
+    inline bool atomicWaitUntil(const T& value, Deadline deadline, std::type_identity_t<T> waitValue) noexcept {
+      AgtUInt32 backoff = 0;
+
+      while ( atomicLoad(value) == waitValue ) {
+        if ( deadline.hasPassed() )
+          return false;
+        DUFFS_MACHINE_EX(backoff, if (!atomicDeepWaitRaw(std::addressof(value), std::addressof(waitValue), sizeof(T), deadline.toTimeoutMs())) {
+            return false;
+          } );
+      }
+
+      return true;
+    }
+
+    template <typename T>
+    inline bool atomicWaitUntil(const T& value, T& capturedValue, Deadline deadline, std::type_identity_t<T> waitValue) noexcept {
+      T tmpValue;
+      AgtUInt32 backoff = 0;
+
+      while ( (tmpValue = atomicLoad(value)) == waitValue ) {
+        if ( deadline.hasPassed() )
+          return false;
+        DUFFS_MACHINE_EX(backoff, if (!atomicDeepWaitRaw(std::addressof(value), std::addressof(waitValue), sizeof(T), deadline.toTimeoutMs())) {
+            return false;
+          } );
+      }
+
+      capturedValue = tmpValue;
+      return true;
+    }
+
+    template <typename T, std::predicate<const T&> Fn>
+    inline bool atomicWaitUntil(const T& value, Deadline deadline, Fn&& functor) noexcept {
+      T capturedValue;
+      AgtUInt32 backoff = 0;
+
+      while ( !functor((capturedValue = atomicLoad(value))) ) {
+        if ( deadline.hasPassed() )
+          return false;
+        DUFFS_MACHINE_EX(backoff, if (!atomicDeepWaitRaw(std::addressof(value), std::addressof(capturedValue), sizeof(T), deadline.toTimeoutMs())) {
+                                    return false;
+                                  } );
+      }
+
+      return true;
+    }
+
+    template <typename T, std::predicate<const T&> Fn>
+    inline bool atomicWaitUntil(const T& value, T& capturedValue, Deadline deadline, Fn&& functor) noexcept {
+      T tmpValue;
+      AgtUInt32 backoff = 0;
+
+      while ( !functor((tmpValue = atomicLoad(value))) ) {
+        if ( deadline.hasPassed() )
+          return false;
+        DUFFS_MACHINE_EX(backoff, if (!atomicDeepWaitRaw(std::addressof(value), std::addressof(tmpValue), sizeof(T), deadline.toTimeoutMs())) {
+                                    return false;
+                                  } );
+      }
+      capturedValue = tmpValue;
+      return true;
+    }
+
+    template <typename T>
+    inline bool atomicWaitFor(const T& value, AgtTimeout timeout, std::type_identity_t<T> waitValue) noexcept {
+      switch (timeout) {
+        case JEM_WAIT:
+          atomicWait(value, waitValue);
+          return true;
+        case JEM_DO_NOT_WAIT:
+          return atomicLoad(value) != waitValue;
+        default:
+          return atomicWaitUntil(value, Deadline::fromTimeout(timeout), waitValue);
+      }
+    }
+
+    template <typename T>
+    inline bool atomicWaitFor(const T& value, T& capturedValue, AgtTimeout timeout, std::type_identity_t<T> waitValue) noexcept {
+      switch (timeout) {
+        case JEM_WAIT:
+          atomicWait(value, capturedValue, waitValue);
+          return true;
+        case JEM_DO_NOT_WAIT: {
+          T tmpValue;
+          if ((tmpValue = atomicLoad(value)) != waitValue) {
+            capturedValue = tmpValue;
+            return true;
+          }
+          return false;
+        }
+          return atomicLoad(value) != waitValue;
+        default:
+          return atomicWaitUntil(value, capturedValue, Deadline::fromTimeout(timeout), waitValue);
+      }
+    }
+
+    template <typename T, std::predicate<const T&> Fn>
+    inline bool atomicWaitFor(const T& value, AgtTimeout timeout, Fn&& functor) noexcept {
+      switch (timeout) {
+        case JEM_WAIT:
+          atomicWait(value, std::forward<Fn>(functor));
+          return true;
+        case JEM_DO_NOT_WAIT:
+          return functor(atomicLoad(value));
+        default:
+          return atomicWaitUntil(value, Deadline::fromTimeout(timeout), std::forward<Fn>(functor));
+      }
+    }
+
+    template <typename T, std::predicate<const T&> Fn>
+    inline bool atomicWaitFor(const T& value, T& capturedValue, AgtTimeout timeout, Fn&& functor) noexcept {
+      switch (timeout) {
+        case JEM_WAIT:
+          atomicWait(value, capturedValue, std::forward<Fn>(functor));
+          return true;
+        case JEM_DO_NOT_WAIT:
+          return functor((capturedValue = atomicLoad(value)));
+        default:
+          return atomicWaitUntil(value, capturedValue, Deadline::fromTimeout(timeout), std::forward<Fn>(functor));
+      }
+    }
+
+
+
+
+    template <typename IntType_>
+    class GenericAtomicFlags {
+    public:
+      
+      using IntType = IntType_;
+    protected:
+
+      GenericAtomicFlags() = default;
+      GenericAtomicFlags(IntType flags) noexcept : bits(flags){}
+
+
+      JEM_nodiscard JEM_forceinline bool test(IntType flags) const noexcept {
+        return this->testAny(flags);
+      }
+
+      JEM_nodiscard JEM_forceinline bool testAny(IntType flags) const noexcept {
+        return static_cast<bool>(atomicLoad(bits) & flags);
+      }
+      JEM_nodiscard JEM_forceinline bool testAll(IntType flags) const noexcept {
+        return (atomicLoad(bits) & flags) == flags;
+      }
+      JEM_nodiscard JEM_forceinline bool testAny() const noexcept {
+        return static_cast<bool>(atomicLoad(bits));
+      }
+
+      JEM_nodiscard JEM_forceinline bool testAndSet(IntType flags) noexcept {
+        return testAnyAndSet(flags);
+      }
+      JEM_nodiscard JEM_forceinline bool testAnyAndSet(IntType flags) noexcept {
+        return static_cast<bool>(atomicExchangeOr(bits, flags) & flags);
+      }
+      JEM_nodiscard JEM_forceinline bool testAllAndSet(IntType flags) noexcept {
+        return (atomicExchangeOr(bits, flags) & flags) == flags;
+      }
+
+      JEM_nodiscard JEM_forceinline bool testAndReset(IntType flags) noexcept {
+        return testAnyAndReset(flags);
+      }
+      JEM_nodiscard JEM_forceinline bool testAnyAndReset(IntType flags) noexcept {
+        return static_cast<bool>(atomicExchangeAnd(bits, ~flags) & flags);
+      }
+      JEM_nodiscard JEM_forceinline bool testAllAndReset(IntType flags) noexcept {
+        return (atomicExchangeAnd(bits, ~flags) & flags) == flags;
+      }
+
+      JEM_nodiscard JEM_forceinline bool testAndFlip(IntType flags) noexcept {
+        return testAnyAndFlip(flags);
+      }
+      JEM_nodiscard JEM_forceinline bool testAnyAndFlip(IntType flags) noexcept {
+        return static_cast<bool>(atomicExchangeXor(bits, flags) & flags);
+      }
+      JEM_nodiscard JEM_forceinline bool testAllAndFlip(IntType flags) noexcept {
+        return (atomicExchangeXor(bits, flags) & flags) == flags;
+      }
+
+      JEM_nodiscard JEM_forceinline IntType fetch() const noexcept {
+        return atomicLoad(bits);
+      }
+      JEM_nodiscard JEM_forceinline IntType fetch(IntType flags) const noexcept {
+        return atomicLoad(bits) & flags;
+      }
+
+      JEM_nodiscard JEM_forceinline IntType fetchAndSet(IntType flags) noexcept {
+        return atomicExchangeOr(bits, flags);
+      }
+      JEM_nodiscard JEM_forceinline IntType fetchAndReset(IntType flags) noexcept {
+        return atomicExchangeAnd(bits, ~flags);
+      }
+      JEM_nodiscard JEM_forceinline IntType fetchAndFlip(IntType flags) noexcept {
+        return atomicExchangeXor(bits, flags);
+      }
+
+      JEM_nodiscard JEM_forceinline IntType fetchAndClear() noexcept {
+        return atomicExchange(bits, static_cast<IntType>(0));
+      }
+
+      JEM_forceinline void set(IntType flags) noexcept {
+        atomicExchangeOr(bits, flags);
+      }
+      JEM_forceinline void reset(IntType flags) noexcept {
+        atomicExchangeAnd(bits, ~flags);
+      }
+      JEM_forceinline void flip(IntType flags) noexcept {
+        atomicExchangeXor(bits, flags);
+      }
+
+      JEM_forceinline void clear() noexcept {
+        reset();
+      }
+      JEM_forceinline void clearAndSet(IntType flags) noexcept {
+        atomicStore(bits, flags);
+      }
+
+      JEM_forceinline void reset() noexcept {
+        atomicStore(bits, static_cast<IntType>(0));
+      }
+
+
+      JEM_forceinline void waitExact(IntType flags) const noexcept {
+        IntType capturedFlags;
+        capturedFlags = bits.load(std::memory_order_relaxed);
+        while( capturedFlags != flags ) {
+          WaitOnAddress((volatile void*)&bits, &capturedFlags, sizeof(IntType), INFINITE);
+          capturedFlags = bits.load(std::memory_order_relaxed);
+        }
+      }
+      JEM_forceinline void waitAny(IntType flags) const noexcept {
+        IntType capturedFlags;
+        capturedFlags = bits.load(std::memory_order_relaxed);
+        while( (capturedFlags & flags) == 0 ) {
+          WaitOnAddress((volatile void*)&bits, &capturedFlags, sizeof(IntType), INFINITE);
+          capturedFlags = bits.load(std::memory_order_relaxed);
+        }
+      }
+      JEM_forceinline void waitAll(IntType flags) const noexcept {
+        IntType capturedFlags;
+        capturedFlags = bits.load(std::memory_order_relaxed);
+        while( (capturedFlags & flags) != flags ) {
+          WaitOnAddress((volatile void*)&bits, &capturedFlags, sizeof(IntType), INFINITE);
+          capturedFlags = bits.load(std::memory_order_relaxed);
+        }
+      }
+
+      JEM_forceinline bool waitExactUntil(IntType flags, Deadline deadline) const noexcept {
+        return atomicWaitUntil(bits, deadline, [flags](IntType a) noexcept { return a == flags; });
+      }
+      JEM_forceinline bool waitAnyUntil(IntType flags, Deadline deadline) const noexcept {
+        return atomicWaitUntil(bits, deadline, [flags](IntType a) noexcept { return (a & flags) != 0; });
+      }
+      JEM_forceinline bool waitAllUntil(IntType flags, Deadline deadline) const noexcept {
+        return atomicWaitUntil(bits, deadline, [flags](IntType a) noexcept { return (a & flags) == flags; });
+      }
+
+      JEM_forceinline void notifyOne() noexcept {
+        atomicNotifyOne(bits);
+      }
+      JEM_forceinline void notifyAll() noexcept {
+        atomicNotifyAll(bits);
+      }
+
+      IntType bits = 0;
     };
+  }
 
-    ResponseQuery(AgtUInt32 minResponseCount, AgtUInt32 flags) noexcept
-        : minDesiredResponseCount(minResponseCount), flags(flags){}
+
+  template <typename E>
+  class AtomicFlags : public Impl::GenericAtomicFlags<std::underlying_type_t<E>> {
+
+    using UnderlyingType = std::underlying_type_t<E>;
+    using Base = Impl::GenericAtomicFlags<std::underlying_type_t<E>>;
+    using EnumType = E;
+    using IntType = std::underlying_type_t<EnumType>;
+
+
+    JEM_forceinline static IntType  toInt(EnumType e) noexcept {
+      return static_cast<IntType>(e);
+    }
+    JEM_forceinline static EnumType toEnum(IntType i) noexcept {
+      return static_cast<EnumType>(i);
+    }
+
 
   public:
 
+    AtomicFlags() = default;
+    AtomicFlags(EnumType value) noexcept : Base() {}
 
-    // ResponseQuery() noexcept : minDesiredResponseCount(), flags(){}
 
-
-
-    static ResponseQuery requireAny(bool countDropped = false) noexcept {
-      return { 0, eRequireAny | (countDropped ? eAllowDropped : 0u) };
-    }
-    static ResponseQuery requireAll(bool countDropped = false) noexcept {
-      return { 0, countDropped ? eAllowDropped : 0u };
-    }
-    static ResponseQuery requireAtLeast(AgtUInt32 minCount, bool countDropped = false) noexcept {
-      return { minCount, eRequireMinCount | (countDropped ? eAllowDropped : 0u) };
+    JEM_nodiscard JEM_forceinline bool test(EnumType flags) const noexcept {
+      return this->testAny(flags);
     }
 
-  private:
+    JEM_nodiscard JEM_forceinline bool testAny(EnumType flags) const noexcept {
+      return static_cast<bool>(Impl::atomicLoad(this->bits) & toInt(flags));
+    }
+    JEM_nodiscard JEM_forceinline bool testAll(EnumType flags) const noexcept {
+      return (Impl::atomicLoad(this->bits) & toInt(flags)) == toInt(flags);
+    }
+    JEM_nodiscard JEM_forceinline bool testAny() const noexcept {
+      return static_cast<bool>(Impl::atomicLoad(this->bits));
+    }
 
-    friend class ResponseCount;
+    JEM_nodiscard JEM_forceinline bool testAndSet(EnumType flags) noexcept {
+      return testAnyAndSet(flags);
+    }
+    JEM_nodiscard JEM_forceinline bool testAnyAndSet(EnumType flags) noexcept {
+      return this->testAnyAndSet(toInt(flags));
+      // return static_cast<bool>(atomicExchangeOr(this->bits, flags) & flags);
+    }
+    JEM_nodiscard JEM_forceinline bool testAllAndSet(EnumType flags) noexcept {
+      return this->testAllAndSet(toInt(flags));
+      // return (atomicExchangeOr(bits, flags) & flags) == flags;
+    }
 
-    AgtUInt32 minDesiredResponseCount;
-    AgtUInt32 flags;
+    JEM_nodiscard JEM_forceinline bool testAndReset(EnumType flags) noexcept {
+      return testAnyAndReset(flags);
+    }
+    JEM_nodiscard JEM_forceinline bool testAnyAndReset(EnumType flags) noexcept {
+      return this->testAnyAndReset(toInt(flags));
+      // return static_cast<bool>(atomicExchangeAnd(bits, ~flags) & flags);
+    }
+    JEM_nodiscard JEM_forceinline bool testAllAndReset(EnumType flags) noexcept {
+      return this->testAllAndReset(toInt(flags));
+      // return (atomicExchangeAnd(bits, ~flags) & flags) == flags;
+    }
+
+    JEM_nodiscard JEM_forceinline bool testAndFlip(EnumType flags) noexcept {
+      return testAnyAndFlip(flags);
+    }
+    JEM_nodiscard JEM_forceinline bool testAnyAndFlip(EnumType flags) noexcept {
+      return this->testAnyAndFlip(toInt(flags));
+      // return static_cast<bool>(atomicExchangeXor(bits, flags) & flags);
+    }
+    JEM_nodiscard JEM_forceinline bool testAllAndFlip(EnumType flags) noexcept {
+      return this->testAllAndFlip(toInt(flags));
+      // return (atomicExchangeXor(bits, flags) & flags) == flags;
+    }
+
+    JEM_nodiscard JEM_forceinline EnumType fetch() const noexcept {
+      return toEnum(Impl::atomicLoad(this->bits));
+    }
+    JEM_nodiscard JEM_forceinline EnumType fetch(EnumType flags) const noexcept {
+      return toEnum(Impl::atomicLoad(this->bits) & toInt(flags));
+    }
+
+    JEM_nodiscard JEM_forceinline EnumType fetchAndSet(EnumType flags) noexcept {
+      return toEnum(this->fetchAndSet(toInt(flags)));
+      // return atomicExchangeOr(bits, flags);
+    }
+    JEM_nodiscard JEM_forceinline EnumType fetchAndReset(EnumType flags) noexcept {
+      return toEnum(this->fetchAndReset(toInt(flags)));
+    }
+    JEM_nodiscard JEM_forceinline EnumType fetchAndFlip(EnumType flags) noexcept {
+      return toEnum(this->fetchAndFlip(toInt(flags)));
+    }
+
+    JEM_nodiscard JEM_forceinline EnumType fetchAndClear() noexcept {
+      return toEnum(Impl::atomicExchange(this->bits, static_cast<IntType>(0)));
+    }
+
+    JEM_forceinline void set(EnumType flags) noexcept {
+      this->set(toInt(flags));
+    }
+    JEM_forceinline void reset(EnumType flags) noexcept {
+      this->reset(toInt(flags));
+    }
+    JEM_forceinline void flip(EnumType flags) noexcept {
+      this->flip(toInt(flags));
+    }
+
+    JEM_forceinline void clear() noexcept {
+      reset();
+    }
+    JEM_forceinline void clearAndSet(EnumType flags) noexcept {
+      Impl::atomicStore(this->bits, toInt(flags));
+    }
+
+    JEM_forceinline void reset() noexcept {
+      atomicStore(this->bits, static_cast<IntType>(0));
+    }
+
+
+    JEM_forceinline void waitExact(EnumType flags) const noexcept {
+      this->waitExact(toInt(flags));
+    }
+    JEM_forceinline void waitAny(EnumType flags) const noexcept {
+      this->waitAny(toInt(flags));
+    }
+    JEM_forceinline void waitAll(EnumType flags) const noexcept {
+      this->waitAll(toInt(flags));
+    }
+
+    JEM_forceinline bool waitExactUntil(EnumType flags, Deadline deadline) const noexcept {
+      return this->waitExactUntil(toInt(flags), deadline);
+    }
+    JEM_forceinline bool waitAnyUntil(EnumType flags, Deadline deadline) const noexcept {
+      return this->waitAnyUntil(toInt(flags), deadline);
+    }
+    JEM_forceinline bool waitAllUntil(EnumType flags, Deadline deadline) const noexcept {
+      return this->waitAllUntil(toInt(flags), deadline);
+    }
+
+    JEM_forceinline void notifyOne() noexcept {
+      atomicNotifyOne(this->bits);
+    }
+    JEM_forceinline void notifyAll() noexcept {
+      atomicNotifyAll(this->bits);
+    }
+
   };
 
-  enum class ResponseQueryResult {
-    eNotReady,
-    eReady,
-    eFailed
-  };
-
-
-  // using AtomicCounter = atomic_u32_t;
-  using AtomicFlags32 = atomic_flags32_t;
-  using AtomicFlags64 = atomic_flags64_t;
 
   class ReferenceCount {
   public:
@@ -141,37 +748,36 @@ namespace Agt {
 
 
     JEM_nodiscard AgtUInt32 get() const noexcept {
-      return (AgtUInt32)__iso_volatile_load32(&reinterpret_cast<const int&>(value_));
+      return Impl::atomicRelaxedLoad(value_);
     }
 
 
     AgtUInt32 acquire() noexcept {
-      return _InterlockedIncrement(&value_);
-      // return _InterlockedExchangeAdd(&value_, 1) + 1;
+      return Impl::atomicIncrement(value_);
     }
     AgtUInt32 acquire(AgtUInt32 n) noexcept {
-      return _InterlockedExchangeAdd(&value_, n) + n;
+      return Impl::atomicExchangeAdd(value_, n) + n;
     }
 
     AgtUInt32 release() noexcept {
-      return _InterlockedDecrement(&value_);
+      return Impl::atomicDecrement(value_);
     }
     AgtUInt32 release(AgtUInt32 n) noexcept {
-      return _InterlockedExchangeAdd(&value_, 0 - n) - n;
+      return Impl::atomicExchangeAdd(value_, 0 - n) - n;
     }
 
     AgtUInt32 operator++()    noexcept {
-      return _InterlockedExchangeAdd(&value_, 1);
+      return this->acquire();
     }
     AgtUInt32 operator++(int) noexcept {
-      return acquire();
+      return Impl::atomicExchangeAdd(value_, 1);
     }
 
     AgtUInt32 operator--()    noexcept {
-      return _InterlockedExchangeAdd(&value_, 1);
+      return this->release();
     }
     AgtUInt32 operator--(int) noexcept {
-      return release();
+      return Impl::atomicExchangeAdd(value_, -1);
     }
 
   private:
@@ -186,19 +792,18 @@ namespace Agt {
 
 
     AgtUInt32 getValue() const noexcept {
-      return __iso_volatile_load32(&reinterpret_cast<const int&>(value_));
+      return Impl::atomicRelaxedLoad(value_);
+      // return __iso_volatile_load32(&reinterpret_cast<const int&>(value_));
     }
 
     void reset() noexcept {
-      // __iso_volatile_store32(&reinterpret_cast<int&>(value_), 0);     // This doesn't always provide proper ordering
-      AgtUInt32 capturedValue = 0;
-      while ((capturedValue = _InterlockedCompareExchange(&value_, 0, capturedValue)));
+      Impl::atomicStore(value_, 0);
     }
 
 
 
     AgtUInt32 operator++()    noexcept {
-      AgtUInt32 result = _InterlockedExchangeAdd(&value_, 1);
+      AgtUInt32 result = Impl::atomicIncrement(value_);
       notifyWaiters();
       return result;
     }
@@ -215,81 +820,33 @@ namespace Agt {
           deepWait(expectedValue);
           return true;
         case JEM_DO_NOT_WAIT:
-          return tryWaitOnce(expectedValue);
+          return isAtLeast(expectedValue);
         default:
-          if (timeout < TIMEOUT_US_LONG_WAIT_THRESHOLD)
-            return shallowWait(expectedValue, timeout);
-          else
-            return deepWaitFor(expectedValue, timeout);
+          return deepWaitUntil(expectedValue, Deadline::fromTimeout(timeout));
       }
     }
 
 
   private:
 
-    bool doDeepWait(AgtUInt32& capturedValue, AgtUInt32 timeout) const noexcept {
-      _InterlockedIncrement(&deepSleepers_);
-      BOOL result = WaitOnAddress(&const_cast<volatile AgtUInt32&>(value_), &capturedValue, sizeof(AgtUInt32), timeout);
-      _InterlockedDecrement(&deepSleepers_);
-      if (result)
-        capturedValue = getValue();
-      return result;
-    }
-
     void notifyWaiters() noexcept {
-      const AgtUInt32 waiters = __iso_volatile_load32(&reinterpret_cast<const int&>(deepSleepers_));
+      const AgtUInt32 waiters = Impl::atomicRelaxedLoad(deepSleepers_);
 
       if ( waiters == 0 ) [[likely]] {
 
       } else if ( waiters == 1 ) {
-        WakeByAddressSingle(&value_);
+        Impl::atomicNotifyOne(value_);
       } else {
-        WakeByAddressAll(&value_);
+        Impl::atomicNotifyAll(value_);
       }
     }
 
     JEM_forceinline AgtUInt32 orderedLoad() const noexcept {
-      return _InterlockedCompareExchange(&const_cast<volatile AgtUInt32&>(value_), 0, 0);
+      return Impl::atomicLoad(value_);
     }
 
-    JEM_forceinline bool isLessThan(AgtUInt32 value) const noexcept {
-      return orderedLoad() < value;
-    }
     JEM_forceinline bool isAtLeast(AgtUInt32 value) const noexcept {
       return orderedLoad() >= value;
-    }
-
-    JEM_forceinline bool      shallowWait(AgtUInt32 expectedValue, AgtTimeout timeout) const noexcept {
-      deadline_t deadline = deadline_t::from_timeout_us(timeout);
-      jem_u32_t backoff = 0;
-      while (isLessThan(expectedValue)) {
-        if (deadline.has_passed())
-          return false;
-        switch (backoff) {
-          default:
-            PAUSE_x32();
-            [[fallthrough]];
-          case 5:
-            PAUSE_x16();
-            [[fallthrough]];
-          case 4:
-            PAUSE_x8();
-            [[fallthrough]];
-          case 3:
-            PAUSE_x4();
-            [[fallthrough]];
-          case 2:
-            PAUSE_x2();
-            [[fallthrough]];
-          case 1:
-            PAUSE_x1();
-            [[fallthrough]];
-          case 0:
-            PAUSE_x1();
-        }
-        ++backoff;
-      }
-      return true;
     }
 
     JEM_forceinline bool      tryWaitOnce(AgtUInt32 expectedValue) const noexcept {
@@ -297,22 +854,30 @@ namespace Agt {
     }
 
     JEM_noinline    void      deepWait(AgtUInt32 expectedValue) const noexcept {
-      AgtUInt32 capturedValue = getValue();
-      while (capturedValue < expectedValue) {
-        doDeepWait(capturedValue, INFINITE);
-        /*WaitOnAddress(&const_cast<volatile AgtUInt32&>(value_), &capturedValue, sizeof(AgtUInt32), INFINITE);
-        capturedValue = getValue();*/
+      AgtUInt32 capturedValue;
+      AgtUInt32 backoff = 0;
+      while ( (capturedValue = orderedLoad()) < expectedValue ) {
+        DUFFS_MACHINE_EX(backoff,
+                         Impl::atomicIncrement(deepSleepers_);
+                         Impl::atomicDeepWaitRaw(&value_, &capturedValue, sizeof(AgtUInt32));
+                         Impl::atomicDecrement(deepSleepers_);
+                         );
       }
     }
 
-    JEM_noinline    bool      deepWaitFor(AgtUInt32 expectedValue, AgtTimeout timeout) const noexcept {
+    JEM_noinline    bool      deepWaitUntil(AgtUInt32 expectedValue, Deadline deadline) const noexcept {
+      AgtUInt32 capturedValue;
+      AgtUInt32 backoff = 0;
 
-      deadline_t deadline = deadline_t::from_timeout_us(timeout - 1);
-      AgtUInt32 capturedValue = getValue();
-
-      while (capturedValue < expectedValue) {
-        if (!doDeepWait(capturedValue, deadline.to_timeout_ms()))
+      while ( (capturedValue = Impl::atomicLoad(value_)) < expectedValue ) {
+        if ( deadline.hasPassed() )
           return false;
+        DUFFS_MACHINE_EX(backoff,
+          Impl::atomicIncrement(deepSleepers_);
+          bool result = Impl::atomicDeepWaitRaw(&value_, &capturedValue, sizeof(AgtUInt32), deadline.toTimeoutMs());
+          Impl::atomicDecrement(deepSleepers_);
+          if (!result) return false;
+          );
       }
 
       return true;
@@ -323,141 +888,6 @@ namespace Agt {
     mutable AgtUInt32 deepSleepers_ = 0;
   };
 
-  class ResponseCount {
-  public:
-
-    ResponseCount() = default;
-
-
-    void arrive() noexcept {
-      _InterlockedIncrement(&arrivedCount_);
-      notifyWaiters();
-    }
-
-    void drop() noexcept {
-      _InterlockedIncrement(&droppedCount_);
-      notifyWaiters();
-    }
-
-    void reset(AgtUInt32 maxExpectedResponses) noexcept {
-      AgtUInt32 capturedValue = 0;
-      while ((capturedValue = _InterlockedCompareExchange(&arrivedCount_, 0, capturedValue)));
-
-    }
-
-    bool waitFor(ResponseQuery query, AgtTimeout timeout) const noexcept {
-      switch (timeout) {
-        case JEM_WAIT:
-          deepWait(expectedValue);
-          return true;
-        case JEM_DO_NOT_WAIT:
-          return tryWaitOnce(expectedValue);
-        default:
-          if (timeout < TIMEOUT_US_LONG_WAIT_THRESHOLD)
-            return shallowWaitFor(expectedValue, timeout);
-          else
-            return deepWaitFor(expectedValue, timeout);
-      }
-    }
-
-    bool waitUntil(ResponseQuery query, Deadline deadline) const noexcept {
-      if (!deadline.isLong()) [[likely]] {
-        return shallowWaitUntil(expectedValue, deadline);
-      } else {
-        return deepWaitUntil(expectedValue, deadline);
-      }
-    }
-
-
-
-  private:
-
-    bool      doDeepWait(AgtUInt32& capturedValue, AgtUInt32 timeout) const noexcept;
-    void      notifyWaiters() noexcept;
-
-
-    JEM_forceinline AgtUInt32 fastLoad() const noexcept {
-      return __iso_volatile_load32(&reinterpret_cast<const int&>(arrivedCount_));
-    }
-
-    JEM_forceinline AgtUInt32 orderedLoad() const noexcept {
-      return _InterlockedCompareExchange(&const_cast<volatile AgtUInt32&>(arrivedCount_), 0, 0);
-    }
-
-    JEM_forceinline bool      isLessThan(AgtUInt32 value) const noexcept {
-      return orderedLoad() < value;
-    }
-    JEM_forceinline bool      isAtLeast(AgtUInt32 value) const noexcept {
-      return orderedLoad() >= value;
-    }
-
-    JEM_forceinline bool      isLessThan(ResponseQuery query) const noexcept {
-      // return orderedLoad() < query.;
-    }
-    JEM_forceinline bool      isAtLeast(ResponseQuery query) const noexcept {
-      return orderedLoad() >= value;
-    }
-
-    JEM_forceinline bool      shallowWaitFor(ResponseQuery query, AgtTimeout timeout) const noexcept {
-      return shallowWaitUntil(query, Deadline::fromTimeout(timeout));
-    }
-
-    JEM_forceinline bool      shallowWaitUntil(ResponseQuery query, Deadline deadline) const noexcept {
-      AgtUInt32 backoff = 0;
-      while (isLessThan(expectedValue)) {
-        if (deadline.hasPassed())
-          return false;
-        DUFFS_MACHINE(backoff);
-      }
-      return true;
-    }
-
-    JEM_forceinline bool      tryWaitOnce(ResponseQuery query) const noexcept {
-      return orderedLoad() >= expectedValue;
-    }
-
-
-    JEM_noinline    void      deepWait(ResponseQuery query) const noexcept {
-      AgtUInt32 capturedValue = fastLoad();
-      while (capturedValue < expectedValue) {
-        doDeepWait(capturedValue, 0xFFFF'FFFF);
-      }
-    }
-
-    JEM_noinline    bool      deepWaitFor(ResponseQuery query, AgtTimeout timeout) const noexcept {
-      Deadline deadline = Deadline::fromTimeout(timeout);
-      AgtUInt32 capturedValue = fastLoad();
-
-      while (capturedValue < expectedValue) {
-        if (!doDeepWait(capturedValue, deadline.toTimeoutMs()))
-          return false;
-      }
-      return true;
-    }
-
-    JEM_noinline    bool      deepWaitUntil(ResponseQuery query, Deadline deadline) const noexcept {
-      AgtUInt32 capturedValue = fastLoad();
-
-      while (capturedValue < expectedValue) {
-        if (!doDeepWait(capturedValue, deadline.toTimeoutMs()))
-          return false;
-      }
-      return true;
-    }
-
-
-
-    union {
-      struct {
-        AgtUInt32     arrivedCount_;
-        AgtUInt32     droppedCount_;
-      };
-      AgtUInt64       totalCount_ = 0;
-    };
-
-    AgtUInt32         expectedResponses_ = 0;
-    mutable AgtUInt32 deepSleepers_ = 0;
-  };
 }
 
 #endif//JEMSYS_AGATE2_ATOMIC_HPP

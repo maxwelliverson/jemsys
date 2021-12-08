@@ -38,14 +38,14 @@ namespace Agt {
 
 
 
-  AgtUInt32    asyncDataGetEpoch(const AgtAsyncData_st* asyncData) noexcept;
+  /*AgtUInt32    asyncDataGetEpoch(const AgtAsyncData_st* asyncData) noexcept;
 
   void         asyncDataAttach(AgtAsyncData data, AgtSignal signal) noexcept;
   bool         asyncDataTryAttach(AgtAsyncData data, AgtSignal signal) noexcept;
 
   void         asyncDataDetachSignal(AgtAsyncData data) noexcept;
 
-  AgtUInt32    asyncDataGetMaxExpectedCount(const AgtAsyncData_st* data) noexcept;
+  AgtUInt32    asyncDataGetMaxExpectedCount(const AgtAsyncData_st* data) noexcept;*/
 
 
 

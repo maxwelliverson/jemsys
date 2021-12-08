@@ -22,6 +22,10 @@ JEM_begin_c_namespace
 
 typedef jem_i32_t AgtBool;
 
+typedef jem_u8_t  AgtUInt8;
+typedef jem_i8_t  AgtInt8;
+typedef jem_u16_t AgtUInt16;
+typedef jem_i16_t AgtInt16;
 typedef jem_u32_t AgtUInt32;
 typedef jem_i32_t AgtInt32;
 typedef jem_u64_t AgtUInt64;
@@ -262,7 +266,7 @@ JEM_api AgtStatus     JEM_stdcall agtWaitMany(const AgtAsync* pAsyncs, AgtSize a
 JEM_api AgtStatus     JEM_stdcall agtNewSignal(AgtContext ctx, AgtSignal* pSignal) JEM_noexcept;
 JEM_api void          JEM_stdcall agtAttachSignal(AgtSignal signal, AgtAsync async) JEM_noexcept;
 JEM_api void          JEM_stdcall agtRaiseSignal(AgtSignal signal) JEM_noexcept;
-JEM_api void          JEM_stdcall agtRaiseManySignals(AgtSignal signal) JEM_noexcept;
+JEM_api void          JEM_stdcall agtRaiseManySignals(const AgtSignal* pSignals, AgtSize signalCount) JEM_noexcept;
 JEM_api void          JEM_stdcall agtDestroySignal(AgtSignal signal) JEM_noexcept;
 
 
