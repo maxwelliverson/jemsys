@@ -28,24 +28,16 @@ AGT_DEFINE_HANDLE(AgtLocalMessage);
 
 namespace Agt {
 
-  class Async;
-  class AsyncData;
-  class Message;
-  class Signal;
-  class Context;
-  class Handle;
-  class Id;
-
-
   enum class ObjectType : AgtUInt32;
   enum class ObjectFlags : AgtHandleFlags;
+  enum class ConnectAction : AgtUInt32;
 
-
-  struct HandleHeader;
-  struct ObjectHeader;
-  struct LocalObject;
-  struct SharedObject;
-  struct SharedHandle;
+  class Id;
+  class Handle;
+  class LocalHandle;
+  class SharedHandle;
+  class SharedObject;
+  using LocalObject = LocalHandle;
 
   struct LocalChannel;
   struct SharedChannel;

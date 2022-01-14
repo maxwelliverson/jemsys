@@ -5,24 +5,76 @@
 #include "objects.hpp"
 
 
-JEM_forceinline jem_size_t align_to(jem_size_t size, jem_size_t align) noexcept {
-  return ((size - 1) | (align - 1)) + 1;
+using namespace Agt;
+
+namespace {
+
+  JEM_forceinline jem_size_t align_to(jem_size_t size, jem_size_t align) noexcept {
+    return ((size - 1) | (align - 1)) + 1;
+  }
+
+  JEM_noinline AgtStatus sharedHandleDuplicate(Handle* self_, Handle*& out) noexcept {
+    const auto self = static_cast<SharedHandle*>(self_);
+    if (AgtStatus result = self->sharedAcquire())
+      return result;
+    if (SharedHandle* pNewShared = ctxNewSharedHandle(self->getContext(), self->getInstance()))
+      out = pNewShared;
+    else
+      return AGT_ERROR_BAD_ALLOC;
+    return AGT_SUCCESS;
+  }
+
 }
 
 
-Agt::ObjectManager::ObjectManager(jem_u32_t processId, AgtSize pageSize) noexcept {}
 
-Agt::ObjectManager::~ObjectManager() {}
+AgtStatus Handle::duplicate(Handle*& out) noexcept {
+  if (!isShared()) [[likely]] {
+    if (AgtStatus result = static_cast<LocalHandle*>(this)->localAcquire())
+      return result;
+    out = this;
+    return AGT_SUCCESS;
+  }
+  else
+    return sharedHandleDuplicate(this, out);
+}
+
+void Handle::close() noexcept  {
+  if (!isShared()) [[likely]]
+    static_cast<LocalHandle*>(this)->localRelease();
+  else
+    ctxDestroySharedHandle(context, static_cast<SharedHandle*>(this));
+}
+
+AgtStatus Handle::stage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {
+  if (!isShared()) [[likely]]
+    return static_cast<LocalHandle*>(this)->localStage(stagedMessage, timeout);
+  else
+    return static_cast<SharedHandle*>(this)->sharedStage(stagedMessage, timeout);
+}
+void      Handle::send(AgtMessage message, AgtSendFlags flags) noexcept {
+  if (!isShared()) [[likely]]
+    static_cast<LocalHandle*>(this)->localSend(message, flags);
+  else
+    static_cast<SharedHandle*>(this)->sharedSend(message, flags);
+}
+AgtStatus Handle::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {
+  if (!isShared()) [[likely]]
+    return static_cast<LocalHandle*>(this)->localReceive(messageInfo, timeout);
+  else
+    return static_cast<SharedHandle*>(this)->sharedReceive(messageInfo, timeout);
+}
+
+AgtStatus Handle::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  if (!isShared()) [[likely]]
+    return static_cast<LocalHandle*>(this)->localConnect(otherHandle, action);
+  else
+    return static_cast<SharedHandle*>(this)->sharedConnect(otherHandle, action);
+}
 
 
-bool Agt::ObjectManager::registerPrivate(Object* object) noexcept {}
-
-bool Agt::ObjectManager::registerShared(Object* object) noexcept {}
-
-Agt::Object* Agt::ObjectManager::lookup(Id id) const noexcept {}
-
-Agt::Object* Agt::ObjectManager::unsafeLookup(Id id) const noexcept {}
-
-void Agt::ObjectManager::release(Id id) noexcept {}
-
-void Agt::ObjectManager::release(Object* obj) noexcept {}
+SharedHandle::SharedHandle(SharedObject* pInstance, AgtContext context, Id localId) noexcept
+    : Handle(pInstance->getType(), pInstance->getFlags(), context, localId),
+      vptr(lookupSharedVTable(pInstance->getType())),
+      instance(pInstance)
+{}

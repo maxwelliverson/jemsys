@@ -163,6 +163,7 @@ add_jemsys_library(
                 async.cpp
                 atomic.cpp
                 signal.cpp
+                vtable.cpp
             DEPENDENCIES
                 support
 )

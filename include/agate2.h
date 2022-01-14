@@ -62,6 +62,7 @@ typedef enum AgtStatus {
   AGT_DEFERRED,
   AGT_CANCELLED,
   AGT_TIMED_OUT,
+  AGT_INCOMPLETE_MESSAGE,
   AGT_ERROR_UNKNOWN,
   AGT_ERROR_UNKNOWN_FOREIGN_OBJECT,
   AGT_ERROR_INVALID_OBJECT_ID,
@@ -78,6 +79,7 @@ typedef enum AgtStatus {
   AGT_ERROR_CANNOT_DISCARD,
   AGT_ERROR_MESSAGE_TOO_LARGE,
   AGT_ERROR_INSUFFICIENT_SLOTS,
+  AGT_ERROR_NOT_MULTIFRAME,
   AGT_ERROR_BAD_SIZE,
   AGT_ERROR_INVALID_ARGUMENT,
   AGT_ERROR_BAD_ENCODING_IN_NAME,
@@ -118,6 +120,11 @@ typedef enum AgtSendFlagBits {
 } AgtSendFlagBits;
 typedef jem_flags32_t AgtSendFlags;
 
+typedef enum AgtConnectFlagBits {
+  AGT_CONNECT_FORWARD   = 0x1,
+} AgtConnectFlagBits;
+typedef jem_flags32_t AgtConnectFlags;
+
 typedef enum AgtScope {
   AGT_SCOPE_LOCAL,
   AGT_SCOPE_SHARED,
@@ -141,7 +148,9 @@ typedef struct AgtSendInfo {
 } AgtSendInfo;
 
 typedef struct AgtStagedMessage {
-  void*        cookie;
+  void*        reserved[4];
+  AgtHandle    returnHandle;
+  AgtSize      messageSize;
   AgtMessageId id;
   void*        payload;
 } AgtStagedMessage;
@@ -152,6 +161,19 @@ typedef struct AgtMessageInfo {
   AgtMessageId id;
   void*        payload;
 } AgtMessageInfo;
+
+typedef struct AgtMultiFrameMessageInfo {
+  void*      reserved[5];
+  AgtSize    messageSize;
+  AgtSize    frameSize;
+  AgtSize    frameCount;
+} AgtMultiFrameMessageInfo;
+
+typedef struct AgtMessageFrame {
+  AgtSize index;
+  AgtSize size;
+  void*   data;
+} AgtMessageFrame;
 
 typedef struct AgtObjectInfo {
   AgtObjectId    id;
@@ -209,7 +231,7 @@ JEM_api AgtStatus     JEM_stdcall agtNewContext(AgtContext* pContext) JEM_noexce
 JEM_api AgtStatus     JEM_stdcall agtDestroyContext(AgtContext context) JEM_noexcept;
 
 
-JEM_api void          JEM_stdcall agtYieldExecution() JEM_noexcept;
+
 
 
 JEM_api AgtStatus     JEM_stdcall agtGetObjectInfo(AgtContext context, AgtObjectInfo* pObjectInfo) JEM_noexcept;
@@ -224,13 +246,32 @@ JEM_api AgtStatus     JEM_stdcall agtCreateAgency(const AgtAgencyCreateInfo* cpC
 JEM_api AgtStatus     JEM_stdcall agtCreateThread(const AgtThreadCreateInfo* cpCreateInfo, AgtHandle* pThread) JEM_noexcept;
 
 
+/**
+ *
+ */
+JEM_api AgtStatus     JEM_stdcall agtStage(AgtHandle sender, AgtStagedMessage* pStagedMessage, AgtTimeout timeout) JEM_noexcept;
+/**
+ *
+ */
+JEM_api void          JEM_stdcall agtSend(const AgtStagedMessage* cpStagedMessage, AgtAsync asyncHandle, AgtSendFlags flags) JEM_noexcept;
+/**
+ *
+ */
+JEM_api AgtStatus     JEM_stdcall agtReceive(AgtHandle receiver, AgtMessageInfo* pMessageInfo, AgtTimeout timeout) JEM_noexcept;
+/**
+ *
+ */
+JEM_api AgtStatus     JEM_stdcall agtConnect(AgtHandle to, AgtHandle from, AgtConnectFlags flags) JEM_noexcept;
 
-JEM_api AgtStatus     JEM_stdcall agtStage(AgtHandle sender, AgtStagedMessage* pStagedMessage, AgtSize messageSize, AgtTimeout usTimeout) JEM_noexcept;
-JEM_api void          JEM_stdcall agtSendStaged(const AgtStagedMessage* cpStagedMessage, AgtHandle sender, AgtAsync asyncHandle, AgtSendFlags flags) JEM_noexcept;
 
-JEM_api AgtStatus     JEM_stdcall agtSend(AgtHandle sender, const AgtSendInfo* pSendInfo, AgtTimeout timeout) JEM_noexcept;
-JEM_api AgtStatus     JEM_stdcall agtReceive(AgtHandle receiver, AgtMessageInfo* pMessageInfo, AgtTimeout usTimeout) JEM_noexcept;
 
+
+
+
+/* ========================= [ Messages ] ========================= */
+
+JEM_api AgtStatus     JEM_stdcall agtGetMultiframeMessage(AgtMessage message, AgtMultiFrameMessageInfo* pMultiframeInfo) JEM_noexcept;
+JEM_api AgtStatus     JEM_stdcall agtGetNextFrame(AgtMultiFrameMessageInfo* pMultiframeInfo, AgtMessageFrame* pFrame) JEM_noexcept;
 
 
 JEM_api void          JEM_stdcall agtReturn(AgtMessage message, AgtStatus status) JEM_noexcept;
@@ -239,13 +280,15 @@ JEM_api void          JEM_stdcall agtReturn(AgtMessage message, AgtStatus status
 
 
 JEM_api AgtStatus     JEM_stdcall agtDispatchMessage(const AgtActor* pActor, const AgtMessageInfo* pMessageInfo) JEM_noexcept;
-JEM_api AgtStatus     JEM_stdcall agtExecuteOnThread(AgtThread thread, ) JEM_noexcept;
+// JEM_api AgtStatus     JEM_stdcall agtExecuteOnThread(AgtThread thread, ) JEM_noexcept;
 
 
 
 
 
 JEM_api AgtStatus     JEM_stdcall agtGetSenderHandle(AgtMessage message, AgtHandle* pSenderHandle) JEM_noexcept;
+
+
 
 
 
@@ -259,6 +302,9 @@ JEM_api void          JEM_stdcall agtDestroyAsync(AgtAsync async) JEM_noexcept;
 
 JEM_api AgtStatus     JEM_stdcall agtWait(AgtAsync async, AgtTimeout timeout) JEM_noexcept;
 JEM_api AgtStatus     JEM_stdcall agtWaitMany(const AgtAsync* pAsyncs, AgtSize asyncCount, AgtTimeout timeout) JEM_noexcept;
+
+
+
 
 
 /* ========================= [ Signal ] ========================= */
@@ -275,7 +321,7 @@ JEM_api void          JEM_stdcall agtDestroySignal(AgtSignal signal) JEM_noexcep
 
 
 
-
+// JEM_api void          JEM_stdcall agtYieldExecution() JEM_noexcept;
 
 
 

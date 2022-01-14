@@ -224,6 +224,11 @@ namespace {
 
 extern "C" {
 
+struct AgtLocalAsyncData_st {
+  AgtUInt32 attachedRefCount;
+  AgtUInt32 waiterRefCount;
+};
+
 struct AgtAsyncData_st {
   ContextId              contextId;
   ReferenceCount         refCount;

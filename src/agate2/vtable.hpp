@@ -8,17 +8,21 @@
 
 #include "fwd.hpp"
 
+
+
 namespace Agt {
 
-  struct LocalVTable {
-    AgtStatus(* acquireRef)(LocalObject* object);
-    bool     (* releaseRef)(LocalObject* object);
+  struct SharedVTable {
+    AgtStatus (* const acquireRef)(SharedObject* object, AgtContext ctx) noexcept;
+    AgtSize   (* const releaseRef)(SharedObject* object, AgtContext ctx) noexcept;
+    void      (* const destroy)(SharedObject* object, AgtContext ctx) noexcept;
+    AgtStatus (* const stage)(SharedObject* object, AgtContext ctx, AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept;
+    void      (* const send)(SharedObject* object, AgtContext ctx, AgtMessage message, AgtSendFlags flags) noexcept;
+    AgtStatus (* const receive)(SharedObject* object, AgtContext ctx, AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept;
+    AgtStatus (* const connect)(SharedObject* object, AgtContext ctx, Handle* handle, ConnectAction action) noexcept;
   };
 
-  struct SharedVTable {
-    AgtStatus(* acquireRef)(SharedObject* object);
-    bool     (* releaseRef)(SharedObject* object);
-  };
+  SharedVPtr lookupSharedVTable(ObjectType type) noexcept;
 
 }
 

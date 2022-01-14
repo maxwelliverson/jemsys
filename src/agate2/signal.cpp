@@ -23,12 +23,15 @@ AgtAsyncData Agt::signalGetAttachment(const AgtSignal_st* signal) noexcept {
 }
 
 void Agt::signalAttach(AgtSignal signal, AgtAsync async) noexcept {
-  Agt::asyncReset();
+  // TODO: Implement Agt::signalAttach
 }
 
 void Agt::signalDetach(AgtSignal signal) noexcept {
+  // TODO: Implement Agt::signalDetach
 }
 void Agt::signalRaise(AgtSignal signal) noexcept {
+  // TODO: Implement Agt::signalRaise
 }
 void Agt::signalClose(AgtSignal signal) noexcept {
+  // TODO: Implement Agt::signalClose
 }

@@ -2,355 +2,295 @@
 // Created by maxwe on 2021-11-03.
 //
 
-#include "internal.hpp"
+// #include "internal.hpp"
+#include "channel.hpp"
+#include "message.hpp"
+#include "async.hpp"
 
-namespace agt{
+using namespace Agt;
 
-  struct channel {
-    atomic_u32_t refCount;
-    channel_kind kind;
-    jem_size_t slotCount;
-    jem_size_t slotSize;
+namespace Agt {
+  struct JEM_cache_aligned PrivateChannelMessage {
+    PrivateChannelMessage* next;
+    PrivateChannel*        owner;
+    AgtHandle              returnHandle;
+    AgtAsyncData           asyncData;
+    AgtUInt32              asyncDataKey;
+    MessageFlags           flags;
+    MessageState           state;
+    AgtUInt32              refCount;
+    AgtMessageId           id;
+    AgtSize                payloadSize;
+    InlineBuffer           inlineBuffer[];
   };
-
-  struct local_channel : channel{
-    std::byte* messageSlots;
+  struct JEM_cache_aligned LocalChannelMessage {
+    LocalChannelMessage*      next;
+    LocalChannel*             owner;
+    AgtHandle                 returnHandle;
+    AgtAsyncData              asyncData;
+    AgtUInt32                 asyncDataKey;
+    MessageFlags              flags;
+    AtomicFlags<MessageState> state;
+    ReferenceCount            refCount;
+    AgtMessageId              id;
+    AgtSize                   payloadSize;
+    InlineBuffer              inlineBuffer[];
   };
-
-  struct shared_channel : channel {
-    ipc::offset_ptr<std::byte> messageSlots;
+  struct JEM_cache_aligned SharedChannelMessage {
+    AgtSize                   nextIndex;
+    AgtSize                   thisIndex;
+    AgtObjectId               returnHandleId;
+    AgtSize                   asyncDataOffset;
+    AgtUInt32                 asyncDataKey;
+    MessageFlags              flags;
+    AtomicFlags<MessageState> state;
+    ReferenceCount            refCount;
+    AgtMessageId              id;
+    AgtSize                   payloadSize;
+    InlineBuffer              inlineBuffer[];
   };
+}
 
-  struct private_mailbox : local_channel {
-    jem_size_t availableSlotCount;
-    jem_size_t queuedMessageCount;
-    AgtMessage nextFreeSlot;
-    AgtMessage prevReceivedMessage;
-    AgtMessage prevQueuedMessage;
-    bool       isSenderClaimed;
-    bool       isReceiverClaimed;
-  };
+namespace Agt::Impl {
 
-  struct local_spsc_channel : local_channel {
-    binary_semaphore_t consumerSemaphore;
-    binary_semaphore_t producerSemaphore;
-    JEM_cache_aligned
-      semaphore_t        slotSemaphore;
-    AgtMessage         producerPreviousQueuedMsg;
-    AgtMessage         producerNextFreeSlot;
+  AgtMessage JEM_stdcall sharedSpScChannelStage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
+  void       JEM_stdcall sharedSpScChannelSend(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
+  AgtMessage JEM_stdcall sharedSpScChannelRead(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
+  AgtStatus  JEM_stdcall sharedSpScChannelConnect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
+  void       JEM_stdcall sharedSpScChannelMessage(channel* channel, AgtMessage message) JEM_noexcept;
 
-    JEM_cache_aligned
-      semaphore_t        queuedMessages;
-    AgtMessage         consumerPreviousMsg;
-    JEM_cache_aligned
-      std::atomic<AgtMessage> lastFreeSlot;
-  };
-  struct local_mpsc_channel : local_channel {
-    semaphore_t             slotSemaphore;
-    JEM_cache_aligned
-      std::atomic<AgtMessage> nextFreeSlot;
+  AgtMessage JEM_stdcall shared_mpsc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
+  void       JEM_stdcall shared_mpsc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
+  AgtMessage JEM_stdcall shared_mpsc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
+  AgtStatus  JEM_stdcall shared_mpsc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
+  void       JEM_stdcall shared_mpsc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
 
-    JEM_cache_aligned
-      std::atomic<AgtMessage> lastQueuedSlot;
-    std::atomic<AgtMessage> lastFreeSlot;
-    AgtMessage              previousReceivedMessage;
-    JEM_cache_aligned
-      mpsc_counter_t          queuedMessageCount;
-    jem_u32_t               maxProducers;
-    binary_semaphore_t      consumerSemaphore;
-    semaphore_t             producerSemaphore;
-  };
-  struct local_spmc_channel : local_channel {
-    semaphore_t        slotSemaphore;
-    JEM_cache_aligned
-      std::atomic<AgtMessage> lastFreeSlot;
-    AgtMessage              nextFreeSlot;
-    AgtMessage              lastQueuedSlot;
-    JEM_cache_aligned
-      std::atomic<AgtMessage> previousReceivedMessage;
-    JEM_cache_aligned
-      semaphore_t        queuedMessages;
-    jem_u32_t          maxConsumers;
-    binary_semaphore_t producerSemaphore;
-    semaphore_t        consumerSemaphore;
-  };
-  struct local_mpmc_channel : local_channel {
-    semaphore_t             slotSemaphore;
-    JEM_cache_aligned
-      std::atomic<AgtMessage> nextFreeSlot;
-    std::atomic<AgtMessage> lastQueuedSlot;
-    JEM_cache_aligned
-      std::atomic<AgtMessage> previousReceivedMessage;
-    JEM_cache_aligned
-      semaphore_t             queuedMessages;
-    jem_u32_t               maxProducers;
-    jem_u32_t               maxConsumers;
-    semaphore_t             producerSemaphore;
-    semaphore_t             consumerSemaphore;
-  };
+  AgtMessage JEM_stdcall shared_spmc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
+  void       JEM_stdcall shared_spmc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
+  AgtMessage JEM_stdcall shared_spmc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
+  AgtStatus  JEM_stdcall shared_spmc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
+  void       JEM_stdcall shared_spmc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
 
-  struct shared_spsc_channel : shared_channel {
-    std::byte*         producerSlotAddr;
-    std::byte*         consumerSlotAddr;
-    JEM_cache_aligned
-      semaphore_t        availableSlotSema;    // [1]: 8;  (0,   8)
-    binary_semaphore_t producerSemaphore;    // [1]: 1;  (8,   9)
-                                         // [1]: 7;  (9,  16) - alignment
-    AgtMessage      producerPreviousMsg;  // [1]: 8;  (16, 24)
-    JEM_cache_aligned
-      semaphore_t        queuedMessageSema;    // [2]: 8;  (0,   8)
-    binary_semaphore_t consumerSemaphore;    // [2]: 1;  (8,   9)
-                                         // [2]: 7;  (9,  16) - alignment
-    AgtMessage      consumerPreviousMsg;  // [2]: 8;  (16, 24)
-    AgtMessage      consumerLastFreeSlot; // [2]: 8;  (24, 32)
-    JEM_cache_aligned
-      atomic_size_t      nextFreeSlotIndex;         // [3]: 8;  (0,   8)
-    JEM_cache_aligned
-      std::byte          slots[];
-  };
-  struct shared_mpsc_channel : shared_channel {
-    shared_semaphore_t slotSemaphore;
-    JEM_cache_aligned
-      std::atomic<AgtMessage> nextFreeSlot;
-    jem_size_t                 payloadOffset;
-    JEM_cache_aligned
-      std::atomic<AgtMessage> lastQueuedSlot;
-    AgtMessage              previousReceivedMessage;
-    JEM_cache_aligned
-      mpsc_counter_t     queuedMessageCount;
-    jem_u32_t          maxProducers;
-    binary_semaphore_t consumerSemaphore;
-    semaphore_t        producerSemaphore;
-    JEM_cache_aligned
-      std::byte          slots[];
-  };
-  struct shared_spmc_channel : shared_channel {
-    semaphore_t        slotSemaphore;
-    JEM_cache_aligned
-      atomic_size_t      nextFreeSlot;
-    JEM_cache_aligned
-      atomic_size_t      lastQueuedSlot;
-    JEM_cache_aligned                          // 192 - alignment
-      atomic_u32_t       queuedSinceLastCheck; // 196
-    jem_u32_t          minQueuedMessages;    // 200
-    jem_u32_t          maxConsumers;         // 220
-    binary_semaphore_t producerSemaphore;    // 221
-                                         // 224 - alignment
-    semaphore_t        consumerSemaphore;    // 240
-    JEM_cache_aligned
-      std::byte          slots[];
-  };
-  struct shared_mpmc_channel : shared_channel {
-    semaphore_t      slotSemaphore;
-    JEM_cache_aligned
-      atomic_size_t    nextFreeSlot;
-    JEM_cache_aligned
-      atomic_size_t    lastQueuedSlot;
-    JEM_cache_aligned
-      atomic_u32_t     queuedSinceLastCheck;
-    jem_u32_t        minQueuedMessages;
-    jem_u32_t        maxProducers;         // 220
-    jem_u32_t        maxConsumers;         // 224
-    semaphore_t      producerSemaphore;    // 240
-    semaphore_t      consumerSemaphore;    // 256
-    JEM_cache_aligned
-      std::byte          slots[];
-  };
-
-
-
-  struct JEM_cache_aligned channel_vtable {
-    AgtMessage (JEM_stdcall* pfnStage)(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-    void (      JEM_stdcall* pfnSend)(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-    AgtMessage (JEM_stdcall* pfnRead)(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-    AgtStatus ( JEM_stdcall* pfnConnect)(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-    void (      JEM_stdcall* pfnReturnMessage)(channel* channel, AgtMessage message) JEM_noexcept;
-  };
-
-
-
-
-  extern const channel_vtable vtable_table[];
-
-  namespace impl{
-
-    AgtMessage JEM_stdcall private_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall private_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-    AgtMessage JEM_stdcall private_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-    AgtStatus  JEM_stdcall private_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall private_return_message(channel* channel, AgtMessage message) JEM_noexcept;
-
-    AgtMessage JEM_stdcall local_spsc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall local_spsc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-    AgtMessage JEM_stdcall local_spsc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-    AgtStatus  JEM_stdcall local_spsc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall local_spsc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
-
-    AgtMessage JEM_stdcall local_mpsc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall local_mpsc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-    AgtMessage JEM_stdcall local_mpsc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-    AgtStatus  JEM_stdcall local_mpsc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall local_mpsc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
-
-    AgtMessage JEM_stdcall local_spmc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall local_spmc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-    AgtMessage JEM_stdcall local_spmc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-    AgtStatus  JEM_stdcall local_spmc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall local_spmc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
-
-    AgtMessage JEM_stdcall local_mpmc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall local_mpmc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-    AgtMessage JEM_stdcall local_mpmc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-    AgtStatus  JEM_stdcall local_mpmc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall local_mpmc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
-
-    AgtMessage JEM_stdcall shared_spsc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall shared_spsc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-    AgtMessage JEM_stdcall shared_spsc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-    AgtStatus  JEM_stdcall shared_spsc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall shared_spsc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
-
-    AgtMessage JEM_stdcall shared_mpsc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall shared_mpsc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-    AgtMessage JEM_stdcall shared_mpsc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-    AgtStatus  JEM_stdcall shared_mpsc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall shared_mpsc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
-
-    AgtMessage JEM_stdcall shared_spmc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall shared_spmc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-    AgtMessage JEM_stdcall shared_spmc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-    AgtStatus  JEM_stdcall shared_spmc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall shared_spmc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
-
-    AgtMessage JEM_stdcall shared_mpmc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall shared_mpmc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-    AgtMessage JEM_stdcall shared_mpmc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-    AgtStatus  JEM_stdcall shared_mpmc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-    void       JEM_stdcall shared_mpmc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
-
-  }
+  AgtMessage JEM_stdcall shared_mpmc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
+  void       JEM_stdcall shared_mpmc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
+  AgtMessage JEM_stdcall shared_mpmc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
+  AgtStatus  JEM_stdcall shared_mpmc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
+  void       JEM_stdcall shared_mpmc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
 
 }
 
 namespace {
 
-
-  inline void cleanup_message(AgtMessage message) noexcept {
-    message->signal.isReady.reset();
-    message->signal.openHandles.store(1, std::memory_order_relaxed);
-    if ( !(message->signal.flags.fetch_and_clear() & agt::message_fast_cleanup) ) {
-      std::memset(message->payload, 0, message->payloadSize);
-      message->sender = nullptr;
-      message->id     = 0;
-      message->signal.status = AGT_ERROR_STATUS_NOT_SET;
-    }
-  }
-  inline void destroy_message(agt::channel* channel, AgtMessage message) noexcept {
-    cleanup_message(message);
-    agt::vtable_table[mailbox->kind].pfn_return_message(mailbox, message);
-  }
-
-  template <typename Mailbox>
-  void return_message(Mailbox* mailbox, agt_cookie_t message) noexcept;
-
-  template <> JEM_forceinline void return_message(agt::local_mpsc_mailbox* mailbox, agt_cookie_t message) noexcept {
-    agt::impl::local_mpsc_return_message(mailbox, message);
-  }
-  template <> JEM_forceinline void return_message(agt::local_spsc_mailbox* mailbox, agt_cookie_t message) noexcept {
-    agt::impl::local_spsc_return_message(mailbox, message);
-  }
-  template <> JEM_forceinline void return_message(agt::local_mpmc_mailbox* mailbox, agt_cookie_t message) noexcept {
-    agt::impl::local_mpmc_return_message(mailbox, message);
-  }
-  template <> JEM_forceinline void return_message(agt::local_spmc_mailbox* mailbox, agt_cookie_t message) noexcept {
-    agt::impl::local_spmc_return_message(mailbox, message);
-  }
-  template <> JEM_forceinline void return_message(agt::shared_mpsc_mailbox* mailbox, agt_cookie_t message) noexcept {
-    agt::impl::shared_mpsc_return_message(mailbox, message);
-  }
-  template <> JEM_forceinline void return_message(agt::shared_spsc_mailbox* mailbox, agt_cookie_t message) noexcept {
-    agt::impl::shared_spsc_return_message(mailbox, message);
-  }
-  template <> JEM_forceinline void return_message(agt::shared_mpmc_mailbox* mailbox, agt_cookie_t message) noexcept {
-    agt::impl::shared_mpmc_return_message(mailbox, message);
-  }
-  template <> JEM_forceinline void return_message(agt::shared_spmc_mailbox* mailbox, agt_cookie_t message) noexcept {
-    agt::impl::shared_spmc_return_message(mailbox, message);
-  }
-  template <> JEM_forceinline void return_message(agt::private_mailbox* mailbox, agt_cookie_t message) noexcept {
-    agt::impl::private_return_message(mailbox, message);
-  }
-
-  inline void place_hold(AgtMessage message) noexcept {
-    message->signal.flags.set(agt::message_in_use);
-  }
-  template <typename Mailbox>
-  inline void free_hold(Mailbox* mailbox, AgtMessage message) noexcept {
-    if ( message->signal.flags.fetch_and_reset(agt::message_in_use) & agt::message_is_condemned ) {
-      cleanup_message(message);
-      return_message(mailbox, message);
+  inline void* getPayload(void* message_) noexcept {
+    auto message = static_cast<PrivateChannelMessage*>(message_);
+    if ((message->flags & MessageFlags::isOutOfLine) == FlagsNotSet) [[likely]]
+      return message->inlineBuffer;
+    else {
+      if ((message->flags & MessageFlags::isMultiFrame) == FlagsNotSet) {
+        void* resultData;
+        std::memcpy(&resultData, message->inlineBuffer, sizeof(void*));
+        return resultData;
+      }
+      return nullptr;
     }
   }
 
-  inline void condemn(agt_mailbox_t mailbox, AgtMessage message) noexcept {
-    if ( !(message->signal.flags.fetch_and_set(agt::message_is_condemned) & agt::message_in_use) )
-      destroy_message(mailbox, message);
-  }
-  inline void condemn(AgtMessage message) noexcept {
-    if ( !(message->signal.flags.fetch_and_set(agt::message_is_condemned) & agt::message_in_use) )
-      destroy_message(to_mailbox(message), message);
-  }
-  inline void condemn(agt_signal_t signal) noexcept {
-    condemn(to_message(signal));
-  }
-}
-
-
-extern "C" {
-
-JEM_api AgtStatus     JEM_stdcall agtCreateChannel(const AgtChannelCreateInfo* cpCreateInfo, AgtSender* pSender, AgtReceiver* pReceiver) JEM_noexcept {
-
-}
-
-JEM_api AgtStatus     JEM_stdcall agtStageChannel(AgtSender sender, AgtStagedMessage* pStagedMessage, AgtSize messageSize, AgtTimeout usTimeout) JEM_noexcept {
-  switch (sender->kind) {
-    case AGT_OBJECT_KIND_RECEIVER:
-      return AGT_ERROR_INVALID_HANDLE_TYPE;
-    case AGT_OBJECT_KIND_SENDER: {
-      auto channel = (agt::channel*)sender->object;
-      if (messageSize > (channel->slotSize - sizeof(AgtMessage_st)))
-        return AGT_ERROR_MESSAGE_TOO_LARGE;
-      auto message = agt::vtable_table[channel->kind].pfnStage(channel, messageSize, usTimeout);
-      if (!message)
-        return AGT_TIMED_OUT;
-      pStagedMessage->cookie = message;
-      pStagedMessage->payload = message->payload;
-      return AGT_SUCCESS;
+  void zeroMessageData(void* message_) noexcept {
+    auto message = static_cast<PrivateChannelMessage*>(message_);
+    if (void* payload = getPayload(message)) {
+      std::memset(payload, 0, message->payloadSize);
+    } else {
+      AgtMultiFrameMessageInfo mfi;
+      auto status = getMultiFrameMessage(message->inlineBuffer, mfi);
+      if (status == AGT_SUCCESS) {
+        AgtMessageFrame frame;
+        while(getNextFrame(frame, mfi))
+          std::memset(frame.data, 0, frame.size);
+      }
     }
-    case AGT_OBJECT_KIND_AGENT:
-      return AGT_ERROR_NOT_YET_IMPLEMENTED;
-    JEM_no_default;
+  }
+
+  JEM_noinline void doSlowCleanup(void* message_) noexcept {
+    auto message = static_cast<PrivateChannelMessage*>(message_);
+    zeroMessageData(message);
+    message->returnHandle = nullptr;
+    message->id           = 0;
+    message->payloadSize  = 0;
+  }
+
+  inline void* getPayload(SharedChannelMessage* message) noexcept {
+    // TODO: Implement Shared
+    if ((message->flags & MessageFlags::isOutOfLine) == FlagsNotSet) [[likely]]
+      return message->inlineBuffer;
+    else {
+      if ((message->flags & MessageFlags::isMultiFrame) == FlagsNotSet) {
+        void* resultData;
+        std::memcpy(&resultData, message->inlineBuffer, sizeof(void*));
+        return resultData;
+      }
+      return nullptr;
+    }
+  }
+
+  void zeroMessageData(SharedChannelMessage* message) noexcept {
+    // TODO: Implement Shared
+    if (void* payload = getPayload(message)) {
+      std::memset(payload, 0, message->payloadSize);
+    } else {
+      AgtMultiFrameMessageInfo mfi;
+      auto status = getMultiFrameMessage(message->inlineBuffer, mfi);
+      if (status == AGT_SUCCESS) {
+        AgtMessageFrame frame;
+        while(getNextFrame(frame, mfi))
+          std::memset(frame.data, 0, frame.size);
+      }
+    }
+  }
+
+  JEM_noinline void doSlowCleanup(SharedChannelMessage* message) noexcept {
+    // TODO: Implement Shared
+    zeroMessageData(message);
+    // message->returnHandle = nullptr;
+    message->id           = 0;
+    message->payloadSize  = 0;
+  }
+
+
+
+
+
+  inline void cleanupMessage(AgtContext ctx, PrivateChannelMessage* message) noexcept {
+    message->state    = DefaultMessageState;
+    message->refCount = 1;
+    message->flags    = FlagsNotSet;
+    if (message->asyncData != nullptr)
+      asyncDataDrop(message->asyncData, ctx, message->asyncDataKey);
+    if ((message->flags & MessageFlags::shouldDoFastCleanup) == FlagsNotSet)
+      doSlowCleanup(message);
+    //TODO: Release message resources if message is not inline
+  }
+  inline void cleanupMessage(AgtContext ctx, LocalChannelMessage* message) noexcept {
+    message->state    = DefaultMessageState;
+    message->refCount = ReferenceCount(1);
+    message->flags    = FlagsNotSet;
+    if (message->asyncData != nullptr)
+      asyncDataDrop(message->asyncData, ctx, message->asyncDataKey);
+    if ((message->flags & MessageFlags::shouldDoFastCleanup) == FlagsNotSet)
+      doSlowCleanup(message);
+    //TODO: Release message resources if message is not inline
+  }
+  inline void cleanupMessage(AgtContext ctx, SharedChannelMessage* message) noexcept {
+    // TODO: Implement Shared
+  }
+
+  inline void destroyMessage(PrivateChannel* channel, PrivateChannelMessage* message) noexcept {
+    cleanupMessage(channel->getContext(), message);
+    channel->releaseMessage((AgtMessage)message);
+  }
+  template <std::derived_from<LocalChannel> Channel>
+  inline void destroyMessage(Channel* channel, LocalChannelMessage* message) noexcept {
+    cleanupMessage(channel->getContext(), message);
+    channel->releaseMessage((AgtMessage)message);
+  }
+  inline void destroyMessage(SharedChannel* channel, SharedChannelMessage* message) noexcept {
+    // TODO: Implement Shared
+  }
+
+  inline void placeHold(PrivateChannelMessage* message) noexcept {
+    message->state = message->state | MessageState::isOnHold;
+  }
+  inline void placeHold(LocalChannelMessage* message) noexcept {
+    message->state.set(MessageState::isOnHold);
+  }
+  inline void placeHold(SharedChannelMessage* message) noexcept {
+    // TODO: Implement Shared
+    // message->state = message->state | MessageState::isOnHold;
+    message->state.set(MessageState::isOnHold);
+  }
+
+  inline void releaseHold(PrivateChannel* channel, PrivateChannelMessage* message) noexcept {
+    MessageState oldState = message->state;
+    message->state = message->state & ~MessageState::isOnHold;
+    if ((oldState & MessageState::isCondemned) != FlagsNotSet)
+      destroyMessage(channel, message);
+  }
+  template <typename Channel, typename Msg>
+  inline void releaseHold(Channel* channel, Msg* message) noexcept {
+    if ( (message->state.fetchAndReset(MessageState::isOnHold) & MessageState::isCondemned) != FlagsNotSet )
+      destroyMessage(channel, message);
+  }
+
+  inline void condemn(PrivateChannel* channel, PrivateChannelMessage* message) noexcept {
+    MessageState oldState = message->state;
+    message->state = message->state | MessageState::isCondemned;
+    if ((oldState & MessageState::isOnHold) == FlagsNotSet)
+      destroyMessage(channel, message);
+  }
+  template <typename Channel, typename Msg>
+  inline void condemn(Channel* channel, Msg* message) noexcept {
+    if ( (message->state.fetchAndSet(MessageState::isCondemned) & MessageState::isOnHold) == FlagsNotSet )
+      destroyMessage(channel, message);
   }
 }
-JEM_api AgtStatus     JEM_stdcall agtReceive(AgtReceiver receiver, AgtMessageInfo* pMessageInfo, AgtTimeout usTimeout) JEM_noexcept {
 
+
+
+void* PrivateChannel::acquireSlot(AgtTimeout timeout) noexcept {
+  --availableSlotCount;
+  auto acquiredMsg = nextFreeSlot;
+  nextFreeSlot = acquiredMsg->next;
+  return acquiredMsg;
+}
+AgtStatus PrivateChannel::stageOutOfLine(StagedMessage& pStagedMessage, AgtTimeout timeout) noexcept {
+  return AGT_NOT_READY;
 }
 
-JEM_api void          JEM_stdcall agtSend(const AgtStagedMessage* cpStagedMessage, AgtAgent sender, AgtAsync asyncHandle, AgtSendFlags flags) JEM_noexcept {
-  auto message = (AgtMessage)cpStagedMessage->payload;
-  auto channel = to_channel(message);
-  message->id = cpStagedMessage->id;
-  message->sender = sender;
-  // message->messageFlags.set(flags);
-  if (asyncHandle != nullptr) {
-    message->asyncHandle = asyncHandle->data;
-
+AgtStatus PrivateChannel::localStage(AgtStagedMessage& stagedMessage_, AgtTimeout timeout) noexcept {
+  auto& stagedMessage = reinterpret_cast<StagedMessage&>(stagedMessage_);
+  if ( availableSlotCount == 0 ) [[unlikely]]
+    return AGT_ERROR_MAILBOX_IS_FULL;
+  if ( stagedMessage.messageSize > slotSize) [[unlikely]] {
+    if (testAny(this->getFlags(), ObjectFlags::supportsOutOfLineMsg))
+      return stageOutOfLine(stagedMessage, timeout);
+    return AGT_ERROR_MESSAGE_TOO_LARGE;
   }
-  agt::vtable_table[channel->kind].pfnSend(channel, message, flags);
-}
-JEM_api void          JEM_stdcall agtReturn(AgtMessage message, AgtStatus status) JEM_noexcept {
 
+  auto acquiredMsg = static_cast<PrivateChannelMessage*>(acquireSlot(timeout));
+
+  stagedMessage.receiver = this;
+  stagedMessage.message  = acquiredMsg;
+  stagedMessage.payload  = acquiredMsg->inlineBuffer;
+  if (stagedMessage.messageSize == 0)
+    stagedMessage.messageSize = slotSize;
+
+  return AGT_SUCCESS;
+}
+void      PrivateChannel::localSend(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus PrivateChannel::localReceive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
+AgtStatus PrivateChannel::localConnect(Handle* otherHandle, ConnectAction action) noexcept {}
+
+void      PrivateChannel::releaseMessage(AgtMessage message) noexcept {
 }
 
 
-}
+AgtStatus LocalSpMcChannel::localStage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
+void      LocalSpMcChannel::localSend(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalSpMcChannel::localReceive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
+AgtStatus LocalSpMcChannel::localConnect(Handle* otherHandle, ConnectAction action) noexcept {}
+
+AgtStatus LocalSpScChannel::localStage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
+void      LocalSpScChannel::localSend(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalSpScChannel::localReceive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
+AgtStatus LocalSpScChannel::localConnect(Handle* otherHandle, ConnectAction action) noexcept {}
+
+AgtStatus LocalMpMcChannel::localStage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
+void      LocalMpMcChannel::localSend(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalMpMcChannel::localReceive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
+AgtStatus LocalMpMcChannel::localConnect(Handle* otherHandle, ConnectAction action) noexcept {}
+
+AgtStatus LocalMpScChannel::localStage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
+void      LocalMpScChannel::localSend(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalMpScChannel::localReceive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
+AgtStatus LocalMpScChannel::localConnect(Handle* otherHandle, ConnectAction action) noexcept {}
+
+

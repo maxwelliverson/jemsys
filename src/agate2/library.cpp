@@ -7,6 +7,7 @@
 
 #include "async.hpp"
 #include "context.hpp"
+#include "message.hpp"
 
 
 using namespace Agt;
@@ -48,10 +49,8 @@ extern "C" {
 
 
 JEM_api AgtStatus     JEM_stdcall agtNewContext(AgtContext* pContext) JEM_noexcept {
-
   if (!pContext)
     return AGT_ERROR_INVALID_ARGUMENT;
-
   return createCtx(*pContext);
 }
 
@@ -111,22 +110,18 @@ JEM_api AgtStatus     JEM_stdcall agtGetObjectInfo(AgtContext context, AgtObject
 }
 
 JEM_api AgtStatus     JEM_stdcall agtDuplicateHandle(AgtHandle inHandle, AgtHandle* pOutHandle) JEM_noexcept {
-  if (!pOutHandle) [[unlikely]] {
+  if (!pOutHandle) [[unlikely]]
     return AGT_ERROR_INVALID_ARGUMENT;
-  }
-
   if (inHandle == AGT_NULL_HANDLE) [[unlikely]] {
     *pOutHandle = AGT_NULL_HANDLE;
     return AGT_ERROR_NULL_HANDLE;
   }
-
-  return Handle::wrap(inHandle).duplicate(pOutHandle);
+  return static_cast<Handle*>(inHandle)->duplicate(reinterpret_cast<Handle*&>(*pOutHandle));
 }
 
 JEM_api void          JEM_stdcall agtCloseHandle(AgtHandle handle) JEM_noexcept {
-  if (handle) [[likely]] {
-    Handle::wrap(handle).close();
-  }
+  if (handle) [[likely]]
+    static_cast<Handle*>(handle)->close();
 }
 
 
@@ -136,18 +131,29 @@ JEM_api AgtStatus     JEM_stdcall agtCreateAgent(const AgtAgentCreateInfo* cpCre
 JEM_api AgtStatus     JEM_stdcall agtCreateAgency(const AgtAgencyCreateInfo* cpCreateInfo, AgtHandle* pAgency) JEM_noexcept;
 JEM_api AgtStatus     JEM_stdcall agtCreateThread(const AgtThreadCreateInfo* cpCreateInfo, AgtHandle* pThread) JEM_noexcept;
 
-
-
-JEM_api AgtStatus     JEM_stdcall agtStage(AgtHandle sender, AgtStagedMessage* pStagedMessage, AgtSize messageSize, AgtTimeout usTimeout) JEM_noexcept;
-JEM_api void          JEM_stdcall agtSendStaged(const AgtStagedMessage* cpStagedMessage, AgtHandle sender, AgtAsync asyncHandle, AgtSendFlags flags) JEM_noexcept;
-
-JEM_api AgtStatus     JEM_stdcall agtSend(AgtHandle sender, const AgtSendInfo* pSendInfo, AgtTimeout timeout) JEM_noexcept {
-
+JEM_api AgtStatus     JEM_stdcall agtStage(AgtHandle sender, AgtStagedMessage* pStagedMessage, AgtTimeout timeout) JEM_noexcept {
+  if (sender == AGT_NULL_HANDLE) [[unlikely]]
+    return AGT_ERROR_NULL_HANDLE;
+  if (pStagedMessage == nullptr) [[unlikely]]
+    return AGT_ERROR_INVALID_ARGUMENT;
+  return static_cast<Handle*>(sender)->stage(*pStagedMessage, timeout);
+}
+JEM_api void          JEM_stdcall agtSend(const AgtStagedMessage* cpStagedMessage, AgtAsync asyncHandle, AgtSendFlags flags) JEM_noexcept {
+  const auto& stagedMsg = reinterpret_cast<const StagedMessage&>(*cpStagedMessage);
+  const auto message = stagedMsg.message;
+  setMessageId(message, stagedMsg.id);
+  setMessageReturnHandle(message, stagedMsg.returnHandle);
+  setMessageAsyncHandle(message, asyncHandle);
+  stagedMsg.receiver->send(stagedMsg.message, flags);
+}
+JEM_api AgtStatus     JEM_stdcall agtReceive(AgtHandle receiver, AgtMessageInfo* pMessageInfo, AgtTimeout timeout) JEM_noexcept {
+  if (receiver == AGT_NULL_HANDLE) [[unlikely]]
+    return AGT_ERROR_NULL_HANDLE;
+  if (pMessageInfo == nullptr) [[unlikely]]
+    return AGT_ERROR_INVALID_ARGUMENT;
+  return static_cast<Handle*>(receiver)->receive(*pMessageInfo, timeout);
 }
 
-JEM_api AgtStatus     JEM_stdcall agtReceive(AgtHandle receiver, AgtMessageInfo* pMessageInfo, AgtTimeout usTimeout) JEM_noexcept {
-
-}
 
 
 

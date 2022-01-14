@@ -56,17 +56,21 @@ namespace Agt {
   void          ctxReleaseObject(AgtContext ctx, ObjectHeader* object) noexcept;
   void          ctxReleaseObject(AgtContext ctx, Id id) noexcept;
 
+  void          ctxReleaseLocalObject(AgtContext ctx, LocalObject* pLocalObject) noexcept;
   void          ctxReleaseSharedObject(AgtContext ctx, SharedObject* pSharedObject) noexcept;
-
 
   ObjectHeader* ctxLookupId(const AgtContext_st* ctx, Id id) noexcept;
   ObjectHeader* ctxUnsafeLookupId(const AgtContext_st* ctx, Id id) noexcept;
 
+
+
   void*         ctxAllocAsyncData(AgtContext context) noexcept;
   void          ctxFreeAsyncData(AgtContext context, void* memory) noexcept;
 
-  SharedHandle* ctxNewSharedHandle(AgtContext ctx, ObjectType type, ObjectFlags flags, AgtUInt32 pageId, AgtUInt32 pageOffset) noexcept;
-  SharedHandle* ctxNewSharedHandle(AgtContext ctx, SharedHandle* pOtherHandle) noexcept;
+  void*         ctxAllocSharedObject(AgtContext context, AgtSize size, AgtSize alignment) noexcept;
+  void          ctxFreeSharedObject(AgtContext ctx, void* memory, AgtSize size, AgtSize alignment) noexcept;
+
+  SharedHandle* ctxNewSharedHandle(AgtContext ctx, SharedObject* pObject) noexcept;
   void          ctxDestroySharedHandle(AgtContext ctx, SharedHandle* pHandle) noexcept;
 
   AgtStatus     createCtx(AgtContext& pCtx) noexcept;
