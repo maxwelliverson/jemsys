@@ -9,7 +9,6 @@
 
 #include <quartz.h>
 
-#include "handle.hpp"
 #include "objects.hpp"
 #include "ipc_block.hpp"
 #include "pool.hpp"

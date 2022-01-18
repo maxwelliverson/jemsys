@@ -4,9 +4,12 @@
 
 #include "context.hpp"
 #include "objects.hpp"
-#include "handle.hpp"
 #include "pool.hpp"
 #include "ipc_block.hpp"
+
+#include <cstdlib>
+#include <memory>
+#include <mutex>
 
 using namespace Agt;
 
@@ -23,6 +26,108 @@ namespace {
     cell_object_is_shared  = 0x2,
     cell_is_shared_export  = 0x4,
     cell_is_shared_import  = 0x8
+  };
+
+  class Id final {
+  public:
+
+    enum ObjectKind {
+      eInvalid,
+      eObjectInstance,
+      eHandle,
+      eInternal
+    };
+
+    inline constexpr static AgtUInt64 SharedFlagBits = 1;
+    inline constexpr static AgtUInt64 KindBits       = 2;
+    inline constexpr static AgtUInt64 PageIdBits     = 14;
+    inline constexpr static AgtUInt64 PageOffsetBits = 15;
+    inline constexpr static AgtUInt64 EpochBits      = 10;
+    inline constexpr static AgtUInt64 ProcessIdBits  = 22;
+    inline constexpr static AgtUInt64 SegmentIdBits  = ProcessIdBits;
+
+    JEM_forceinline ObjectKind  getKind() const noexcept {
+      return static_cast<ObjectKind>(local.kind);
+    }
+    JEM_forceinline AgtUInt16   getEpoch() const noexcept {
+      return local.epoch;
+    }
+    JEM_forceinline AgtUInt32   getProcessId() const noexcept {
+      return local.processId;
+    }
+    JEM_forceinline AgtUInt32   getSegmentId() const noexcept {
+      return shared.segmentId;
+    }
+    JEM_forceinline bool        isShared() const noexcept {
+      return local.isShared;
+    }
+    JEM_forceinline AgtUInt32   getPageId() const noexcept {
+      return local.pageId;
+    }
+    JEM_forceinline AgtUInt32   getPageOffset() const noexcept {
+      return local.pageOffset;
+    }
+
+    JEM_forceinline AgtObjectId toRaw() const noexcept {
+      return bits;
+    }
+
+
+    JEM_forceinline static Id makeLocal(AgtUInt32 epoch, AgtUInt32 procId, AgtUInt32 pageId, AgtUInt32 pageOffset) noexcept {
+      Id id;
+      id.local.epoch      = epoch;
+      id.local.processId  = procId;
+      id.local.isShared   = 0;
+      id.local.pageId     = pageId;
+      id.local.pageOffset = pageOffset;
+      return id;
+    }
+    JEM_forceinline static Id makeShared(AgtUInt32 epoch, AgtUInt32 segmentId, AgtUInt32 pageId, AgtUInt32 pageOffset) noexcept {
+      Id id;
+      id.shared.epoch      = epoch;
+      id.shared.segmentId  = segmentId;
+      id.shared.isShared   = 1;
+      id.shared.pageId     = pageId;
+      id.shared.pageOffset = pageOffset;
+      return id;
+    }
+
+    JEM_forceinline static Id convert(AgtObjectId id) noexcept {
+      Id realId;
+      realId.bits = id;
+      return realId;
+    }
+
+    JEM_forceinline static Id invalid() noexcept {
+      return convert(AGT_INVALID_OBJECT_ID);
+    }
+
+
+    JEM_forceinline friend bool operator==(const Id& a, const Id& b) noexcept {
+      return a.bits == b.bits;
+    }
+
+
+  private:
+    union {
+      struct {
+        AgtUInt64 isShared   : SharedFlagBits;
+        AgtUInt64 kind       : KindBits;
+        AgtUInt64 pageId     : PageIdBits;
+        AgtUInt64 pageOffset : PageOffsetBits;
+        AgtUInt64 epoch      : EpochBits;
+        AgtUInt64 processId  : ProcessIdBits;
+      } local;
+      struct {
+        AgtUInt64 isShared   : SharedFlagBits;
+        AgtUInt64 kind       : KindBits;
+        AgtUInt64 pageId     : PageIdBits;
+        AgtUInt64 pageOffset : PageOffsetBits;
+        AgtUInt64 epoch      : EpochBits;
+        AgtUInt64 segmentId  : SegmentIdBits;
+      } shared;
+      AgtUInt64 bits;
+    };
   };
 
   struct alignas(CellAlignment) ObjectInfoCell {
@@ -251,6 +356,10 @@ namespace {
 
 extern "C" {
 
+struct AgtSharedContext_st {
+
+};
+
 struct AgtContext_st {
 
   AgtUInt32        processId;
@@ -268,22 +377,24 @@ struct AgtContext_st {
 
 };
 
+
 }
 
-AgtUInt32 Context::getProcessId() const noexcept {
-  return value->processId;
+
+namespace {
+
+  std::mutex g_cleanupMtx;
+
+
+
 }
 
-bool Context::registerPrivate(ObjectHeader* object) const noexcept { }
-bool Context::registerShared(ObjectHeader* object) const noexcept { }
-
-void Context::release(ObjectHeader* obj) const noexcept { }
-void Context::release(Id id) const noexcept { }
-
-ObjectHeader* Context::lookup(Id id) const noexcept { }
-ObjectHeader* Context::unsafeLookup(Id id) const noexcept { }
 
 
-SharedHandle* Context::newSharedHandle(SharedHandle* pOtherHandle) const noexcept { }
-SharedHandle* Context::newSharedHandle(ObjectType type, ObjectFlags flags, AgtUInt32 pageId, AgtUInt32 pageOffset) const noexcept { }
-void          Context::destroySharedHandle(SharedHandle* pHandle) const noexcept { }
+
+void* Agt::ctxAllocLocal(AgtContext ctx, AgtSize size, AgtSize alignment) noexcept {
+  return _aligned_malloc(size, alignment);
+}
+void  Agt::ctxFreeLocal(AgtContext ctx, void* memory, AgtSize size, AgtSize alignment) noexcept {
+  _aligned_free(memory);
+}

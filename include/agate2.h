@@ -13,6 +13,18 @@
 #define AGT_SYNCHRONIZE ((AgtAsync)JEM_NULL_HANDLE)
 
 
+
+#if JEM_system_windows
+# define AGT_NATIVE_TIMEOUT_CONVERSION 10
+#else
+# define AGT_NATIVE_TIMEOUT_CONVERSION 1000
+#endif
+
+#define AGT_TIMEOUT(microseconds) ((AgtTimeout)(microseconds * AGT_NATIVE_TIMEOUT_CONVERSION))
+#define AGT_DO_NOT_WAIT ((AgtTimeout)0)
+#define AGT_WAIT ((AgtTimeout)-1)
+
+
 #define AGT_DEFINE_HANDLE(type) typedef struct type##_st* type
 #define AGT_DEFINE_DISPATCH_HANDLE(type) typedef struct type##_st* type
 
@@ -41,7 +53,7 @@ typedef jem_u64_t AgtObjectId;
 
 
 
-typedef void* AgtHandle;
+typedef void*     AgtHandle;
 
 AGT_DEFINE_HANDLE(AgtContext);
 AGT_DEFINE_HANDLE(AgtAsync);
@@ -227,12 +239,17 @@ typedef struct AgtThreadCreateInfo {
 
 
 
+
+
+/* ========================= [ Context ] ========================= */
+
 JEM_api AgtStatus     JEM_stdcall agtNewContext(AgtContext* pContext) JEM_noexcept;
 JEM_api AgtStatus     JEM_stdcall agtDestroyContext(AgtContext context) JEM_noexcept;
 
 
 
 
+/* ========================= [ Handles ] ========================= */
 
 JEM_api AgtStatus     JEM_stdcall agtGetObjectInfo(AgtContext context, AgtObjectInfo* pObjectInfo) JEM_noexcept;
 JEM_api AgtStatus     JEM_stdcall agtDuplicateHandle(AgtHandle inHandle, AgtHandle* pOutHandle) JEM_noexcept;

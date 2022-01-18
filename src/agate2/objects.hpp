@@ -72,107 +72,52 @@ namespace Agt {
   }
 
 
+  class ProxyObject {
+    // The reserved member field is here to enable the spoofing of Handles as objects (Handles are virtual, while general objects are not).
+    // Note that while this relies on technically undefined behaviour, the placement of the virtual pointer at the start of objects has been
+    // the the behaviour of the three major C++ compilers for long enough that I feel comfortable taking advantage of that particular implementation detail.
+    void* reserved;
+    AgtObjectId id;
+    ObjectType  type;
+    ObjectFlags flags;
 
-  class Id final {
   public:
 
-    inline constexpr static AgtUInt64 EpochBits = 10;
-    inline constexpr static AgtUInt64 ProcessIdBits = 22;
-    inline constexpr static AgtUInt64 PageIdBits = 16;
-    inline constexpr static AgtUInt64 PageOffsetBits = 15;
-
-    JEM_forceinline jem_u16_t getEpoch() const noexcept {
-      return epoch;
-    }
-    JEM_forceinline AgtUInt32 getProcessId() const noexcept {
-      return processId;
-    }
-    JEM_forceinline bool      isShared() const noexcept {
-      return shared;
-    }
-    JEM_forceinline bool      isExportId() const noexcept {
-      return processId == 0ULL;
-    }
-    JEM_forceinline AgtUInt32 getPageId() const noexcept {
-      return pageId;
-    }
-    JEM_forceinline AgtUInt32 getPageOffset() const noexcept {
-      return pageOffset;
-    }
-
-    JEM_forceinline AgtObjectId toRaw() const noexcept {
-      return bits;
-    }
-
-
-    JEM_forceinline static Id makePrivate(AgtUInt32 epoch, AgtUInt32 procId, AgtUInt32 pageId, AgtUInt32 pageOffset) noexcept {
-      Id id;
-      id.epoch      = epoch;
-      id.processId  = procId;
-      id.shared     = 0;
-      id.pageId     = pageId;
-      id.pageOffset = pageOffset;
+    JEM_nodiscard JEM_forceinline AgtObjectId getId() const noexcept {
       return id;
     }
-    JEM_forceinline static Id makeShared(AgtUInt32 epoch, AgtUInt32 procId, AgtUInt32 pageId, AgtUInt32 pageOffset) noexcept {
-      Id id;
-      id.epoch      = epoch;
-      id.processId  = procId;
-      id.shared     = 1;
-      id.pageId     = pageId;
-      id.pageOffset = pageOffset;
-      return id;
+    JEM_nodiscard JEM_forceinline ObjectType  getType() const noexcept {
+      return type;
     }
-    JEM_forceinline static Id makeExport(AgtUInt32 epoch, AgtUInt32 pageId, AgtUInt32 pageOffset) noexcept {
-      return makeShared(epoch, 0, pageId, pageOffset);
+    JEM_nodiscard JEM_forceinline ObjectFlags getFlags() const noexcept {
+      return flags;
     }
-
-    JEM_forceinline static Id convert(AgtObjectId id) noexcept {
-      Id realId;
-      realId.bits = id;
-      return realId;
-    }
-
-    JEM_forceinline static Id invalid() noexcept {
-      return convert(AGT_INVALID_OBJECT_ID);
-    }
-
-
-    JEM_forceinline friend bool operator==(const Id& a, const Id& b) noexcept {
-      return a.bits == b.bits;
-    }
-
-  private:
-
-    union {
-      struct {
-        AgtUInt64 epoch      : EpochBits;
-        AgtUInt64 processId  : ProcessIdBits;
-        AgtUInt64 shared     : 1;
-        AgtUInt64 pageId     : PageIdBits;
-        AgtUInt64 pageOffset : PageOffsetBits;
-      };
-      AgtUInt64 bits;
-    };
-
   };
 
 
   class Handle {
 
+    AgtObjectId id;
     ObjectType  type;
     ObjectFlags flags;
     AgtContext  context;
-    Id          localId;
+
 
   protected:
 
-    Handle(ObjectType type, ObjectFlags flags, AgtContext context, Id localId) noexcept
+    Handle(ObjectType type, ObjectFlags flags, AgtContext context, AgtObjectId localId) noexcept
         : type(type),
           flags(flags),
           context(context),
-          localId(localId)
+          id(localId)
     {}
+
+
+    virtual AgtStatus acquire() noexcept = 0;
+    // Releases a single handle reference, and if the reference count has dropped to zero, destroys the object.
+    // By delegating responsibility of destruction to this function, a redundant virtual call is saved on the fast path
+    // The object reference on which this function is called will be invalid after, and must not be used for anything else.
+    virtual void      release() noexcept = 0;
 
 
 
@@ -191,8 +136,8 @@ namespace Agt {
     JEM_nodiscard JEM_forceinline AgtContext  getContext() const noexcept {
       return context;
     }
-    JEM_nodiscard JEM_forceinline Id          getId() const noexcept {
-      return localId;
+    JEM_nodiscard JEM_forceinline AgtObjectId getId() const noexcept {
+      return id;
     }
 
     JEM_nodiscard JEM_forceinline bool        isShared() const noexcept {
@@ -200,55 +145,44 @@ namespace Agt {
     }
 
 
+    virtual AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept = 0;
+    virtual void      send(AgtMessage message, AgtSendFlags flags) noexcept = 0;
+    virtual AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept = 0;
+
+    virtual void      releaseMessage(AgtMessage message) noexcept = 0;
+
+    virtual AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept = 0;
+
+
     AgtStatus               duplicate(Handle*& newHandle) noexcept;
 
     void                    close() noexcept;
 
-    JEM_nodiscard AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept;
-    void                    send(AgtMessage message, AgtSendFlags flags) noexcept;
-    JEM_nodiscard AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept;
-
-    JEM_nodiscard AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept;
-
   };
 
   class LocalHandle : public Handle {
-    friend class Handle;
   protected:
 
-    LocalHandle(ObjectType type, ObjectFlags flags, AgtContext ctx, Id localId) noexcept
+    LocalHandle(ObjectType type, ObjectFlags flags, AgtContext ctx, AgtObjectId localId) noexcept
         : Handle(type, flags, ctx, localId){}
 
     ~LocalHandle() = default;
-
-    virtual AgtStatus localAcquire() noexcept = 0;
-
-    // Releases a single handle reference, and if the reference count has dropped to zero, destroys the object.
-    // By delegating responsibility of destruction to this function, a redundant virtual call is saved on the fast path
-    virtual void      localRelease() noexcept = 0;
-
-  public:
-
-    virtual AgtStatus localStage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept = 0;
-    virtual void      localSend(AgtMessage message, AgtSendFlags flags) noexcept = 0;
-    virtual AgtStatus localReceive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept = 0;
-
-    virtual AgtStatus localConnect(Handle* otherHandle, ConnectAction action) noexcept = 0;
-
   };
 
   class SharedObject {
 
+    void*       reserved;
+    AgtObjectId id;
     ObjectType  type;
     ObjectFlags flags;
-    Id          exportId;
+
 
   protected:
 
-    SharedObject(ObjectType type, ObjectFlags flags, Id exportId) noexcept
+    SharedObject(ObjectType type, ObjectFlags flags, AgtObjectId id) noexcept
         : type(type),
           flags(flags),
-          exportId(exportId)
+          id(id)
     {}
 
   public:
@@ -259,21 +193,17 @@ namespace Agt {
     JEM_nodiscard ObjectFlags getFlags() const noexcept {
       return flags;
     }
-    JEM_nodiscard Id          getExportId() const noexcept {
-      return exportId;
+    JEM_nodiscard AgtObjectId getId() const noexcept {
+      return id;
     }
   };
 
-  class SharedHandle final : public Handle {
-    friend class Handle;
-
+  class SharedHandle : public Handle {
+  protected:
     SharedVPtr    const vptr;
     SharedObject* const instance;
 
     SharedHandle(SharedObject* pInstance, AgtContext context, Id localId) noexcept;
-
-
-
 
   public:
 

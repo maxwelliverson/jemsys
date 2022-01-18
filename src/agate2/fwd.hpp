@@ -9,8 +9,6 @@
 
 extern "C" {
 
-AGT_DEFINE_HANDLE(AgtContextRef);
-
 AGT_DEFINE_HANDLE(AgtAsyncData);
 AGT_DEFINE_HANDLE(AgtMessageData);
 AGT_DEFINE_HANDLE(AgtQueuedMessage);
@@ -42,10 +40,8 @@ namespace Agt {
   struct LocalChannel;
   struct SharedChannel;
 
-  struct LocalVTable;
   struct SharedVTable;
 
-  using LocalVPtr = const LocalVTable*;
   using SharedVPtr = const SharedVTable*;
 
 }

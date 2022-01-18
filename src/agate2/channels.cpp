@@ -49,35 +49,24 @@ namespace Agt {
     AgtSize                   payloadSize;
     InlineBuffer              inlineBuffer[];
   };
-}
-
-namespace Agt::Impl {
-
-  AgtMessage JEM_stdcall sharedSpScChannelStage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-  void       JEM_stdcall sharedSpScChannelSend(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-  AgtMessage JEM_stdcall sharedSpScChannelRead(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-  AgtStatus  JEM_stdcall sharedSpScChannelConnect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-  void       JEM_stdcall sharedSpScChannelMessage(channel* channel, AgtMessage message) JEM_noexcept;
-
-  AgtMessage JEM_stdcall shared_mpsc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-  void       JEM_stdcall shared_mpsc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-  AgtMessage JEM_stdcall shared_mpsc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-  AgtStatus  JEM_stdcall shared_mpsc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-  void       JEM_stdcall shared_mpsc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
-
-  AgtMessage JEM_stdcall shared_spmc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-  void       JEM_stdcall shared_spmc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-  AgtMessage JEM_stdcall shared_spmc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-  AgtStatus  JEM_stdcall shared_spmc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-  void       JEM_stdcall shared_spmc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
-
-  AgtMessage JEM_stdcall shared_mpmc_stage(channel* channel, AgtSize messageSize, AgtTimeout timeoutUs) JEM_noexcept;
-  void       JEM_stdcall shared_mpmc_send(channel* channel, AgtMessage message,  AgtSendFlags flags) JEM_noexcept;
-  AgtMessage JEM_stdcall shared_mpmc_read(channel* channel, AgtTimeout timeoutUs) JEM_noexcept;
-  AgtStatus  JEM_stdcall shared_mpmc_connect(channel* channel, agt_connect_action_t action, AgtTimeout timeoutUs) JEM_noexcept;
-  void       JEM_stdcall shared_mpmc_return_message(channel* channel, AgtMessage message) JEM_noexcept;
 
 }
+
+
+#define AGT_acquire_semaphore(sem, timeout, err) do { \
+  switch (timeout) {                                          \
+    case JEM_WAIT:                                    \
+      (sem).acquire();                                  \
+      break;                                          \
+    case JEM_DO_NOT_WAIT:                             \
+      if (!(sem).try_acquire())                         \
+        return err;                                   \
+      break;                                          \
+    default:                                          \
+      if (!(sem).try_acquire_for(timeout))              \
+        return err;\
+  }                                                    \
+  } while(false)
 
 namespace {
 
@@ -156,7 +145,15 @@ namespace {
   }
 
 
-
+  inline agt_cookie_t get_queued_message(local_spmc_mailbox* mailbox) noexcept {
+    agt_cookie_t previousReceivedMessage = mailbox->previousReceivedMessage.load();
+    agt_cookie_t message;
+    do {
+      message = previousReceivedMessage->next.address;
+    } while( !mailbox->previousReceivedMessage.compare_exchange_weak(previousReceivedMessage, message));
+    free_hold(mailbox, previousReceivedMessage);
+    return message;
+  }
 
 
   inline void cleanupMessage(AgtContext ctx, PrivateChannelMessage* message) noexcept {
@@ -235,7 +232,44 @@ namespace {
 
 
 
-void* PrivateChannel::acquireSlot(AgtTimeout timeout) noexcept {
+LocalChannel::LocalChannel(AgtStatus& status, ObjectType type, AgtContext ctx, AgtObjectId id, AgtSize slotCount, AgtSize slotSize) noexcept
+    : LocalHandle(type, FlagsNotSet, ctx, id),
+      slotCount(slotCount),
+      inlineBufferSize(slotSize),
+      messageSlots(nullptr){
+
+  AgtSize messageSize = slotSize + sizeof(LocalChannelMessage);
+  void* localChannelMessages;
+  localChannelMessages = ctxAllocLocal(ctx, slotCount * messageSize, JEM_CACHE_LINE);
+  if (!localChannelMessages) {
+    status = AGT_ERROR_BAD_ALLOC;
+    return;
+  }
+  messageSlots = static_cast<std::byte*>(localChannelMessages);
+  for ( AgtSize i = 0; i < slotCount; ++i ) {
+    auto address = messageSlots + (messageSize * i);
+    auto message = new(address) LocalChannelMessage;
+    message->next = (LocalChannelMessage*)(address + messageSize);
+    message->owner = this;
+    message->refCount = ReferenceCount(1);
+  }
+  status = AGT_SUCCESS;
+}
+
+PrivateChannel::PrivateChannel(AgtStatus& status, AgtContext ctx, AgtObjectId id, AgtSize slotCount, AgtSize slotSize) noexcept
+    : LocalChannel(status, ObjectType::privateChannel, ctx, id, slotCount, slotSize){
+
+}
+
+
+AgtStatus PrivateChannel::createInstance(PrivateChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, PrivateChannelSender* sender, PrivateChannelReceiver* receiver) noexcept {
+
+}
+
+
+
+
+void*     PrivateChannel::acquireSlot(AgtTimeout timeout) noexcept {
   --availableSlotCount;
   auto acquiredMsg = nextFreeSlot;
   nextFreeSlot = acquiredMsg->next;
@@ -245,11 +279,14 @@ AgtStatus PrivateChannel::stageOutOfLine(StagedMessage& pStagedMessage, AgtTimeo
   return AGT_NOT_READY;
 }
 
-AgtStatus PrivateChannel::localStage(AgtStagedMessage& stagedMessage_, AgtTimeout timeout) noexcept {
+AgtStatus PrivateChannel::acquire() noexcept {}
+void      PrivateChannel::release() noexcept {}
+
+AgtStatus PrivateChannel::stage(AgtStagedMessage& stagedMessage_, AgtTimeout timeout) noexcept {
   auto& stagedMessage = reinterpret_cast<StagedMessage&>(stagedMessage_);
   if ( availableSlotCount == 0 ) [[unlikely]]
     return AGT_ERROR_MAILBOX_IS_FULL;
-  if ( stagedMessage.messageSize > slotSize) [[unlikely]] {
+  if ( stagedMessage.messageSize > inlineBufferSize) [[unlikely]] {
     if (testAny(this->getFlags(), ObjectFlags::supportsOutOfLineMsg))
       return stageOutOfLine(stagedMessage, timeout);
     return AGT_ERROR_MESSAGE_TOO_LARGE;
@@ -261,36 +298,101 @@ AgtStatus PrivateChannel::localStage(AgtStagedMessage& stagedMessage_, AgtTimeou
   stagedMessage.message  = acquiredMsg;
   stagedMessage.payload  = acquiredMsg->inlineBuffer;
   if (stagedMessage.messageSize == 0)
-    stagedMessage.messageSize = slotSize;
+    stagedMessage.messageSize = inlineBufferSize;
 
   return AGT_SUCCESS;
 }
-void      PrivateChannel::localSend(AgtMessage message, AgtSendFlags flags) noexcept {}
-AgtStatus PrivateChannel::localReceive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
-AgtStatus PrivateChannel::localConnect(Handle* otherHandle, ConnectAction action) noexcept {}
+void      PrivateChannel::send(AgtMessage message_, AgtSendFlags flags) noexcept {
+  auto message = (PrivateChannelMessage*)message_;
+  // set(message->state, MessageState::);
+  placeHold(message);
+  prevQueuedMessage->next = message;
+  prevQueuedMessage = message;
+  ++queuedMessageCount;
+}
+AgtStatus PrivateChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {
+  if ( queuedMessageCount == 0 )
+    return AGT_ERROR_MAILBOX_IS_EMPTY;
+  auto cookie = prevReceivedMessage->next;
+  releaseHold(this, prevReceivedMessage);
+  prevReceivedMessage = cookie;
+  messageInfo.message = (AgtMessage)cookie;
+  messageInfo.size    = cookie->payloadSize;
+  messageInfo.id      = cookie->id;
+  messageInfo.payload = getPayload(cookie);
+  return AGT_SUCCESS;
+}
+AgtStatus PrivateChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {}
 
-void      PrivateChannel::releaseMessage(AgtMessage message) noexcept {
+void      PrivateChannel::releaseMessage(AgtMessage message_) noexcept {
+  auto message = (PrivateChannelMessage*)message_;
+  ++availableSlotCount;
+  message->next = nextFreeSlot;
+  nextFreeSlot = message;
 }
 
 
-AgtStatus LocalSpMcChannel::localStage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
-void      LocalSpMcChannel::localSend(AgtMessage message, AgtSendFlags flags) noexcept {}
-AgtStatus LocalSpMcChannel::localReceive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
-AgtStatus LocalSpMcChannel::localConnect(Handle* otherHandle, ConnectAction action) noexcept {}
+AgtStatus LocalSpMcChannel::acquire() noexcept {}
+void      LocalSpMcChannel::release() noexcept {}
+AgtStatus LocalSpMcChannel::stage(AgtStagedMessage& stagedMessage_, AgtTimeout timeout) noexcept {
+  auto& stagedMessage = reinterpret_cast<StagedMessage&>(stagedMessage_);
+  if ( stagedMessage.messageSize > inlineBufferSize) [[unlikely]] {
+    if (testAny(this->getFlags(), ObjectFlags::supportsOutOfLineMsg))
+      return stageOutOfLine(stagedMessage, timeout);
+    return AGT_ERROR_MESSAGE_TOO_LARGE;
+  }
+  AGT_acquire_semaphore(slotSemaphore, timeout, AGT_ERROR_MAILBOX_IS_FULL);
 
-AgtStatus LocalSpScChannel::localStage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
-void      LocalSpScChannel::localSend(AgtMessage message, AgtSendFlags flags) noexcept {}
-AgtStatus LocalSpScChannel::localReceive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
-AgtStatus LocalSpScChannel::localConnect(Handle* otherHandle, ConnectAction action) noexcept {}
+  auto message = acquireSlot();
+  stagedMessage.message  = message;
+  stagedMessage.payload  = message->inlineBuffer;
+  stagedMessage.receiver = this;
 
-AgtStatus LocalMpMcChannel::localStage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
-void      LocalMpMcChannel::localSend(AgtMessage message, AgtSendFlags flags) noexcept {}
-AgtStatus LocalMpMcChannel::localReceive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
-AgtStatus LocalMpMcChannel::localConnect(Handle* otherHandle, ConnectAction action) noexcept {}
+  return AGT_SUCCESS;
+}
+void      LocalSpMcChannel::send(AgtMessage message_, AgtSendFlags flags) noexcept {
+  // AGT_prep_slot(slot);
+  auto message = (LocalChannelMessage*)message_;
+  placeHold(message);
+  lastQueuedSlot->next = message;
+  lastQueuedSlot = message;
+  queuedMessages.release();
+}
+AgtStatus LocalSpMcChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {
+  AGT_acquire_semaphore(queuedMessages, timeout, AGT_ERROR_MAILBOX_IS_EMPTY);
+  auto prevReceivedMessage = previousReceivedMessage.load();
+  LocalChannelMessage* message;
+  do {
+    message = prevReceivedMessage->next;
+  } while( !previousReceivedMessage.compare_exchange_weak(prevReceivedMessage, message));
+  releaseHold(this, prevReceivedMessage);
+  messageInfo.message = (AgtMessage)message;
+  messageInfo.size    = message->payloadSize;
+  messageInfo.id      = message->id;
+  messageInfo.payload = getPayload(message);
+  return AGT_SUCCESS;
+}
+AgtStatus LocalSpMcChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {}
 
-AgtStatus LocalMpScChannel::localStage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
-void      LocalMpScChannel::localSend(AgtMessage message, AgtSendFlags flags) noexcept {}
-AgtStatus LocalMpScChannel::localReceive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
-AgtStatus LocalMpScChannel::localConnect(Handle* otherHandle, ConnectAction action) noexcept {}
+AgtStatus LocalSpScChannel::acquire() noexcept {}
+void      LocalSpScChannel::release() noexcept {}
+AgtStatus LocalSpScChannel::stage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
+void      LocalSpScChannel::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalSpScChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
+AgtStatus LocalSpScChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {}
+
+AgtStatus LocalMpMcChannel::acquire() noexcept {}
+void      LocalMpMcChannel::release() noexcept {}
+AgtStatus LocalMpMcChannel::stage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
+void      LocalMpMcChannel::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalMpMcChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
+AgtStatus LocalMpMcChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {}
+
+AgtStatus LocalMpScChannel::acquire() noexcept {}
+void      LocalMpScChannel::release() noexcept {}
+AgtStatus LocalMpScChannel::stage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
+void      LocalMpScChannel::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalMpScChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
+AgtStatus LocalMpScChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {}
 
 

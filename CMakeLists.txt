@@ -71,15 +71,23 @@ function(add_jemsys_executable target_)
     set(multiValueArgs SOURCES DEPENDENCIES)
     cmake_parse_arguments(JEMSYS_EXE "${optionalArgs}" "${singleValueArgs}" "${multiValueArgs}" ${ARGN})
     if(JEMSYS_EXE_TEST)
-        set(JEMSYS_EXE_TARGET test.${target_})
-        list(TRANSFORM JEMSYS_EXE_SOURCES PREPEND test/)
+        if(target_ MATCHES "catch")
+            set(JEMSYS_EXE_TARGET ${target_})
+            set(JEMSYS_EXE_SOURCE_PREFIX "test")
+        else()
+            set(JEMSYS_EXE_TARGET test.${target_})
+            set(JEMSYS_EXE_SOURCE_PREFIX "${JEMSYS_EXE_TARGET}")
+        endif()
     elseif(JEMSYS_EXE_SAMPLE)
         set(JEMSYS_EXE_TARGET sample.${target_})
-        list(TRANSFORM JEMSYS_EXE_SOURCES PREPEND sample/)
+        set(JEMSYS_EXE_SOURCE_PREFIX "${JEMSYS_EXE_TARGET}")
     else()
         set(JEMSYS_EXE_TARGET ${target_})
-        list(TRANSFORM JEMSYS_EXE_SOURCES PREPEND src/)
+        set(JEMSYS_EXE_SOURCE_PREFIX "src.${JEMSYS_EXE_TARGET}")
     endif()
+    # message("JEMSYS_EXE_SOURCE_PREFIX: ${JEMSYS_EXE_SOURCE_PREFIX}")
+    string(REGEX REPLACE "\\." "/" JEMSYS_EXE_SOURCE_PREFIX ${JEMSYS_EXE_SOURCE_PREFIX})
+    list(TRANSFORM JEMSYS_EXE_SOURCES PREPEND "${JEMSYS_EXE_SOURCE_PREFIX}/")
     add_executable(${JEMSYS_EXE_TARGET} ${JEMSYS_EXE_SOURCES})
     target_include_directories(${JEMSYS_EXE_TARGET} PUBLIC include src)
     if(NOT DEFINED JEMSYS_EXE_LINK)
@@ -158,7 +166,6 @@ add_jemsys_library(
                 channels.cpp
                 objects.cpp
                 context.cpp
-                handle.cpp
                 message.cpp
                 async.cpp
                 atomic.cpp
@@ -218,34 +225,7 @@ target_compile_definitions(jemsys PRIVATE JEM_SHARED_LIB)
 )]]
 
 add_jemsys_executable(
-        priority_queue
-            TEST
-            SOURCES
-                quartz/priority_queue_test.cpp
-)
-
-add_jemsys_executable(
-        quartz_logging
-            TEST
-            SOURCES
-                quartz/logging.cpp
-            DEPENDENCIES
-                support
-                quartz
-                agate
-)
-
-add_jemsys_executable(
-        agate_mailbox
-            TEST
-            SOURCES
-                agate/solo_mailbox.cpp
-            DEPENDENCIES
-                agate
-)
-
-add_jemsys_executable(
-        all
+        catch
             TEST
             SOURCES
                 catch.cpp
@@ -260,13 +240,45 @@ add_jemsys_executable(
 )
 
 add_jemsys_executable(
-        quartz_benchmark
-            TEST
+        quartz.priority_queue
+            SAMPLE
             SOURCES
-                quartz/speed_test.cpp
+                main.cpp
             DEPENDENCIES
                 quartz
 )
+
+add_jemsys_executable(
+        agate.mailbox
+            SAMPLE
+            SOURCES
+                main.cpp
+            DEPENDENCIES
+                agate
+)
+
+
+
+add_jemsys_executable(
+        quartz.benchmark
+            SAMPLE
+            SOURCES
+                main.cpp
+            DEPENDENCIES
+                quartz
+)
+
+add_jemsys_executable(
+        agate2.server
+            SAMPLE
+            SOURCES
+                main.cpp
+            DEPENDENCIES
+                agate2
+)
+
+
+
 
 #[[
 add_library(rng_kernels sample/rng/rng_lib.cu)

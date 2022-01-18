@@ -8,6 +8,8 @@
 #include "async.hpp"
 #include "context.hpp"
 #include "message.hpp"
+#include "objects.hpp"
+#include "signal.hpp"
 
 
 using namespace Agt;
@@ -221,11 +223,11 @@ JEM_api AgtStatus     JEM_stdcall agtNewSignal(AgtContext ctx, AgtSignal* pSigna
 }
 
 JEM_api void          JEM_stdcall agtAttachSignal(AgtSignal signal, AgtAsync async) JEM_noexcept {
-
+  signalAttach(signal, async);
 }
 
 JEM_api void          JEM_stdcall agtRaiseSignal(AgtSignal signal) JEM_noexcept {
-
+  signalRaise(signal);
 }
 
 JEM_api void          JEM_stdcall agtRaiseManySignals(AgtSignal signal) JEM_noexcept {

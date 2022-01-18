@@ -4,8 +4,8 @@
 
 #undef NDEBUG
 
-#include <agate.h>
-#include <quartz.h>
+#include "agate.h"
+#include "quartz.h"
 
 #include <cstring>
 
