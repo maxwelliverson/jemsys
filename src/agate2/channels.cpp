@@ -347,6 +347,8 @@ AgtStatus LocalSpMcChannel::stage(AgtStagedMessage& stagedMessage_, AgtTimeout t
   stagedMessage.message  = message;
   stagedMessage.payload  = message->inlineBuffer;
   stagedMessage.receiver = this;
+  if (stagedMessage.messageSize == 0)
+    stagedMessage.messageSize = inlineBufferSize;
 
   return AGT_SUCCESS;
 }
@@ -376,22 +378,93 @@ AgtStatus LocalSpMcChannel::connect(Handle* otherHandle, ConnectAction action) n
 
 AgtStatus LocalSpScChannel::acquire() noexcept {}
 void      LocalSpScChannel::release() noexcept {}
-AgtStatus LocalSpScChannel::stage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
-void      LocalSpScChannel::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalSpScChannel::stage(AgtStagedMessage& stagedMessage_, AgtTimeout timeout) noexcept {
+  auto& stagedMessage = reinterpret_cast<StagedMessage&>(stagedMessage_);
+  if ( stagedMessage.messageSize > inlineBufferSize) [[unlikely]] {
+    if (testAny(this->getFlags(), ObjectFlags::supportsOutOfLineMsg))
+      return stageOutOfLine(stagedMessage, timeout);
+    return AGT_ERROR_MESSAGE_TOO_LARGE;
+  }
+  AGT_acquire_semaphore(slotSemaphore, timeout, AGT_ERROR_MAILBOX_IS_FULL);
+
+  auto message = acquireSlot();
+  stagedMessage.message  = message;
+  stagedMessage.payload  = message->inlineBuffer;
+  stagedMessage.receiver = this;
+  if (stagedMessage.messageSize == 0)
+    stagedMessage.messageSize = inlineBufferSize;
+
+  return AGT_SUCCESS;
+}
+void      LocalSpScChannel::send(AgtMessage message_, AgtSendFlags flags) noexcept {
+  auto message = (LocalChannelMessage*)message_;
+  placeHold(message);
+  producerPreviousQueuedMsg->next = message;
+  producerPreviousQueuedMsg = message;
+  queuedMessages.release();
+}
 AgtStatus LocalSpScChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
 AgtStatus LocalSpScChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {}
 
 AgtStatus LocalMpMcChannel::acquire() noexcept {}
 void      LocalMpMcChannel::release() noexcept {}
-AgtStatus LocalMpMcChannel::stage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
-void      LocalMpMcChannel::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalMpMcChannel::stage(AgtStagedMessage& stagedMessage_, AgtTimeout timeout) noexcept {
+  auto& stagedMessage = reinterpret_cast<StagedMessage&>(stagedMessage_);
+  if ( stagedMessage.messageSize > inlineBufferSize) [[unlikely]] {
+    if (testAny(this->getFlags(), ObjectFlags::supportsOutOfLineMsg))
+      return stageOutOfLine(stagedMessage, timeout);
+    return AGT_ERROR_MESSAGE_TOO_LARGE;
+  }
+  AGT_acquire_semaphore(slotSemaphore, timeout, AGT_ERROR_MAILBOX_IS_FULL);
+
+  auto message = acquireSlot();
+  stagedMessage.message  = message;
+  stagedMessage.payload  = message->inlineBuffer;
+  stagedMessage.receiver = this;
+  if (stagedMessage.messageSize == 0)
+    stagedMessage.messageSize = inlineBufferSize;
+
+  return AGT_SUCCESS;
+}
+void      LocalMpMcChannel::send(AgtMessage message_, AgtSendFlags flags) noexcept {
+  auto lastQueued = lastQueuedSlot.load(std::memory_order_acquire);
+  auto message = (LocalChannelMessage*)message_;
+  placeHold(message);
+  while ( !lastQueuedSlot.compare_exchange_weak(lastQueued, message) );
+  lastQueued->next = message;
+  queuedMessages.release();
+}
 AgtStatus LocalMpMcChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
 AgtStatus LocalMpMcChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {}
 
 AgtStatus LocalMpScChannel::acquire() noexcept {}
 void      LocalMpScChannel::release() noexcept {}
-AgtStatus LocalMpScChannel::stage(AgtStagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
-void      LocalMpScChannel::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalMpScChannel::stage(AgtStagedMessage& stagedMessage_, AgtTimeout timeout) noexcept {
+  auto& stagedMessage = reinterpret_cast<StagedMessage&>(stagedMessage_);
+  if ( stagedMessage.messageSize > inlineBufferSize) [[unlikely]] {
+    if (testAny(this->getFlags(), ObjectFlags::supportsOutOfLineMsg))
+      return stageOutOfLine(stagedMessage, timeout);
+    return AGT_ERROR_MESSAGE_TOO_LARGE;
+  }
+  AGT_acquire_semaphore(slotSemaphore, timeout, AGT_ERROR_MAILBOX_IS_FULL);
+
+  auto message = acquireSlot();
+  stagedMessage.message  = message;
+  stagedMessage.payload  = message->inlineBuffer;
+  stagedMessage.receiver = this;
+  if (stagedMessage.messageSize == 0)
+    stagedMessage.messageSize = inlineBufferSize;
+
+  return AGT_SUCCESS;
+}
+void      LocalMpScChannel::send(AgtMessage message_, AgtSendFlags flags) noexcept {
+  auto lastQueued = lastQueuedSlot.load(std::memory_order_acquire);
+  auto message = (LocalChannelMessage*)message_;
+  placeHold(message);
+  while ( !lastQueuedSlot.compare_exchange_weak(lastQueued, message) );
+  lastQueued->next = message;
+  queuedMessageCount.increase(1);
+}
 AgtStatus LocalMpScChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
 AgtStatus LocalMpScChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {}
 
