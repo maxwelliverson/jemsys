@@ -128,10 +128,10 @@ JEM_api void          JEM_stdcall agtCloseHandle(AgtHandle handle) JEM_noexcept 
 
 
 
-JEM_api AgtStatus     JEM_stdcall agtCreateChannel(const AgtChannelCreateInfo* cpCreateInfo, AgtHandle* pSender, AgtHandle* pReceiver) JEM_noexcept;
-JEM_api AgtStatus     JEM_stdcall agtCreateAgent(const AgtAgentCreateInfo* cpCreateInfo, AgtHandle* pAgent) JEM_noexcept;
-JEM_api AgtStatus     JEM_stdcall agtCreateAgency(const AgtAgencyCreateInfo* cpCreateInfo, AgtHandle* pAgency) JEM_noexcept;
-JEM_api AgtStatus     JEM_stdcall agtCreateThread(const AgtThreadCreateInfo* cpCreateInfo, AgtHandle* pThread) JEM_noexcept;
+JEM_api AgtStatus     JEM_stdcall agtCreateChannel(AgtContext context, const AgtChannelCreateInfo* cpCreateInfo, AgtHandle* pSender, AgtHandle* pReceiver) JEM_noexcept;
+JEM_api AgtStatus     JEM_stdcall agtCreateAgent(AgtContext context, const AgtAgentCreateInfo* cpCreateInfo, AgtHandle* pAgent) JEM_noexcept;
+JEM_api AgtStatus     JEM_stdcall agtCreateAgency(AgtContext context, const AgtAgencyCreateInfo* cpCreateInfo, AgtHandle* pAgency) JEM_noexcept;
+JEM_api AgtStatus     JEM_stdcall agtCreateThread(AgtContext context, const AgtThreadCreateInfo* cpCreateInfo, AgtHandle* pThread) JEM_noexcept;
 
 JEM_api AgtStatus     JEM_stdcall agtStage(AgtHandle sender, AgtStagedMessage* pStagedMessage, AgtTimeout timeout) JEM_noexcept {
   if (sender == AGT_NULL_HANDLE) [[unlikely]]

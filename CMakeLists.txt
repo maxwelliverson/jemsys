@@ -277,6 +277,15 @@ add_jemsys_executable(
                 agate2
 )
 
+add_jemsys_executable(
+        agate2.json
+        SAMPLE
+        SOURCES
+            main.cpp
+        DEPENDENCIES
+            agate2
+)
+
 
 
 

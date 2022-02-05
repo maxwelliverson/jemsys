@@ -390,11 +390,16 @@ namespace {
 }
 
 
+AgtStatus Agt::createCtx(AgtContext& pCtx) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      Agt::destroyCtx(AgtContext ctx) noexcept { }
 
 
-void* Agt::ctxAllocLocal(AgtContext ctx, AgtSize size, AgtSize alignment) noexcept {
+
+void*     Agt::ctxAllocLocal(AgtContext ctx, AgtSize size, AgtSize alignment) noexcept {
   return _aligned_malloc(size, alignment);
 }
-void  Agt::ctxFreeLocal(AgtContext ctx, void* memory, AgtSize size, AgtSize alignment) noexcept {
+void      Agt::ctxFreeLocal(AgtContext ctx, void* memory, AgtSize size, AgtSize alignment) noexcept {
   _aligned_free(memory);
 }

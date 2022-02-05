@@ -16,11 +16,22 @@ namespace Agt {
   void          ctxFreeLocal(AgtContext ctx, void* memory, AgtSize size, AgtSize alignment) noexcept;
 
   void*         ctxAllocLocalObject(AgtContext ctx, AgtSize size, AgtSize alignment, AgtObjectId& id) noexcept;
-  void          ctxFreeLocalObject(AgtContext ctx, void* pObject, AgtSize size, AgtSize alignment) noexcept;
+  void          ctxFreeLocalObject(AgtContext ctx, void* pObject, AgtSize size, AgtSize alignment, AgtObjectId id) noexcept;
   void*         ctxAllocSharedObject(AgtContext context, AgtSize size, AgtSize alignment, AgtObjectId& id) noexcept;
-  void          ctxFreeSharedObject(AgtContext ctx, void* memory, AgtSize size, AgtSize alignment) noexcept;
+  void          ctxFreeSharedObject(AgtContext ctx, void* memory, AgtSize size, AgtSize alignment, AgtObjectId id) noexcept;
 
-  AgtStatus     ctxOpenHandleFromId(AgtContext ctx, AgtObjectId id, Handle*& handle) noexcept;
+  AgtStatus     ctxOpenHandleById(AgtContext ctx, AgtObjectId id, Handle*& handle) noexcept;
+  AgtStatus     ctxOpenHandleByName(AgtContext ctx, const char* name, Handle*& handle) noexcept;
+
+  AgtStatus     ctxRegisterNamedObject(AgtContext ctx, AgtObjectId id, const char* pName) noexcept;
+  AgtStatus     ctxUnregisterNamedObject(AgtContext ctx, AgtObjectId id) noexcept;
+
+  AgtStatus     ctxEnumerateNamedObjects(AgtContext ctx, AgtSize& count, const char** pNames) noexcept;
+  AgtStatus     ctxEnumerateSharedObjects(AgtContext ctx, AgtSize& count, const char** pNames) noexcept;
+
+
+
+  VPointer      ctxLookupVTable(AgtContext ctx, AgtTypeId typeId) noexcept;
 
 
 

@@ -65,7 +65,7 @@ namespace Agt {
     AgtSize        inlineBufferSize;
     std::byte*     messageSlots;
 
-    LocalChannel(AgtStatus& status, ObjectType type, AgtContext ctx, AgtObjectId id, AgtSize slotCount, AgtSize slotSize) noexcept;
+    // LocalChannel(AgtStatus& status, ObjectType type, AgtContext ctx, AgtObjectId id, AgtSize slotCount, AgtSize slotSize) noexcept;
   };
 
 
@@ -84,8 +84,9 @@ namespace Agt {
 
     JEM_forceinline void*  acquireSlot(AgtTimeout timeout) noexcept;
     JEM_noinline AgtStatus stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept;
+    JEM_noinline void      destroy() noexcept;
 
-    PrivateChannel(AgtStatus& status, AgtContext ctx, AgtObjectId id, AgtSize slotCount, AgtSize slotSize) noexcept;
+    // PrivateChannel(AgtStatus& status, AgtContext ctx, AgtObjectId id, AgtSize slotCount, AgtSize slotSize) noexcept;
 
   protected:
 
@@ -103,7 +104,8 @@ namespace Agt {
     static AgtStatus createInstance(PrivateChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, PrivateChannelSender* sender, PrivateChannelReceiver* receiver) noexcept;
   };
 
-  
+
+
   class LocalSpScChannel final : public LocalChannel {
   JEM_cache_aligned
     semaphore_t          slotSemaphore;
@@ -122,6 +124,7 @@ namespace Agt {
 
     JEM_forceinline LocalChannelMessage* acquireSlot() noexcept;
     JEM_noinline AgtStatus stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept;
+    JEM_noinline void      destroy() noexcept;
 
   protected:
 
@@ -157,6 +160,8 @@ namespace Agt {
     JEM_forceinline LocalChannelMessage* acquireSlot() noexcept;
     JEM_noinline AgtStatus stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept;
 
+    JEM_noinline void      destroy() noexcept;
+
   protected:
 
     AgtStatus acquire() noexcept override;
@@ -190,6 +195,7 @@ namespace Agt {
 
     JEM_forceinline LocalChannelMessage* acquireSlot() noexcept;
     JEM_noinline AgtStatus stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept;
+    JEM_noinline void      destroy() noexcept;
 
   protected:
 
@@ -225,6 +231,7 @@ namespace Agt {
 
     JEM_forceinline LocalChannelMessage* acquireSlot() noexcept;
     JEM_noinline AgtStatus stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept;
+    JEM_noinline void      destroy() noexcept;
 
   protected:
 
@@ -359,6 +366,8 @@ namespace Agt {
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
 
+    void releaseMessage(AgtMessage message) noexcept override;
+
     static AgtStatus createInstance(PrivateChannelSender*& objectRef, AgtContext ctx) noexcept;
 
   };
@@ -378,6 +387,8 @@ namespace Agt {
     void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
+
+    void releaseMessage(AgtMessage message) noexcept override;
 
     static AgtStatus createInstance(PrivateChannelReceiver*& objectRef, AgtContext ctx) noexcept;
   };
@@ -399,6 +410,8 @@ namespace Agt {
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
 
+    void releaseMessage(AgtMessage message) noexcept override;
+
     static AgtStatus createInstance(LocalSpScChannelSender*& objectRef, AgtContext ctx) noexcept;
   };
   class LocalSpScChannelReceiver final : public LocalObject {
@@ -417,6 +430,8 @@ namespace Agt {
     void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
+
+    void releaseMessage(AgtMessage message) noexcept override;
 
     static AgtStatus createInstance(LocalSpScChannelReceiver*& objectRef, AgtContext ctx) noexcept;
   };
@@ -438,6 +453,8 @@ namespace Agt {
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
 
+    void releaseMessage(AgtMessage message) noexcept override;
+
     static AgtStatus createInstance(LocalSpMcChannelSender*& objectRef, AgtContext ctx) noexcept;
   };
   class LocalSpMcChannelReceiver final : public LocalObject {
@@ -456,6 +473,8 @@ namespace Agt {
     void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
+
+    void releaseMessage(AgtMessage message) noexcept override;
 
     static AgtStatus createInstance(LocalSpMcChannelReceiver*& objectRef, AgtContext ctx) noexcept;
   };
@@ -477,6 +496,8 @@ namespace Agt {
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
 
+    void releaseMessage(AgtMessage message) noexcept override;
+
     static AgtStatus createInstance(LocalMpScChannelSender*& objectRef, AgtContext ctx) noexcept;
   };
   class LocalMpScChannelReceiver final : public LocalObject {
@@ -495,6 +516,8 @@ namespace Agt {
     void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
+
+    void releaseMessage(AgtMessage message) noexcept override;
 
     static AgtStatus createInstance(LocalMpScChannelReceiver*& objectRef, AgtContext ctx) noexcept;
   };
@@ -516,6 +539,8 @@ namespace Agt {
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
 
+    void releaseMessage(AgtMessage message) noexcept override;
+
     static AgtStatus createInstance(LocalMpMcChannelSender*& objectRef, AgtContext ctx) noexcept;
   };
   class LocalMpMcChannelReceiver final : public LocalObject {
@@ -535,6 +560,8 @@ namespace Agt {
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
 
+    void releaseMessage(AgtMessage message) noexcept override;
+
     static AgtStatus createInstance(LocalMpMcChannelReceiver*& objectRef, AgtContext ctx) noexcept;
   };
 
@@ -551,6 +578,8 @@ namespace Agt {
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
 
+    void releaseMessage(AgtMessage message) noexcept override;
+
     static SharedSpScChannelHandle* createInstance(AgtContext ctx, const AgtChannelCreateInfo& createInfo) noexcept;
   };
   class SharedSpScChannelSender final : public SharedHandle {
@@ -564,6 +593,8 @@ namespace Agt {
     void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
+
+    void releaseMessage(AgtMessage message) noexcept override;
   };
   class SharedSpScChannelReceiver final : public SharedHandle {
   protected:
@@ -576,6 +607,8 @@ namespace Agt {
     void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
+
+    void releaseMessage(AgtMessage message) noexcept override;
   };
 
   class SharedSpMcChannelHandle final : public SharedHandle {
@@ -590,6 +623,8 @@ namespace Agt {
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
 
+    void releaseMessage(AgtMessage message) noexcept override;
+
     static SharedSpMcChannelHandle* createInstance(AgtContext ctx, const AgtChannelCreateInfo& createInfo) noexcept;
   };
   class SharedSpMcChannelSender final : public SharedHandle {
@@ -603,6 +638,8 @@ namespace Agt {
     void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
+
+    void releaseMessage(AgtMessage message) noexcept override;
   };
   class SharedSpMcChannelReceiver final : public SharedHandle {
   protected:
@@ -615,6 +652,8 @@ namespace Agt {
     void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
+
+    void releaseMessage(AgtMessage message) noexcept override;
   };
 
   class SharedMpScChannelHandle final : public SharedHandle {
@@ -629,6 +668,8 @@ namespace Agt {
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
 
+    void releaseMessage(AgtMessage message) noexcept override;
+
     static SharedMpScChannelHandle* createInstance(AgtContext ctx, const AgtChannelCreateInfo& createInfo) noexcept;
   };
   class SharedMpScChannelSender final : public SharedHandle {
@@ -642,6 +683,8 @@ namespace Agt {
     void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
+
+    void releaseMessage(AgtMessage message) noexcept override;
   };
   class SharedMpScChannelReceiver final : public SharedHandle {
   protected:
@@ -654,6 +697,8 @@ namespace Agt {
     void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
+
+    void releaseMessage(AgtMessage message) noexcept override;
   };
 
   class SharedMpMcChannelHandle final : public SharedHandle {
@@ -668,6 +713,8 @@ namespace Agt {
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
 
+    void releaseMessage(AgtMessage message) noexcept override;
+
     static SharedMpMcChannelHandle* createInstance(AgtContext ctx, const AgtChannelCreateInfo& createInfo) noexcept;
   };
   class SharedMpMcChannelSender final : public SharedHandle {
@@ -681,6 +728,8 @@ namespace Agt {
     void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
+
+    void releaseMessage(AgtMessage message) noexcept override;
   };
   class SharedMpMcChannelReceiver final : public SharedHandle {
   protected:
@@ -693,6 +742,8 @@ namespace Agt {
     void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
     AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
     AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
+
+    void releaseMessage(AgtMessage message) noexcept override;
   };
 
 

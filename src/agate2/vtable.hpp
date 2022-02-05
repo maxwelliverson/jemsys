@@ -12,6 +12,34 @@
 
 namespace Agt {
 
+  struct VTable {
+    AgtStatus (* const pfnAcquireMessage )(Object* object, AgtStagedMessage* pStagedMessage, AgtTimeout timeout) noexcept;
+    void      (* const pfnPushQueue )(Object* object, AgtMessage message, AgtSendFlags flags) noexcept;
+    AgtStatus (* const pfnPopQueue )(Object* object, AgtMessageInfo* pMessageInfo, AgtTimeout timeout) noexcept;
+    void      (* const pfnReleaseMessage )(Object* object, AgtMessage message) noexcept;
+    AgtStatus (* const pfnConnect )(Object* object, Handle* handle, ConnectAction action) noexcept;
+    AgtStatus (* const pfnAcquireRef )(Object* object) noexcept;
+    AgtSize   (* const pfnReleaseRef )(Object* object) noexcept;
+    void      (* const pfnDestroy )(Object* object) noexcept;
+  };
+
+  template <typename T>
+  struct ObjectInfo{
+
+    using HandleType = typename T::HandleType;
+    using ObjectType = typename T::ObjectType;
+
+
+    static AgtStatus acquireMessage(Object* object, AgtStagedMessage* pStagedMessage, AgtTimeout timeout) noexcept;
+    static void      pushQueue(Object* object, AgtMessage message, AgtSendFlags flags) noexcept;
+    static AgtStatus popQueue(Object* object, AgtMessageInfo* pMessageInfo, AgtTimeout timeout) noexcept;
+    static void      releaseMessage(Object* object, AgtMessage message) noexcept;
+    static AgtStatus connect(Object* object, Handle* handle, ConnectAction action) noexcept;
+    static AgtStatus acquireRef(Object* object) noexcept;
+    static AgtSize   releaseRef(Object* object) noexcept;
+    static void      destroy(Object* object) noexcept;
+  };
+
   struct SharedVTable {
     AgtStatus (* const acquireRef)(SharedObject* object, AgtContext ctx) noexcept;
     AgtSize   (* const releaseRef)(SharedObject* object, AgtContext ctx) noexcept;

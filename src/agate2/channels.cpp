@@ -145,17 +145,6 @@ namespace {
   }
 
 
-  inline agt_cookie_t get_queued_message(local_spmc_mailbox* mailbox) noexcept {
-    agt_cookie_t previousReceivedMessage = mailbox->previousReceivedMessage.load();
-    agt_cookie_t message;
-    do {
-      message = previousReceivedMessage->next.address;
-    } while( !mailbox->previousReceivedMessage.compare_exchange_weak(previousReceivedMessage, message));
-    free_hold(mailbox, previousReceivedMessage);
-    return message;
-  }
-
-
   inline void cleanupMessage(AgtContext ctx, PrivateChannelMessage* message) noexcept {
     message->state    = DefaultMessageState;
     message->refCount = 1;
@@ -228,6 +217,26 @@ namespace {
     if ( (message->state.fetchAndSet(MessageState::isCondemned) & MessageState::isOnHold) == FlagsNotSet )
       destroyMessage(channel, message);
   }
+
+
+
+
+
+  void* initLocalMessageArray(AgtContext ctx, LocalChannel* owner, AgtSize slotCount, AgtSize slotSize) noexcept {
+    AgtSize messageSize = slotSize + sizeof(LocalChannelMessage);
+    auto messageSlots = (std::byte*)ctxAllocLocal(ctx, slotCount * messageSize, JEM_CACHE_LINE);
+    if (messageSlots) [[likely]] {
+      for ( AgtSize i = 0; i < slotCount; ++i ) {
+        auto address = messageSlots + (messageSize * i);
+        auto message = new(address) LocalChannelMessage;
+        message->next = (LocalChannelMessage*)(address + messageSize);
+        message->owner = owner;
+        message->refCount = ReferenceCount(1);
+      }
+    }
+    return messageSlots;
+  }
+
 }
 
 
@@ -256,18 +265,20 @@ LocalChannel::LocalChannel(AgtStatus& status, ObjectType type, AgtContext ctx, A
   status = AGT_SUCCESS;
 }
 
-PrivateChannel::PrivateChannel(AgtStatus& status, AgtContext ctx, AgtObjectId id, AgtSize slotCount, AgtSize slotSize) noexcept
+
+
+
+
+
+
+
+
+/** =================================[ PrivateChannel ]===================================================== */
+
+/*PrivateChannel::PrivateChannel(AgtStatus& status, AgtContext ctx, AgtObjectId id, AgtSize slotCount, AgtSize slotSize) noexcept
     : LocalChannel(status, ObjectType::privateChannel, ctx, id, slotCount, slotSize){
-
-}
-
-
-AgtStatus PrivateChannel::createInstance(PrivateChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, PrivateChannelSender* sender, PrivateChannelReceiver* receiver) noexcept {
-
-}
-
-
-
+  
+}*/
 
 void*     PrivateChannel::acquireSlot(AgtTimeout timeout) noexcept {
   --availableSlotCount;
@@ -276,12 +287,15 @@ void*     PrivateChannel::acquireSlot(AgtTimeout timeout) noexcept {
   return acquiredMsg;
 }
 AgtStatus PrivateChannel::stageOutOfLine(StagedMessage& pStagedMessage, AgtTimeout timeout) noexcept {
-  return AGT_NOT_READY;
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
 }
+void      PrivateChannel::destroy() noexcept {}
 
-AgtStatus PrivateChannel::acquire() noexcept {}
+
+AgtStatus PrivateChannel::acquire() noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
 void      PrivateChannel::release() noexcept {}
-
 AgtStatus PrivateChannel::stage(AgtStagedMessage& stagedMessage_, AgtTimeout timeout) noexcept {
   auto& stagedMessage = reinterpret_cast<StagedMessage&>(stagedMessage_);
   if ( availableSlotCount == 0 ) [[unlikely]]
@@ -322,8 +336,9 @@ AgtStatus PrivateChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeou
   messageInfo.payload = getPayload(cookie);
   return AGT_SUCCESS;
 }
-AgtStatus PrivateChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {}
-
+AgtStatus PrivateChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
 void      PrivateChannel::releaseMessage(AgtMessage message_) noexcept {
   auto message = (PrivateChannelMessage*)message_;
   ++availableSlotCount;
@@ -331,8 +346,44 @@ void      PrivateChannel::releaseMessage(AgtMessage message_) noexcept {
   nextFreeSlot = message;
 }
 
+AgtStatus PrivateChannel::createInstance(PrivateChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, PrivateChannelSender* sender, PrivateChannelReceiver* receiver) noexcept {
 
-AgtStatus LocalSpMcChannel::acquire() noexcept {}
+  AgtObjectId id;
+  auto channel = (PrivateChannel*)ctxAllocLocalObject(ctx, sizeof(PrivateChannel), JEM_CACHE_LINE, id);
+
+  if (!channel) {
+    outHandle = nullptr;
+    return AGT_ERROR_BAD_ALLOC;
+  }
+
+  channel->id = id;
+  channel->type = ObjectType::privateChannel;
+  channel->flags = FlagsNotSet;
+  channel->context = ctx;
+
+  channel->slotCount = createInfo.minCapacity;
+
+  if (createInfo.name) {
+    ctxRegisterNamedObject(ctx, id, createInfo.name);
+  }
+
+  if (sender) {
+    sender->channel = channel;
+  }
+  if (receiver) {
+    receiver->channel = channel;
+  }
+}
+
+/** =================================[ LocalSpMcChannel ]===================================================== */
+
+LocalChannelMessage* LocalSpMcChannel::acquireSlot() noexcept {}
+AgtStatus            LocalSpMcChannel::stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
+void                 LocalSpMcChannel::destroy() noexcept {}
+
+AgtStatus LocalSpMcChannel::acquire() noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
 void      LocalSpMcChannel::release() noexcept {}
 AgtStatus LocalSpMcChannel::stage(AgtStagedMessage& stagedMessage_, AgtTimeout timeout) noexcept {
   auto& stagedMessage = reinterpret_cast<StagedMessage&>(stagedMessage_);
@@ -374,9 +425,25 @@ AgtStatus LocalSpMcChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout time
   messageInfo.payload = getPayload(message);
   return AGT_SUCCESS;
 }
-AgtStatus LocalSpMcChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {}
+AgtStatus LocalSpMcChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalSpMcChannel::releaseMessage(AgtMessage message) noexcept {}
 
-AgtStatus LocalSpScChannel::acquire() noexcept {}
+AgtStatus LocalSpMcChannel::createInstance(LocalSpMcChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, LocalSpMcChannelSender* sender, LocalSpMcChannelReceiver* receiver) noexcept {
+  
+}
+
+
+/** =================================[ LocalSpScChannel ]===================================================== */
+
+LocalChannelMessage* LocalSpScChannel::acquireSlot() noexcept {}
+AgtStatus            LocalSpScChannel::stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
+void                 LocalSpScChannel::destroy() noexcept {}
+
+AgtStatus LocalSpScChannel::acquire() noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
 void      LocalSpScChannel::release() noexcept {}
 AgtStatus LocalSpScChannel::stage(AgtStagedMessage& stagedMessage_, AgtTimeout timeout) noexcept {
   auto& stagedMessage = reinterpret_cast<StagedMessage&>(stagedMessage_);
@@ -403,10 +470,28 @@ void      LocalSpScChannel::send(AgtMessage message_, AgtSendFlags flags) noexce
   producerPreviousQueuedMsg = message;
   queuedMessages.release();
 }
-AgtStatus LocalSpScChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
-AgtStatus LocalSpScChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {}
+AgtStatus LocalSpScChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+AgtStatus LocalSpScChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalSpScChannel::releaseMessage(AgtMessage message) noexcept {}
 
-AgtStatus LocalMpMcChannel::acquire() noexcept {}
+AgtStatus LocalSpScChannel::createInstance(LocalSpScChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, LocalSpScChannelSender* sender, LocalSpScChannelReceiver* receiver) noexcept {
+  
+}
+
+
+/** =================================[ LocalMpMcChannel ]===================================================== */
+
+LocalChannelMessage* LocalMpMcChannel::acquireSlot() noexcept {}
+AgtStatus            LocalMpMcChannel::stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
+void                 LocalMpMcChannel::destroy() noexcept {}
+
+AgtStatus LocalMpMcChannel::acquire() noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
 void      LocalMpMcChannel::release() noexcept {}
 AgtStatus LocalMpMcChannel::stage(AgtStagedMessage& stagedMessage_, AgtTimeout timeout) noexcept {
   auto& stagedMessage = reinterpret_cast<StagedMessage&>(stagedMessage_);
@@ -434,10 +519,27 @@ void      LocalMpMcChannel::send(AgtMessage message_, AgtSendFlags flags) noexce
   lastQueued->next = message;
   queuedMessages.release();
 }
-AgtStatus LocalMpMcChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
-AgtStatus LocalMpMcChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {}
+AgtStatus LocalMpMcChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+AgtStatus LocalMpMcChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalMpMcChannel::releaseMessage(AgtMessage message) noexcept {}
 
-AgtStatus LocalMpScChannel::acquire() noexcept {}
+AgtStatus LocalMpMcChannel::createInstance(LocalMpMcChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, LocalMpMcChannelSender* sender, LocalMpMcChannelReceiver* receiver) noexcept {
+  
+}
+
+/** =================================[ LocalMpScChannel ]===================================================== */
+
+LocalChannelMessage* LocalMpScChannel::acquireSlot() noexcept {}
+AgtStatus            LocalMpScChannel::stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept {}
+void                 LocalMpScChannel::destroy() noexcept {}
+
+AgtStatus LocalMpScChannel::acquire() noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
 void      LocalMpScChannel::release() noexcept {}
 AgtStatus LocalMpScChannel::stage(AgtStagedMessage& stagedMessage_, AgtTimeout timeout) noexcept {
   auto& stagedMessage = reinterpret_cast<StagedMessage&>(stagedMessage_);
@@ -465,7 +567,236 @@ void      LocalMpScChannel::send(AgtMessage message_, AgtSendFlags flags) noexce
   lastQueued->next = message;
   queuedMessageCount.increase(1);
 }
-AgtStatus LocalMpScChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {}
-AgtStatus LocalMpScChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {}
+AgtStatus LocalMpScChannel::receive(AgtMessageInfo& messageInfo, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+AgtStatus LocalMpScChannel::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalMpScChannel::releaseMessage(AgtMessage message) noexcept {}
+
+AgtStatus LocalMpScChannel::createInstance(LocalMpScChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, LocalMpScChannelSender* sender, LocalMpScChannelReceiver* receiver) noexcept {
+  
+}
+
+
+/** =================================[ PrivateChannelSender ]===================================================== */
+
+AgtStatus PrivateChannelSender::acquire() noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      PrivateChannelSender::release() noexcept {}
+AgtStatus PrivateChannelSender::stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      PrivateChannelSender::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus PrivateChannelSender::receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+AgtStatus PrivateChannelSender::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      PrivateChannelSender::releaseMessage(AgtMessage message) noexcept {}
+
+AgtStatus PrivateChannelSender::createInstance(PrivateChannelSender*& objectRef, AgtContext ctx) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+
+/** =================================[ PrivateChannelReceiver ]=================================================== */
+
+AgtStatus PrivateChannelReceiver::acquire() noexcept {}
+void      PrivateChannelReceiver::release() noexcept {}
+AgtStatus PrivateChannelReceiver::stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      PrivateChannelReceiver::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus PrivateChannelReceiver::receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+AgtStatus PrivateChannelReceiver::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      PrivateChannelReceiver::releaseMessage(AgtMessage message) noexcept {}
+
+AgtStatus PrivateChannelReceiver::createInstance(PrivateChannelReceiver*& objectRef, AgtContext ctx) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+
+/** =================================[ LocalSpScChannelSender ]=================================================== */
+
+AgtStatus LocalSpScChannelSender::acquire() noexcept {}
+void      LocalSpScChannelSender::release() noexcept {}
+AgtStatus LocalSpScChannelSender::stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalSpScChannelSender::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalSpScChannelSender::receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+AgtStatus LocalSpScChannelSender::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalSpScChannelSender::releaseMessage(AgtMessage message) noexcept {}
+
+AgtStatus LocalSpScChannelSender::createInstance(LocalSpScChannelSender*& objectRef, AgtContext ctx) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+
+/** =================================[ LocalSpScChannelReceiver ]================================================= */
+
+AgtStatus LocalSpScChannelReceiver::acquire() noexcept {}
+void      LocalSpScChannelReceiver::release() noexcept {}
+AgtStatus LocalSpScChannelReceiver::stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalSpScChannelReceiver::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalSpScChannelReceiver::receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+AgtStatus LocalSpScChannelReceiver::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalSpScChannelReceiver::releaseMessage(AgtMessage message) noexcept {}
+
+AgtStatus LocalSpScChannelReceiver::createInstance(LocalSpScChannelReceiver*& objectRef, AgtContext ctx) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+
+/** =================================[ LocalSpMcChannelSender ]=================================================== */
+
+AgtStatus LocalSpMcChannelSender::acquire() noexcept {}
+void      LocalSpMcChannelSender::release() noexcept {}
+AgtStatus LocalSpMcChannelSender::stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalSpMcChannelSender::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalSpMcChannelSender::receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+AgtStatus LocalSpMcChannelSender::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalSpMcChannelSender::releaseMessage(AgtMessage message) noexcept {}
+
+AgtStatus LocalSpMcChannelSender::createInstance(LocalSpMcChannelSender*& objectRef, AgtContext ctx) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+
+/** =================================[ LocalSpMcChannelReceiver ]================================================= */
+
+AgtStatus LocalSpMcChannelReceiver::acquire() noexcept {}
+void      LocalSpMcChannelReceiver::release() noexcept {}
+AgtStatus LocalSpMcChannelReceiver::stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalSpMcChannelReceiver::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalSpMcChannelReceiver::receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+AgtStatus LocalSpMcChannelReceiver::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalSpMcChannelReceiver::releaseMessage(AgtMessage message) noexcept {}
+
+AgtStatus LocalSpMcChannelReceiver::createInstance(LocalSpMcChannelReceiver*& objectRef, AgtContext ctx) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+
+/** =================================[ LocalMpScChannelSender ]=================================================== */
+
+AgtStatus LocalMpScChannelSender::acquire() noexcept {}
+void      LocalMpScChannelSender::release() noexcept {}
+AgtStatus LocalMpScChannelSender::stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalMpScChannelSender::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalMpScChannelSender::receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+AgtStatus LocalMpScChannelSender::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalMpScChannelSender::releaseMessage(AgtMessage message) noexcept {}
+
+AgtStatus LocalMpScChannelSender::createInstance(LocalMpScChannelSender*& objectRef, AgtContext ctx) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+
+/** =================================[ LocalMpScChannelReceiver ]================================================= */
+
+AgtStatus LocalMpScChannelReceiver::acquire() noexcept {}
+void      LocalMpScChannelReceiver::release() noexcept {}
+AgtStatus LocalMpScChannelReceiver::stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalMpScChannelReceiver::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalMpScChannelReceiver::receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+AgtStatus LocalMpScChannelReceiver::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalMpScChannelReceiver::releaseMessage(AgtMessage message) noexcept {}
+
+AgtStatus LocalMpScChannelReceiver::createInstance(LocalMpScChannelReceiver*& objectRef, AgtContext ctx) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+
+/** =================================[ LocalMpMcChannelSender ]=================================================== */
+
+AgtStatus LocalMpMcChannelSender::acquire() noexcept {}
+void      LocalMpMcChannelSender::release() noexcept {}
+AgtStatus LocalMpMcChannelSender::stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalMpMcChannelSender::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalMpMcChannelSender::receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+AgtStatus LocalMpMcChannelSender::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalMpMcChannelSender::releaseMessage(AgtMessage message) noexcept {}
+
+AgtStatus LocalMpMcChannelSender::createInstance(LocalMpMcChannelSender*& objectRef, AgtContext ctx) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+
+/** =================================[ LocalMpMcChannelReceiver ]================================================= */
+
+AgtStatus LocalMpMcChannelReceiver::acquire() noexcept {}
+void      LocalMpMcChannelReceiver::release() noexcept {}
+AgtStatus LocalMpMcChannelReceiver::stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalMpMcChannelReceiver::send(AgtMessage message, AgtSendFlags flags) noexcept {}
+AgtStatus LocalMpMcChannelReceiver::receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+AgtStatus LocalMpMcChannelReceiver::connect(Handle* otherHandle, ConnectAction action) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+void      LocalMpMcChannelReceiver::releaseMessage(AgtMessage message) noexcept {}
+
+AgtStatus LocalMpMcChannelReceiver::createInstance(LocalMpMcChannelReceiver*& objectRef, AgtContext ctx) noexcept {
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
+}
+
+
+
+
+/** =================================[ SharedSpScChannelHandle ]================================================== */
+/** =================================[ SharedSpScChannelSender ]================================================== */
+/** =================================[ SharedSpScChannelReceiver ]================================================ */
+/** =================================[ SharedSpMcChannelHandle ]================================================== */
+/** =================================[ SharedSpMcChannelSender ]================================================== */
+/** =================================[ SharedSpMcChannelReceiver ]================================================ */
+/** =================================[ SharedMpScChannelHandle ]================================================== */
+/** =================================[ SharedMpScChannelSender ]================================================== */
+/** =================================[ SharedMpScChannelReceiver ]================================================ */
+/** =================================[ SharedMpMcChannelHandle ]================================================== */
+/** =================================[ SharedMpMcChannelSender ]================================================== */
+/** =================================[ SharedMpMcChannelReceiver ]================================================ */
+
 
 

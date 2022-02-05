@@ -195,10 +195,22 @@ typedef struct AgtObjectInfo {
   AgtObjectId    exportId;
 } AgtObjectInfo;
 
+typedef struct AgtProxyObject {
+  void* reserved[4];
 
+} AgtProxyObject;
 
+typedef struct AgtProxyObjectFunctions {
+  AgtStatus (* const acquireMessage)(void* object, AgtStagedMessage* pStagedMessage, AgtTimeout timeout) noexcept;
+  void      (* const pushQueue)(void* object, AgtMessage message, AgtSendFlags flags) noexcept;
+  AgtStatus (* const popQueue)(void* object, AgtMessageInfo* pMessageInfo, AgtTimeout timeout) noexcept;
+  void      (* const releaseMessage)(void* object, AgtMessage message) noexcept;
+  AgtStatus (* const connect)(void* object, AgtHandle handle, AgtConnectFlags flags) noexcept;
+  AgtStatus (* const acquireRef)(void* object) noexcept;
+  AgtSize   (* const releaseRef)(void* object) noexcept;
+  void      (* const destroy)(void* object) noexcept;
+} AgtProxyObjectFunctions;
 
-typedef AgtStatus (*PFN_agtAgentStageMessage)(AgtHandle agent, AgtStagedMessage* pStagedMessage, size_t slotSize, AgtTimeout timeout);
 
 typedef AgtStatus (*PFN_agtActorMessageProc)(void* actorState, const AgtMessageInfo* message);
 typedef void      (*PFN_agtActorDtor)(void* actorState);
@@ -257,10 +269,10 @@ JEM_api void          JEM_stdcall agtCloseHandle(AgtHandle handle) JEM_noexcept;
 
 
 
-JEM_api AgtStatus     JEM_stdcall agtCreateChannel(const AgtChannelCreateInfo* cpCreateInfo, AgtHandle* pSender, AgtHandle* pReceiver) JEM_noexcept;
-JEM_api AgtStatus     JEM_stdcall agtCreateAgent(const AgtAgentCreateInfo* cpCreateInfo, AgtHandle* pAgent) JEM_noexcept;
-JEM_api AgtStatus     JEM_stdcall agtCreateAgency(const AgtAgencyCreateInfo* cpCreateInfo, AgtHandle* pAgency) JEM_noexcept;
-JEM_api AgtStatus     JEM_stdcall agtCreateThread(const AgtThreadCreateInfo* cpCreateInfo, AgtHandle* pThread) JEM_noexcept;
+JEM_api AgtStatus     JEM_stdcall agtCreateChannel(AgtContext context, const AgtChannelCreateInfo* cpCreateInfo, AgtHandle* pSender, AgtHandle* pReceiver) JEM_noexcept;
+JEM_api AgtStatus     JEM_stdcall agtCreateAgent(AgtContext context, const AgtAgentCreateInfo* cpCreateInfo, AgtHandle* pAgent) JEM_noexcept;
+JEM_api AgtStatus     JEM_stdcall agtCreateAgency(AgtContext context, const AgtAgencyCreateInfo* cpCreateInfo, AgtHandle* pAgency) JEM_noexcept;
+JEM_api AgtStatus     JEM_stdcall agtCreateThread(AgtContext context, const AgtThreadCreateInfo* cpCreateInfo, AgtHandle* pThread) JEM_noexcept;
 
 
 /**
@@ -287,8 +299,8 @@ JEM_api AgtStatus     JEM_stdcall agtConnect(AgtHandle to, AgtHandle from, AgtCo
 
 /* ========================= [ Messages ] ========================= */
 
-JEM_api AgtStatus     JEM_stdcall agtGetMultiframeMessage(AgtMessage message, AgtMultiFrameMessageInfo* pMultiframeInfo) JEM_noexcept;
-JEM_api AgtStatus     JEM_stdcall agtGetNextFrame(AgtMultiFrameMessageInfo* pMultiframeInfo, AgtMessageFrame* pFrame) JEM_noexcept;
+JEM_api AgtStatus     JEM_stdcall agtGetMultiFrameMessage(AgtMessage message, AgtMultiFrameMessageInfo* pMultiFrameInfo) JEM_noexcept;
+JEM_api AgtStatus     JEM_stdcall agtGetNextFrame(AgtMultiFrameMessageInfo* pMultiFrameInfo, AgtMessageFrame* pFrame) JEM_noexcept;
 
 
 JEM_api void          JEM_stdcall agtReturn(AgtMessage message, AgtStatus status) JEM_noexcept;

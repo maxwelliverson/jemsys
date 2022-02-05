@@ -97,20 +97,22 @@ namespace Agt {
 
   class Handle {
 
+  protected:
+
     AgtObjectId id;
     ObjectType  type;
     ObjectFlags flags;
     AgtContext  context;
 
 
-  protected:
 
-    Handle(ObjectType type, ObjectFlags flags, AgtContext context, AgtObjectId localId) noexcept
+
+    /*Handle(ObjectType type, ObjectFlags flags, AgtContext context, AgtObjectId localId) noexcept
         : type(type),
           flags(flags),
           context(context),
           id(localId)
-    {}
+    {}*/
 
 
     virtual AgtStatus acquire() noexcept = 0;
@@ -163,8 +165,8 @@ namespace Agt {
   class LocalHandle : public Handle {
   protected:
 
-    LocalHandle(ObjectType type, ObjectFlags flags, AgtContext ctx, AgtObjectId localId) noexcept
-        : Handle(type, flags, ctx, localId){}
+    /*LocalHandle(ObjectType type, ObjectFlags flags, AgtContext ctx, AgtObjectId localId) noexcept
+        : Handle(type, flags, ctx, localId){}*/
 
     ~LocalHandle() = default;
   };

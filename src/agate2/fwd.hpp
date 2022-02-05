@@ -31,6 +31,9 @@ namespace Agt {
   enum class ConnectAction : AgtUInt32;
 
   class Id;
+
+  class Object;
+
   class Handle;
   class LocalHandle;
   class SharedHandle;
@@ -39,6 +42,9 @@ namespace Agt {
 
   struct LocalChannel;
   struct SharedChannel;
+
+  struct VTable;
+  using  VPointer = const VTable*;
 
   struct SharedVTable;
 
