@@ -5,6 +5,7 @@
 #include "message.hpp"
 #include "flags.hpp"
 #include "atomic.hpp"
+#include "channel.hpp"
 
 #include "ipc/offset_ptr.hpp"
 
@@ -59,25 +60,51 @@ JEM_cache_aligned
   char                inlineBuffer[];
 };
 
-struct JEM_cache_aligned AgtMessage_st {
-  union {
-    AgtSize     index;
-    AgtMessage  address;
-  }   next;
-  union {
-    AgtHandle   handle;
-    AgtObjectId id;
-  }   sender;
-  AgtSize                   payloadSize;
-  AgtAsyncData              asyncData;
-  AgtUInt32                 asyncDataKey;
-  MessageFlags              flags;
-  AtomicFlags<MessageState> state;
-  ReferenceCount            refCount;
-  AgtObjectId               returnHandleId;
-  AgtMessageId              id;
-JEM_cache_aligned
-  char                      inlineBuffer[];
-};
+}
+
+
+bool  Agt::initMessageArray(LocalChannelHeader* owner) noexcept {
+  const AgtSize slotCount = owner->slotCount;
+  const AgtSize messageSize = owner->inlineBufferSize + sizeof(AgtMessage_st);
+  auto messageSlots = (std::byte*)ctxAllocLocal(owner->context, slotCount * messageSize, JEM_CACHE_LINE);
+  if (messageSlots) [[likely]] {
+    for ( AgtSize i = 0; i < slotCount; ++i ) {
+      auto address = messageSlots + (messageSize * i);
+      auto message = new(address) AgtMessage_st;
+      message->next = (AgtMessage)(address + messageSize);
+      message->owner = owner;
+      message->refCount = 1;
+    }
+
+    owner->messageSlots = messageSlots;
+
+    return true;
+  }
+
+  return false;
+}
+
+void* Agt::initMessageArray(SharedHandleHeader* owner, SharedChannelHeader* channel) noexcept {
+  AgtSize slotCount   = channel->slotCount;
+  AgtSize messageSize = channel->inlineBufferSize + sizeof(AgtMessage_st);
+  AgtSize arraySize = slotCount * messageSize;
+  auto messageSlots = (std::byte*)ctxSharedAlloc(owner->context,
+                                                 arraySize,
+                                                 JEM_CACHE_LINE,
+                                                 channel->messageSlotsId);
+
+  if (messageSlots) [[likely]] {
+
+    for ( AgtSize offset = 0; offset < arraySize;) {
+      auto message = new(messageSlots + offset) AgtMessage_st;
+      message->nextOffset = (offset += messageSize);
+      message->owner = nullptr; // TODO: Fix, this obviously doesn't work for shared channels
+      message->refCount = 1;
+      message->flags = MessageFlags::isShared;
+    }
+
+  }
+
+  return messageSlots;
 
 }

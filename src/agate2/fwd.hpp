@@ -26,9 +26,15 @@ AGT_DEFINE_HANDLE(AgtLocalMessage);
 
 namespace Agt {
 
+  enum class SharedAllocationId : AgtUInt64;
+
   enum class ObjectType : AgtUInt32;
   enum class ObjectFlags : AgtHandleFlags;
   enum class ConnectAction : AgtUInt32;
+
+
+  struct HandleHeader;
+  struct SharedObjectHeader;
 
   class Id;
 

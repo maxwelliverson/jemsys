@@ -55,261 +55,151 @@ namespace Agt {
   class SharedMpMcChannelReceiver;
 
 
+  AgtStatus createInstance(PrivateChannel*& outHandle,   AgtContext ctx, const AgtChannelCreateInfo& createInfo, PrivateChannelSender* sender, PrivateChannelReceiver* receiver) noexcept;
+  AgtStatus createInstance(LocalSpScChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, LocalSpScChannelSender* sender, LocalSpScChannelReceiver* receiver) noexcept;
+  AgtStatus createInstance(LocalSpMcChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, LocalSpMcChannelSender* sender, LocalSpMcChannelReceiver* receiver) noexcept;
+  AgtStatus createInstance(LocalMpScChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, LocalMpScChannelSender* sender, LocalMpScChannelReceiver* receiver) noexcept;
+  AgtStatus createInstance(LocalMpMcChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, LocalMpMcChannelSender* sender, LocalMpMcChannelReceiver* receiver) noexcept;
+
+  AgtStatus createInstance(PrivateChannelSender*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(PrivateChannelReceiver*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(LocalSpScChannelSender*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(LocalSpScChannelReceiver*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(LocalMpScChannelSender*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(LocalMpScChannelReceiver*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(LocalSpMcChannelSender*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(LocalSpMcChannelReceiver*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(LocalMpMcChannelSender*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(LocalMpMcChannelReceiver*& objectRef, AgtContext ctx) noexcept;
 
 
-  
-  class LocalChannel      : public LocalObject {
-  protected:
+  AgtStatus createInstance(SharedSpScChannelHandle*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, SharedSpScChannelSender* sender, SharedSpScChannelReceiver* receiver) noexcept;
+  AgtStatus createInstance(SharedSpMcChannelHandle*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, SharedSpMcChannelSender* sender, SharedSpMcChannelReceiver* receiver) noexcept;
+  AgtStatus createInstance(SharedMpScChannelHandle*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, SharedMpScChannelSender* sender, SharedMpScChannelReceiver* receiver) noexcept;
+  AgtStatus createInstance(SharedMpMcChannelHandle*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, SharedMpMcChannelSender* sender, SharedMpMcChannelReceiver* receiver) noexcept;
 
+
+  AgtStatus createInstance(SharedSpScChannelSender*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(SharedSpScChannelReceiver*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(SharedMpScChannelSender*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(SharedMpScChannelReceiver*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(SharedSpMcChannelSender*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(SharedSpMcChannelReceiver*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(SharedMpMcChannelSender*& objectRef, AgtContext ctx) noexcept;
+  AgtStatus createInstance(SharedMpMcChannelReceiver*& objectRef, AgtContext ctx) noexcept;
+
+
+  // sizeof == 64 bytes, or 1 cache line
+  struct LocalChannelHeader : HandleHeader {
     AgtSize        slotCount;
     AgtSize        inlineBufferSize;
     std::byte*     messageSlots;
+  };
 
-    // LocalChannel(AgtStatus& status, ObjectType type, AgtContext ctx, AgtObjectId id, AgtSize slotCount, AgtSize slotSize) noexcept;
+  // sizeof == 64 bytes, or 1 cache line
+  struct SharedChannelHeader : SharedObjectHeader {
+    ReferenceCount     refCount;
+    AgtSize            slotCount;
+    AgtSize            inlineBufferSize;
+    SharedAllocationId messageSlotsId;
   };
 
 
-
-
-  
-  class PrivateChannel   final : public LocalChannel {
-    AgtHandle*             consumer;
-    AgtHandle*             producer;
-    AgtSize                availableSlotCount;
-    AgtSize                queuedMessageCount;
-    PrivateChannelMessage* nextFreeSlot;
-    PrivateChannelMessage* prevReceivedMessage;
-    PrivateChannelMessage* prevQueuedMessage;
-    AgtSize                refCount;
-
-    JEM_forceinline void*  acquireSlot(AgtTimeout timeout) noexcept;
-    JEM_noinline AgtStatus stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept;
-    JEM_noinline void      destroy() noexcept;
-
-    // PrivateChannel(AgtStatus& status, AgtContext ctx, AgtObjectId id, AgtSize slotCount, AgtSize slotSize) noexcept;
-
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void      releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(PrivateChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, PrivateChannelSender* sender, PrivateChannelReceiver* receiver) noexcept;
+  // sizeof == 128 bytes, or 2 cache lines
+  struct JEM_cache_aligned PrivateChannel   : LocalChannelHeader {
+  JEM_cache_aligned
+    AgtHandle  consumer;
+    AgtHandle  producer;
+    AgtSize    availableSlotCount;
+    AgtSize    queuedMessageCount;
+    AgtMessage nextFreeSlot;
+    AgtMessage prevReceivedMessage;
+    AgtMessage prevQueuedMessage;
+    AgtSize    refCount;
   };
 
-
-
-  class LocalSpScChannel final : public LocalChannel {
+  struct JEM_cache_aligned LocalSpScChannel : LocalChannelHeader {
   JEM_cache_aligned
-    semaphore_t          slotSemaphore;
-    LocalChannelMessage* producerPreviousQueuedMsg;
-    LocalChannelMessage* producerNextFreeSlot;
+    semaphore_t    slotSemaphore;
+    AgtMessage     producerPreviousQueuedMsg;
+    AgtMessage     producerNextFreeSlot;
 
   JEM_cache_aligned
-    semaphore_t          queuedMessages;
-    LocalChannelMessage* consumerPreviousMsg;
+    semaphore_t    queuedMessages;
+    AgtMessage     consumerPreviousMsg;
+
   JEM_cache_aligned
-    ReferenceCount       refCount;
-    LocalChannelMessage* lastFreeSlot;
-    AgtHandle*           consumer;
-    AgtHandle*           producer;
-
-
-    JEM_forceinline LocalChannelMessage* acquireSlot() noexcept;
-    JEM_noinline AgtStatus stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept;
-    JEM_noinline void      destroy() noexcept;
-
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(LocalSpScChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, LocalSpScChannelSender* sender, LocalSpScChannelReceiver* receiver) noexcept;
+    ReferenceCount refCount;
+    AgtMessage     lastFreeSlot;
+    HandleHeader*  consumer;
+    HandleHeader*  producer;
   };
-  class LocalSpMcChannel final : public LocalChannel {
+  struct JEM_cache_aligned LocalMpScChannel : LocalChannelHeader {
   JEM_cache_aligned
-    semaphore_t        slotSemaphore;
-    std::atomic<LocalChannelMessage*> lastFreeSlot;
-    LocalChannelMessage*              nextFreeSlot;
-    LocalChannelMessage*              lastQueuedSlot;
-  JEM_cache_aligned
-    std::atomic<LocalChannelMessage*> previousReceivedMessage;
-  JEM_cache_aligned
-    semaphore_t        queuedMessages;
-    ReferenceCount       refCount;
-    Handle*            producer;
-    jem_u32_t          maxConsumers;
-    semaphore_t        consumerSemaphore;
-
-
-    JEM_forceinline LocalChannelMessage* acquireSlot() noexcept;
-    JEM_noinline AgtStatus stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept;
-
-    JEM_noinline void      destroy() noexcept;
-
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(LocalSpMcChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, LocalSpMcChannelSender* sender, LocalSpMcChannelReceiver* receiver) noexcept;
-  };
-  class LocalMpScChannel final : public LocalChannel {
-  JEM_cache_aligned
-    std::atomic<LocalChannelMessage*> nextFreeSlot;
+    std::atomic<AgtMessage> nextFreeSlot;
     semaphore_t             slotSemaphore;
   JEM_cache_aligned
-    std::atomic<LocalChannelMessage*> lastQueuedSlot;
-    std::atomic<LocalChannelMessage*> lastFreeSlot;
-    LocalChannelMessage*              previousReceivedMessage;
+    std::atomic<AgtMessage> lastQueuedSlot;
+    std::atomic<AgtMessage> lastFreeSlot;
+    AgtMessage              previousReceivedMessage;
   JEM_cache_aligned
     mpsc_counter_t          queuedMessageCount;
     ReferenceCount          refCount;
-    Handle*                 consumer;
+    HandleHeader*           consumer;
     jem_u32_t               maxProducers;
     semaphore_t             producerSemaphore;
-
-
-    JEM_forceinline LocalChannelMessage* acquireSlot() noexcept;
-    JEM_noinline AgtStatus stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept;
-    JEM_noinline void      destroy() noexcept;
-
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(LocalMpScChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, LocalMpScChannelSender* sender, LocalMpScChannelReceiver* receiver) noexcept;
   };
-  class LocalMpMcChannel final : public LocalChannel {
-  JEM_cache_aligned
-    std::atomic<LocalChannelMessage*> nextFreeSlot;
-    std::atomic<LocalChannelMessage*> lastQueuedSlot;
+  struct JEM_cache_aligned LocalSpMcChannel : LocalChannelHeader {
   JEM_cache_aligned
     semaphore_t                       slotSemaphore;
-    std::atomic<LocalChannelMessage*> previousReceivedMessage;
-
+    std::atomic<AgtMessage> lastFreeSlot;
+    AgtMessage              nextFreeSlot;
+    AgtMessage              lastQueuedSlot;
   JEM_cache_aligned
-    semaphore_t             queuedMessages;
-    jem_u32_t               maxProducers;
-    jem_u32_t               maxConsumers;
-    ReferenceCount          refCount;
-    semaphore_t             producerSemaphore;
-    semaphore_t             consumerSemaphore;
-
-
-    JEM_forceinline LocalChannelMessage* acquireSlot() noexcept;
-    JEM_noinline AgtStatus stageOutOfLine(StagedMessage& stagedMessage, AgtTimeout timeout) noexcept;
-    JEM_noinline void      destroy() noexcept;
-
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void      releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(LocalMpMcChannel*& outHandle, AgtContext ctx, const AgtChannelCreateInfo& createInfo, LocalMpMcChannelSender* sender, LocalMpMcChannelReceiver* receiver) noexcept;
+    std::atomic<AgtMessage> previousReceivedMessage;
+  JEM_cache_aligned
+    semaphore_t                       queuedMessages;
+    ReferenceCount                    refCount;
+    HandleHeader*                     producer;
+    jem_u32_t                         maxConsumers;
+    semaphore_t                       consumerSemaphore;
+  };
+  struct JEM_cache_aligned LocalMpMcChannel : LocalChannelHeader {
+  JEM_cache_aligned
+    std::atomic<AgtMessage> nextFreeSlot;
+    std::atomic<AgtMessage> lastQueuedSlot;
+  JEM_cache_aligned
+    semaphore_t             slotSemaphore;
+    std::atomic<AgtMessage> previousReceivedMessage;
+  JEM_cache_aligned
+    semaphore_t                       queuedMessages;
+    jem_u32_t                         maxProducers;
+    jem_u32_t                         maxConsumers;
+    ReferenceCount                    refCount;
+    semaphore_t                       producerSemaphore;
+    semaphore_t                       consumerSemaphore;
   };
 
-  
-  class SharedSpScChannel final : public SharedObject {
 
-    friend class SharedSpScChannelHandle;
-    friend class SharedSpScChannelSender;
-    friend class SharedSpScChannelReceiver;
-
-    ReferenceCount     refCount;
-    AgtSize            slotCount;
-    AgtSize            slotSize;
-    AgtObjectId        messageSlotsId;
-
+  struct JEM_cache_aligned SharedSpScChannel : SharedChannelHeader {
   JEM_cache_aligned
     semaphore_t        availableSlotSema;
     binary_semaphore_t producerSemaphore;
-    AgtMessage         producerPreviousMsg;
+    AgtSize            producerPreviousMsgOffset;
   JEM_cache_aligned
     semaphore_t        queuedMessageSema;
     binary_semaphore_t consumerSemaphore;
-    AgtMessage         consumerPreviousMsg;
-    AgtMessage         consumerLastFreeSlot;
+    AgtSize            consumerPreviousMsgOffset;
+    AgtSize            consumerLastFreeSlotOffset;
   JEM_cache_aligned
     atomic_size_t      nextFreeSlotIndex;
-    std::byte*         producerSlotAddr;
-    std::byte*         consumerSlotAddr;
+  
+  
+    using HandleType = SharedSpScChannelHandle;
   };
-  class SharedSpMcChannel final : public SharedObject {
-
-    friend class SharedSpMcChannelHandle;
-    friend class SharedSpMcChannelSender;
-    friend class SharedSpMcChannelReceiver;
-
-    ReferenceCount     refCount;
-    AgtSize            slotCount;
-    AgtSize            slotSize;
-    AgtObjectId        messageSlotsId;
-    semaphore_t        slotSemaphore;
+  struct JEM_cache_aligned SharedMpScChannel : SharedChannelHeader {
   JEM_cache_aligned
-    atomic_size_t      nextFreeSlot;
-  JEM_cache_aligned
-    atomic_size_t      lastQueuedSlot;
-  JEM_cache_aligned
-    atomic_u32_t       queuedSinceLastCheck;
-    jem_u32_t          minQueuedMessages;
-    jem_u32_t          maxConsumers;
-    binary_semaphore_t producerSemaphore;
-    semaphore_t        consumerSemaphore;
-
-  };
-  class SharedMpScChannel final : public SharedObject {
-
-    friend class SharedMpScChannelHandle;
-    friend class SharedMpScChannelSender;
-    friend class SharedMpScChannelReceiver;
-
-    ReferenceCount refCount;
-    AgtSize        slotCount;
-    AgtSize        slotSize;
-    AgtObjectId    messageSlotsId;
     semaphore_t    slotSemaphore;
-  JEM_cache_aligned
     std::atomic<AgtMessage> nextFreeSlot;
     jem_size_t              payloadOffset;
   JEM_cache_aligned
@@ -320,15 +210,29 @@ namespace Agt {
     jem_u32_t          maxProducers;
     binary_semaphore_t consumerSemaphore;
     semaphore_t        producerSemaphore;
-
+    
+    using HandleType = SharedMpScChannelHandle;
   };
-  class SharedMpMcChannel final : public SharedObject {
-
-    friend class SharedMpMcChannelHandle;
-    friend class SharedMpMcChannelSender;
-    friend class SharedMpMcChannelReceiver;
-
-    ReferenceCount   refCount;
+  struct JEM_cache_aligned SharedSpMcChannel : SharedChannelHeader {
+    ReferenceCount     refCount;
+    AgtSize            slotCount;
+    AgtSize            slotSize;
+    AgtObjectId        messageSlotsId;
+  JEM_cache_aligned
+    atomic_size_t      nextFreeSlot;
+    semaphore_t        slotSemaphore;
+  JEM_cache_aligned
+    atomic_size_t      lastQueuedSlot;
+  JEM_cache_aligned
+    atomic_u32_t       queuedSinceLastCheck;
+    jem_u32_t          minQueuedMessages;
+    jem_u32_t          maxConsumers;
+    binary_semaphore_t producerSemaphore;
+    semaphore_t        consumerSemaphore;
+    
+    using HandleType = SharedSpMcChannelHandle;
+  };
+  struct JEM_cache_aligned SharedMpMcChannel : SharedChannelHeader {
     AgtSize          slotCount;
     AgtSize          slotSize;
     AgtObjectId      messageSlotsId;
@@ -339,418 +243,174 @@ namespace Agt {
     atomic_size_t    lastQueuedSlot;
   JEM_cache_aligned
     atomic_u32_t     queuedSinceLastCheck;
+    ReferenceCount   refCount;
     jem_u32_t        minQueuedMessages;
     jem_u32_t        maxProducers;         // 220
     jem_u32_t        maxConsumers;         // 224
     semaphore_t      producerSemaphore;    // 240
     semaphore_t      consumerSemaphore;    // 256
+    
+    using HandleType = SharedMpMcChannelHandle;
   };
 
 
-
-
-  class PrivateChannelSender final : public LocalObject {
-
-    friend class PrivateChannel;
-
+  struct PrivateChannelSender : HandleHeader {
     PrivateChannel* channel;
 
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(PrivateChannelSender*& objectRef, AgtContext ctx) noexcept;
-
+    using ObjectType = PrivateChannel;
   };
-  class PrivateChannelReceiver final : public LocalObject {
-
-    friend class PrivateChannel;
-
+  struct PrivateChannelReceiver : HandleHeader {
     PrivateChannel* channel;
 
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(PrivateChannelReceiver*& objectRef, AgtContext ctx) noexcept;
+    using ObjectType = PrivateChannel;
   };
-
-  class LocalSpScChannelSender final : public LocalObject {
-
-    friend class LocalSpScChannel;
-
+  struct LocalSpScChannelSender : HandleHeader {
     LocalSpScChannel* channel;
 
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(LocalSpScChannelSender*& objectRef, AgtContext ctx) noexcept;
+    using ObjectType = LocalSpScChannel;
   };
-  class LocalSpScChannelReceiver final : public LocalObject {
-
-    friend class LocalSpScChannel;
-
+  struct LocalSpScChannelReceiver : HandleHeader {
     LocalSpScChannel* channel;
 
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(LocalSpScChannelReceiver*& objectRef, AgtContext ctx) noexcept;
+    using ObjectType = LocalSpScChannel;
   };
-
-  class LocalSpMcChannelSender final : public LocalObject {
-
-    friend class LocalSpMcChannel;
-
-    LocalSpMcChannel* channel;
-
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(LocalSpMcChannelSender*& objectRef, AgtContext ctx) noexcept;
-  };
-  class LocalSpMcChannelReceiver final : public LocalObject {
-
-    friend class LocalSpMcChannel;
-
-    LocalSpMcChannel* channel;
-
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(LocalSpMcChannelReceiver*& objectRef, AgtContext ctx) noexcept;
-  };
-
-  class LocalMpScChannelSender final : public LocalObject {
-
-    friend class LocalMpScChannel;
-
+  struct LocalMpScChannelSender : HandleHeader {
     LocalMpScChannel* channel;
 
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(LocalMpScChannelSender*& objectRef, AgtContext ctx) noexcept;
+    using ObjectType = LocalMpScChannel;
   };
-  class LocalMpScChannelReceiver final : public LocalObject {
-
-    friend class LocalMpScChannel;
-
+  struct LocalMpScChannelReceiver : HandleHeader {
     LocalMpScChannel* channel;
 
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(LocalMpScChannelReceiver*& objectRef, AgtContext ctx) noexcept;
+    using ObjectType = LocalMpScChannel;
   };
+  struct LocalSpMcChannelSender : HandleHeader {
+    LocalSpMcChannel* channel;
 
-  class LocalMpMcChannelSender final : public LocalObject {
+    using ObjectType = LocalSpMcChannel;
+  };
+  struct LocalSpMcChannelReceiver : HandleHeader {
+    LocalSpMcChannel* channel;
 
-    friend class LocalMpMcChannel;
-
+    using ObjectType = LocalSpMcChannel;
+  };
+  struct LocalMpMcChannelSender : HandleHeader {
     LocalMpMcChannel* channel;
 
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(LocalMpMcChannelSender*& objectRef, AgtContext ctx) noexcept;
+    using ObjectType = LocalMpMcChannel;
   };
-  class LocalMpMcChannelReceiver final : public LocalObject {
-
-    friend class LocalMpMcChannel;
-
+  struct LocalMpMcChannelReceiver : HandleHeader {
     LocalMpMcChannel* channel;
 
-  protected:
-
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static AgtStatus createInstance(LocalMpMcChannelReceiver*& objectRef, AgtContext ctx) noexcept;
+    using ObjectType = LocalMpMcChannel;
   };
 
 
-  class SharedSpScChannelHandle final : public SharedHandle {
-  protected:
+  struct SharedSpScChannelHandle   : SharedHandleHeader {
+    AgtSize    slotCount;
+    AgtSize    inlineBufferSize;
+    std::byte* messageSlots;
 
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static SharedSpScChannelHandle* createInstance(AgtContext ctx, const AgtChannelCreateInfo& createInfo) noexcept;
+    using ObjectType = SharedSpScChannel;
   };
-  class SharedSpScChannelSender final : public SharedHandle {
-  protected:
+  struct SharedSpScChannelSender   : SharedHandleHeader {
+    AgtSize    slotCount;
+    AgtSize    inlineBufferSize;
+    std::byte* messageSlots;
+    AgtSize    previousMessageOffset;
 
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
+    using ObjectType = SharedSpScChannel;
   };
-  class SharedSpScChannelReceiver final : public SharedHandle {
-  protected:
+  struct SharedSpScChannelReceiver : SharedHandleHeader {
+    AgtSize    slotCount;
+    AgtSize    inlineBufferSize;
+    std::byte* messageSlots;
+    AgtSize    previousMessageOffset;
+    AgtSize    lastFreeSlotOffset;
 
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
+    using ObjectType = SharedSpScChannel;
   };
 
-  class SharedSpMcChannelHandle final : public SharedHandle {
-  protected:
+  struct SharedMpScChannelHandle   : SharedHandleHeader {
 
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static SharedSpMcChannelHandle* createInstance(AgtContext ctx, const AgtChannelCreateInfo& createInfo) noexcept;
+    using ObjectType = SharedMpScChannel;
   };
-  class SharedSpMcChannelSender final : public SharedHandle {
-  protected:
+  struct SharedMpScChannelSender   : SharedHandleHeader {
 
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
+    using ObjectType = SharedMpScChannel;
   };
-  class SharedSpMcChannelReceiver final : public SharedHandle {
-  protected:
+  struct SharedMpScChannelReceiver : SharedHandleHeader {
 
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
+    using ObjectType = SharedMpScChannel;
   };
 
-  class SharedMpScChannelHandle final : public SharedHandle {
-  protected:
+  struct SharedSpMcChannelHandle   : SharedHandleHeader {
 
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static SharedMpScChannelHandle* createInstance(AgtContext ctx, const AgtChannelCreateInfo& createInfo) noexcept;
+    using ObjectType = SharedSpMcChannel;
   };
-  class SharedMpScChannelSender final : public SharedHandle {
-  protected:
+  struct SharedSpMcChannelSender   : SharedHandleHeader {
 
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
+    using ObjectType = SharedSpMcChannel;
   };
-  class SharedMpScChannelReceiver final : public SharedHandle {
-  protected:
+  struct SharedSpMcChannelReceiver : SharedHandleHeader {
 
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
+    using ObjectType = SharedSpMcChannel;
   };
 
-  class SharedMpMcChannelHandle final : public SharedHandle {
-  protected:
+  struct SharedMpMcChannelHandle   : SharedHandleHeader {
 
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
-
-    static SharedMpMcChannelHandle* createInstance(AgtContext ctx, const AgtChannelCreateInfo& createInfo) noexcept;
+    using ObjectType = SharedMpMcChannel;
   };
-  class SharedMpMcChannelSender final : public SharedHandle {
-  protected:
+  struct SharedMpMcChannelSender   : SharedHandleHeader {
 
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
+    using ObjectType = SharedMpMcChannel;
   };
-  class SharedMpMcChannelReceiver final : public SharedHandle {
-  protected:
+  struct SharedMpMcChannelReceiver : SharedHandleHeader {
 
-    AgtStatus acquire() noexcept override;
-    void      release() noexcept override;
-
-  public:
-    AgtStatus stage(AgtStagedMessage& pStagedMessage, AgtTimeout timeout) noexcept override;
-    void      send(AgtMessage message, AgtSendFlags flags) noexcept override;
-    AgtStatus receive(AgtMessageInfo& pMessageInfo, AgtTimeout timeout) noexcept override;
-    AgtStatus connect(Handle* otherHandle, ConnectAction action) noexcept override;
-
-    void releaseMessage(AgtMessage message) noexcept override;
+    using ObjectType = SharedMpMcChannel;
   };
 
 
 
 
 
-
+  AGT_declare_vtable(PrivateChannel);
+  AGT_declare_vtable(PrivateChannelSender);
+  AGT_declare_vtable(PrivateChannelReceiver);
+  
+  AGT_declare_vtable(LocalSpScChannel);
+  AGT_declare_vtable(LocalSpScChannelSender);
+  AGT_declare_vtable(LocalSpScChannelReceiver);
+  
+  AGT_declare_vtable(LocalMpScChannel);
+  AGT_declare_vtable(LocalMpScChannelSender);
+  AGT_declare_vtable(LocalMpScChannelReceiver);
+  
+  AGT_declare_vtable(LocalSpMcChannel);
+  AGT_declare_vtable(LocalSpMcChannelSender);
+  AGT_declare_vtable(LocalSpMcChannelReceiver);
+  
+  AGT_declare_vtable(LocalMpMcChannel);
+  AGT_declare_vtable(LocalMpMcChannelSender);
+  AGT_declare_vtable(LocalMpMcChannelReceiver);
+  
+  
+  
+  AGT_declare_vtable(SharedSpScChannelHandle);
+  AGT_declare_vtable(SharedSpScChannelSender);
+  AGT_declare_vtable(SharedSpScChannelReceiver);
+  
+  AGT_declare_vtable(SharedMpScChannelHandle);
+  AGT_declare_vtable(SharedMpScChannelSender);
+  AGT_declare_vtable(SharedMpScChannelReceiver);
+  
+  AGT_declare_vtable(SharedSpMcChannelHandle);
+  AGT_declare_vtable(SharedSpMcChannelSender);
+  AGT_declare_vtable(SharedSpMcChannelReceiver);
+  
+  AGT_declare_vtable(SharedMpMcChannelHandle);
+  AGT_declare_vtable(SharedMpMcChannelSender);
+  AGT_declare_vtable(SharedMpMcChannelReceiver);
 }
 
 #endif//JEMSYS_AGATE2_CHANNEL_HPP

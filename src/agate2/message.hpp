@@ -10,16 +10,20 @@
 
 namespace Agt {
 
+  struct LocalChannelHeader;
+  struct SharedChannelHeader;
+  struct SharedHandleHeader;
+
   struct JEM_cache_aligned InlineBuffer {};
 
   struct StagedMessage {
-    Handle*      receiver;
-    void*        message;
-    void*        reserved[2];
-    Handle*      returnHandle;
-    AgtSize      messageSize;
-    AgtMessageId id;
-    void*        payload;
+    HandleHeader* receiver;
+    void*         message;
+    void*         reserved[2];
+    HandleHeader* returnHandle;
+    AgtSize       messageSize;
+    AgtMessageId  id;
+    void*         payload;
   };
 
   AGT_BITFLAG_ENUM(MessageFlags, AgtUInt32) {
@@ -39,7 +43,15 @@ namespace Agt {
 
   inline constexpr static MessageState DefaultMessageState = {};
 
-  AgtStatus initMessageArray(Handle* handle, AgtMessage_st* messages, AgtSize messageCount, AgtSize inlineBufferSize) noexcept;
+  /**
+   * @returns true if successful, false if there was an allocation error
+   * */
+  bool  initMessageArray(LocalChannelHeader* owner) noexcept;
+
+  /**
+   * @returns the address of the message array if successful, or a null point on allocation error
+   * */
+  void* initMessageArray(SharedHandleHeader* owner, SharedChannelHeader* channel) noexcept;
 
   AgtStatus getMultiFrameMessage(InlineBuffer* inlineBuffer, AgtMultiFrameMessageInfo& messageInfo) noexcept;
   bool      getNextFrame(AgtMessageFrame& frame, AgtMultiFrameMessageInfo& messageInfo) noexcept;
@@ -54,5 +66,30 @@ namespace Agt {
   void cleanupMessage(AgtMessage message) noexcept;
 
 }
+
+struct AgtMessage_st {
+  union {
+    AgtMessage              next;
+    AgtSize                 nextOffset;
+  };
+  AgtHandle                 owner;
+  union {
+    AgtHandle               returnHandle;
+    AgtObjectId             returnHandleId;
+  };
+  union {
+    AgtAsyncData            asyncData;
+    Agt::SharedAllocationId asyncDataAllocId;
+  };
+  AgtUInt32                 asyncDataKey;
+  Agt::MessageFlags         flags;
+  Agt::MessageState         state;
+  AgtUInt32                 refCount;
+  AgtMessageId              id;
+  AgtSize                   payloadSize;
+  Agt::InlineBuffer         inlineBuffer[];
+};
+
+
 
 #endif//JEMSYS_AGATE2_MESSAGE_HPP

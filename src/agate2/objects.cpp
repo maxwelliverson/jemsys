@@ -9,10 +9,6 @@ using namespace Agt;
 
 namespace {
 
-  JEM_forceinline jem_size_t align_to(jem_size_t size, jem_size_t align) noexcept {
-    return ((size - 1) | (align - 1)) + 1;
-  }
-
   JEM_noinline AgtStatus sharedHandleDuplicate(Handle* self_, Handle*& out) noexcept {
     const auto self = static_cast<SharedHandle*>(self_);
     if (AgtStatus result = self->sharedAcquire())

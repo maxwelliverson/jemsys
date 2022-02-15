@@ -69,11 +69,11 @@ AGT_DEFINE_HANDLE(AgtMessage);
 
 
 typedef enum AgtStatus {
-  AGT_SUCCESS,
-  AGT_NOT_READY,
-  AGT_DEFERRED,
-  AGT_CANCELLED,
-  AGT_TIMED_OUT,
+  AGT_SUCCESS   /** < No errors */,
+  AGT_NOT_READY /** < An asynchronous operation is not yet complete */,
+  AGT_DEFERRED  /** < An operation has been deferred, and code that requires the completion of the operation must wait on the async handle provided */,
+  AGT_CANCELLED /** < An asynchronous operation has been cancelled. This will only be returned if an operation is cancelled before it is complete*/,
+  AGT_TIMED_OUT /** < A wait operation exceeded the specified timeout duration */,
   AGT_INCOMPLETE_MESSAGE,
   AGT_ERROR_UNKNOWN,
   AGT_ERROR_UNKNOWN_FOREIGN_OBJECT,
@@ -85,6 +85,7 @@ typedef enum AgtStatus {
   AGT_ERROR_FOREIGN_SENDER,
   AGT_ERROR_STATUS_NOT_SET,
   AGT_ERROR_UNKNOWN_MESSAGE_TYPE,
+  AGT_ERROR_INVALID_OPERATION /** < The given handle does not implement the called function. eg. agtReceiveMessage cannot be called on a channel sender*/,
   AGT_ERROR_INVALID_FLAGS,
   AGT_ERROR_INVALID_MESSAGE,
   AGT_ERROR_INVALID_SIGNAL,
@@ -255,7 +256,13 @@ typedef struct AgtThreadCreateInfo {
 
 /* ========================= [ Context ] ========================= */
 
+/**
+ *
+ * */
 JEM_api AgtStatus     JEM_stdcall agtNewContext(AgtContext* pContext) JEM_noexcept;
+/**
+ *
+ * */
 JEM_api AgtStatus     JEM_stdcall agtDestroyContext(AgtContext context) JEM_noexcept;
 
 
@@ -263,12 +270,23 @@ JEM_api AgtStatus     JEM_stdcall agtDestroyContext(AgtContext context) JEM_noex
 
 /* ========================= [ Handles ] ========================= */
 
+/**
+ *
+ * */
 JEM_api AgtStatus     JEM_stdcall agtGetObjectInfo(AgtContext context, AgtObjectInfo* pObjectInfo) JEM_noexcept;
+/**
+ *
+ * */
 JEM_api AgtStatus     JEM_stdcall agtDuplicateHandle(AgtHandle inHandle, AgtHandle* pOutHandle) JEM_noexcept;
+/**
+ *
+ * */
 JEM_api void          JEM_stdcall agtCloseHandle(AgtHandle handle) JEM_noexcept;
 
 
-
+/**
+ *
+ * */
 JEM_api AgtStatus     JEM_stdcall agtCreateChannel(AgtContext context, const AgtChannelCreateInfo* cpCreateInfo, AgtHandle* pSender, AgtHandle* pReceiver) JEM_noexcept;
 JEM_api AgtStatus     JEM_stdcall agtCreateAgent(AgtContext context, const AgtAgentCreateInfo* cpCreateInfo, AgtHandle* pAgent) JEM_noexcept;
 JEM_api AgtStatus     JEM_stdcall agtCreateAgency(AgtContext context, const AgtAgencyCreateInfo* cpCreateInfo, AgtHandle* pAgency) JEM_noexcept;
@@ -276,13 +294,14 @@ JEM_api AgtStatus     JEM_stdcall agtCreateThread(AgtContext context, const AgtT
 
 
 /**
+ * Acquires a message slot from sender into which a message can be written.
  *
  */
 JEM_api AgtStatus     JEM_stdcall agtStage(AgtHandle sender, AgtStagedMessage* pStagedMessage, AgtTimeout timeout) JEM_noexcept;
 /**
  *
  */
-JEM_api void          JEM_stdcall agtSend(const AgtStagedMessage* cpStagedMessage, AgtAsync asyncHandle, AgtSendFlags flags) JEM_noexcept;
+JEM_api void          JEM_stdcall agtSend(AgtHandle sender, const AgtStagedMessage* cpStagedMessage, AgtAsync asyncHandle, AgtSendFlags flags) JEM_noexcept;
 /**
  *
  */

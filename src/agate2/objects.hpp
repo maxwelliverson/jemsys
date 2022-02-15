@@ -95,6 +95,28 @@ namespace Agt {
   };
 
 
+  struct SharedObjectHeader {
+    AgtSize     objectSize;
+    AgtObjectId id;
+    ObjectType  type;
+    ObjectFlags flags;
+  };
+
+  struct HandleHeader {
+    VPointer    vptr;
+    AgtObjectId id;
+    ObjectType  type;
+    ObjectFlags flags;
+    AgtContext  context;
+  };
+
+  struct SharedHandleHeader : HandleHeader {
+    SharedObjectHeader* sharedInstance;
+  };
+
+
+
+
   class Handle {
 
   protected:
