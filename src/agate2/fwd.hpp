@@ -32,6 +32,8 @@ namespace Agt {
   enum class ObjectFlags : AgtHandleFlags;
   enum class ConnectAction : AgtUInt32;
 
+  enum class ErrorState : AgtUInt32;
+
 
   struct HandleHeader;
   struct SharedObjectHeader;
@@ -56,6 +58,9 @@ namespace Agt {
 
   using SharedVPtr = const SharedVTable*;
 
+
+  struct LocalMpScChannel;
+  struct SharedMpScChannelSender;
 }
 
 #endif//JEMSYS_AGATE2_FWD_HPP

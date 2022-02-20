@@ -65,7 +65,7 @@ namespace Agt {
     AgtStatus (* const pfnConnect )(HandleHeader* object, HandleHeader* handle, ConnectAction action) noexcept;
     AgtStatus (* const pfnAcquireRef )(HandleHeader* object) noexcept;
     void      (* const pfnReleaseRef )(HandleHeader* object) noexcept;
-    // void      (* const pfnDestroy )(Object* object) noexcept;
+    void      (* const pfnSetErrorState )(HandleHeader* object, ErrorState errorState) noexcept;
   };
 
   template <typename T>
@@ -82,7 +82,43 @@ namespace Agt {
     static AgtStatus connect(HandleHeader* object, HandleHeader* handle, ConnectAction action) noexcept;
     static AgtStatus acquireRef(HandleHeader* object) noexcept;
     static void      releaseRef(HandleHeader* object) noexcept;
+
+    static void      setErrorState(HandleHeader* object, ErrorState errorState) noexcept;
   };
+
+
+  template <typename Hdl>
+  inline AgtStatus handleAcquireMessage(Hdl* handle, AgtStagedMessage* pStagedMessage, AgtTimeout timeout) noexcept {
+    return ObjectInfo<Hdl>::acquireMessage(handle, pStagedMessage, timeout);
+  }
+  template <typename Hdl>
+  inline void      handlePushQueue(Hdl* handle, AgtMessage message, AgtSendFlags flags) noexcept {
+    ObjectInfo<Hdl>::pushQueue(handle, message, flags);
+  }
+  template <typename Hdl>
+  inline AgtStatus handlePopQueue(Hdl* handle, AgtMessageInfo* pMessageInfo, AgtTimeout timeout) noexcept {
+    return ObjectInfo<Hdl>::popQueue(handle, pMessageInfo, timeout);
+  }
+  template <typename Hdl>
+  inline void      handleReleaseMessage(Hdl* handle, AgtMessage message) noexcept {
+    ObjectInfo<Hdl>::releaseMessage(handle, message);
+  }
+  template <typename Hdl>
+  inline AgtStatus handleConnect(Hdl* handle, HandleHeader* otherHandle, ConnectAction connectAction) noexcept {
+    return ObjectInfo<Hdl>::connect(handle, otherHandle, connectAction);
+  }
+  template <typename Hdl>
+  inline AgtStatus handleAcquireRef(Hdl* handle) noexcept {
+    return ObjectInfo<Hdl>::acquireRef(handle);
+  }
+  template <typename Hdl>
+  inline void      handleReleaseRef(Hdl* handle) noexcept {
+    ObjectInfo<Hdl>::releaseRef(handle);
+  }
+  template <typename Hdl>
+  inline void      handleSetErrorState(Hdl* handle, ErrorState errorState) noexcept {
+    ObjectInfo<Hdl>::setErrorState(handle, errorState);
+  }
 
 
   template <typename T>

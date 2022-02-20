@@ -162,14 +162,15 @@ add_jemsys_library(
 add_jemsys_library(
         agate2
             SOURCES
-                library.cpp
-                channels.cpp
-                objects.cpp
-                context.cpp
-                message.cpp
                 async.cpp
                 atomic.cpp
+                channels.cpp
+                context.cpp
+                library.cpp
+                message.cpp
+                objects.cpp
                 signal.cpp
+                thread.cpp
                 vtable.cpp
             DEPENDENCIES
                 support
