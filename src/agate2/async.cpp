@@ -230,14 +230,17 @@ struct AgtLocalAsyncData_st {
 };
 
 struct AgtAsyncData_st {
-  ContextId              contextId;
+  union {
+    AgtAsyncData next;                     //
+    AgtSize      nextOffset;               //
+  };
+  AgtUInt32              currentKey;       // Current epoch
+  AgtUInt32              instanceRefCount; // Total number of references to this object in memory, regardless of epoch
+  AgtUInt32              epochRefCount;    // Total number of active waiters for this epoch. This data is considered "active" so long as this is non-zero.
   ReferenceCount         refCount;
   AgtUInt32              waiterRefCount;
   ReferenceCount         attachedRefCount;
   AtomicMonotonicCounter responseCount;
-  AgtUInt32              currentKey;
-  AgtUInt32              maxResponseCount;
-  bool                   isShared;
 };
 
 struct AgtSharedAsyncData_st {

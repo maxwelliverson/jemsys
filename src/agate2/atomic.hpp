@@ -139,10 +139,18 @@ namespace Agt {
     bool      atomicCompareExchange(AgtUInt16& value, AgtUInt16& compare, AgtUInt16 newValue) noexcept;
     bool      atomicCompareExchange(AgtUInt32& value, AgtUInt32& compare, AgtUInt32 newValue) noexcept;
     bool      atomicCompareExchange(AgtUInt64& value, AgtUInt64& compare, AgtUInt64 newValue) noexcept;
+    bool      atomicCompareExchangeWeak(AgtUInt8& value,  AgtUInt8&  compare, AgtUInt8 newValue) noexcept;
+    bool      atomicCompareExchangeWeak(AgtUInt16& value, AgtUInt16& compare, AgtUInt16 newValue) noexcept;
+    bool      atomicCompareExchangeWeak(AgtUInt32& value, AgtUInt32& compare, AgtUInt32 newValue) noexcept;
+    bool      atomicCompareExchangeWeak(AgtUInt64& value, AgtUInt64& compare, AgtUInt64 newValue) noexcept;
     AgtUInt8  atomicIncrement(AgtUInt8& value) noexcept;
     AgtUInt16 atomicIncrement(AgtUInt16& value) noexcept;
     AgtUInt32 atomicIncrement(AgtUInt32& value) noexcept;
     AgtUInt64 atomicIncrement(AgtUInt64& value) noexcept;
+    AgtUInt8  atomicRelaxedIncrement(AgtUInt8& value) noexcept;
+    AgtUInt16 atomicRelaxedIncrement(AgtUInt16& value) noexcept;
+    AgtUInt32 atomicRelaxedIncrement(AgtUInt32& value) noexcept;
+    AgtUInt64 atomicRelaxedIncrement(AgtUInt64& value) noexcept;
     AgtUInt8  atomicDecrement(AgtUInt8& value) noexcept;
     AgtUInt16 atomicDecrement(AgtUInt16& value) noexcept;
     AgtUInt32 atomicDecrement(AgtUInt32& value) noexcept;
@@ -166,14 +174,34 @@ namespace Agt {
 
     void      atomicNotifyOne(void* value) noexcept;
     void      atomicNotifyAll(void* value) noexcept;
+    void      atomicNotifyOneLocal(void* value) noexcept;
+    void      atomicNotifyAllLocal(void* value) noexcept;
+    void      atomicNotifyOneShared(void* value) noexcept;
+    void      atomicNotifyAllShared(void* value) noexcept;
 
     template <std::integral T>
     inline void      atomicNotifyOne(T& value) noexcept {
       atomicNotifyOne(std::addressof(value));
     }
     template <std::integral T>
+    inline void      atomicNotifyOneLocal(T& value) noexcept {
+      atomicNotifyOneLocal(std::addressof(value));
+    }
+    template <std::integral T>
+    inline void      atomicNotifyOneShared(T& value) noexcept {
+      atomicNotifyOneShared(std::addressof(value));
+    }
+    template <std::integral T>
     inline void      atomicNotifyAll(T& value) noexcept {
       atomicNotifyAll(std::addressof(value));
+    }
+    template <std::integral T>
+    inline void      atomicNotifyAllLocal(T& value) noexcept {
+      atomicNotifyAllLocal(std::addressof(value));
+    }
+    template <std::integral T>
+    inline void      atomicNotifyAllShared(T& value) noexcept {
+      atomicNotifyAllShared(std::addressof(value));
     }
 
 
@@ -591,6 +619,65 @@ namespace Agt {
       IntType bits = 0;
     };
   }
+
+
+  class LocalBinarySemaphore {
+    AgtInt32 val_;
+  public:
+
+    explicit LocalBinarySemaphore(AgtInt32 val) : val_(val) { }
+
+    void acquire() noexcept;
+    bool tryAcquire() noexcept;
+    bool tryAcquireFor(AgtTimeout timeout) noexcept;
+    bool tryAcquireUntil(Deadline deadline) noexcept;
+    void release() noexcept;
+
+  };
+
+  class SharedBinarySemaphore {
+    AgtInt32 val_;
+  public:
+
+    explicit SharedBinarySemaphore(AgtInt32 val) : val_(val) { }
+
+    void acquire() noexcept;
+    bool tryAcquire() noexcept;
+    bool tryAcquireFor(AgtTimeout timeout) noexcept;
+    bool tryAcquireUntil(Deadline deadline) noexcept;
+    void release() noexcept;
+
+  };
+
+  class LocalSemaphore {
+    AgtInt32 val_;
+  public:
+
+    explicit LocalSemaphore(AgtInt32 val) : val_(val) { }
+
+    void acquire() noexcept;
+    bool tryAcquire() noexcept;
+    bool tryAcquireFor(AgtTimeout timeout) noexcept;
+    bool tryAcquireUntil(Deadline deadline) noexcept;
+    void release() noexcept;
+
+  };
+
+  class SharedSemaphore {
+    AgtInt32  val_;
+  public:
+
+    explicit SharedSemaphore(AgtInt32 val) : val_(val) { }
+
+    void acquire() noexcept;
+    bool tryAcquire() noexcept;
+    bool tryAcquireFor(AgtTimeout timeout) noexcept;
+    bool tryAcquireUntil(Deadline deadline) noexcept;
+    void release() noexcept;
+
+  };
+
+
 
 
   template <typename E>
