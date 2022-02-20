@@ -102,7 +102,9 @@ typedef enum AgtStatus {
   AGT_ERROR_MAILBOX_IS_FULL,
   AGT_ERROR_MAILBOX_IS_EMPTY,
   AGT_ERROR_TOO_MANY_SENDERS,
+  AGT_ERROR_NO_SENDERS,
   AGT_ERROR_TOO_MANY_RECEIVERS,
+  AGT_ERROR_NO_RECEIVERS,
   AGT_ERROR_ALREADY_RECEIVED,
   AGT_ERROR_INITIALIZATION_FAILED,
   AGT_ERROR_NOT_YET_IMPLEMENTED
@@ -137,6 +139,12 @@ typedef enum AgtConnectFlagBits {
   AGT_CONNECT_FORWARD   = 0x1,
 } AgtConnectFlagBits;
 typedef jem_flags32_t AgtConnectFlags;
+
+typedef enum AgtBlockingThreadCreateFlagBits {
+  AGT_BLOCKING_THREAD_COPY_USER_DATA   = 0x1,
+  AGT_BLOCKING_THREAD_USER_DATA_STRING = 0x2
+} AgtBlockingThreadCreateFlagBits;
+typedef jem_flags32_t AgtBlockingThreadCreateFlags;
 
 typedef enum AgtScope {
   AGT_SCOPE_LOCAL,
@@ -216,6 +224,12 @@ typedef struct AgtProxyObjectFunctions {
 typedef AgtStatus (*PFN_agtActorMessageProc)(void* actorState, const AgtMessageInfo* message);
 typedef void      (*PFN_agtActorDtor)(void* actorState);
 
+
+// TODO: Add a function to the public API that extends the lifetime of a message, and one that ends that extension.
+//       Having these functions in place, messages can be automatically returned after use. Possibly with reference counting??
+typedef void      (*PFN_agtBlockingThreadMessageProc)(AgtHandle threadHandle, const AgtMessageInfo* message, void* pUserData);
+typedef void      (*PFN_agtUserDataDtor)(void* pUserData);
+
 typedef struct AgtActor {
   AgtTypeId               type;
   PFN_agtActorMessageProc pfnMessageProc;
@@ -246,6 +260,18 @@ typedef struct AgtAgentCreateInfo {
 typedef struct AgtAgencyCreateInfo {
 
 } AgtAgencyCreateInfo;
+typedef struct AgtBlockingThreadCreateInfo {
+  PFN_agtBlockingThreadMessageProc pfnMessageProc;
+  AgtScope                         scope;
+  AgtBlockingThreadCreateFlags     flags;
+  const char*                      name;
+  AgtSize                          nameLength;
+  union {
+    AgtSize                        dataSize;
+    PFN_agtUserDataDtor            pfnUserDataDtor;
+  };
+  void*                            pUserData;
+} AgtBlockingThreadCreateInfo;
 typedef struct AgtThreadCreateInfo {
 
 } AgtThreadCreateInfo;
