@@ -127,11 +127,12 @@ typedef enum AgtHandleFlagBits {
 typedef jem_flags32_t AgtHandleFlags;
 
 typedef enum AgtSendFlagBits {
-  AGT_WAIT_FOR_ALL      = 0x0,
-  AGT_MUST_CHECK_RESULT = 0x1, // TODO: implement enforcement for AGT_MUST_CHECK_RESULT. Currently does nothing
-  AGT_IGNORE_RESULT     = 0x2,
-  AGT_FAST_CLEANUP      = 0x4,
-  AGT_WAIT_FOR_ANY      = 0x8
+  AGT_SEND_WAIT_FOR_ALL      = 0x00,
+  AGT_SEND_WAIT_FOR_ANY      = 0x01,
+  AGT_SEND_BROADCAST_MESSAGE = 0x02,
+  AGT_SEND_DATA_CSTRING      = 0x04,
+  AGT_SEND_WITH_TIMESTAMP    = 0x08,
+  AGT_SEND_FAST_CLEANUP      = 0x10,
 } AgtSendFlagBits;
 typedef jem_flags32_t AgtSendFlags;
 
@@ -250,6 +251,7 @@ typedef struct AgtChannelCreateInfo {
   AgtScope    scope;
   AgtAsync    asyncHandle;
   const char* name;
+  AgtSize     nameLength;
 } AgtChannelCreateInfo;
 typedef struct AgtSocketCreateInfo {
 
@@ -264,13 +266,16 @@ typedef struct AgtBlockingThreadCreateInfo {
   PFN_agtBlockingThreadMessageProc pfnMessageProc;
   AgtScope                         scope;
   AgtBlockingThreadCreateFlags     flags;
-  const char*                      name;
-  AgtSize                          nameLength;
+  AgtSize                          minCapacity;
+  AgtSize                          maxMessageSize;
+  AgtSize                          maxSenders;
   union {
     AgtSize                        dataSize;
     PFN_agtUserDataDtor            pfnUserDataDtor;
   };
   void*                            pUserData;
+  const char*                      name;
+  AgtSize                          nameLength;
 } AgtBlockingThreadCreateInfo;
 typedef struct AgtThreadCreateInfo {
 
@@ -332,6 +337,17 @@ JEM_api void          JEM_stdcall agtSend(AgtHandle sender, const AgtStagedMessa
  *
  */
 JEM_api AgtStatus     JEM_stdcall agtReceive(AgtHandle receiver, AgtMessageInfo* pMessageInfo, AgtTimeout timeout) JEM_noexcept;
+
+
+
+
+
+
+/**
+ * Close message
+ */
+JEM_api void          JEM_stdcall agtCloseMessage(AgtHandle owner, AgtMessage message) JEM_noexcept;
+
 /**
  *
  */

@@ -16,10 +16,34 @@
 namespace Agt {
 
   enum class ObjectType : AgtUInt32 {
-    mpscChannel,
-    mpmcChannel,
-    spmcChannel,
-    spscChannel,
+    localMpScChannel,
+    localMpMcChannel,
+    localSpMcChannel,
+    localSpScChannel,
+    localMpScChannelSender,
+    localMpMcChannelSender,
+    localSpMcChannelSender,
+    localSpScChannelSender,
+    localMpScChannelReceiver,
+    localMpMcChannelReceiver,
+    localSpMcChannelReceiver,
+    localSpScChannelReceiver,
+    sharedMpScChannel,
+    sharedMpMcChannel,
+    sharedSpMcChannel,
+    sharedSpScChannel,
+    sharedMpScChannelHandle,
+    sharedMpMcChannelHandle,
+    sharedSpMcChannelHandle,
+    sharedSpScChannelHandle,
+    sharedMpScChannelSender,
+    sharedMpMcChannelSender,
+    sharedSpMcChannelSender,
+    sharedSpScChannelSender,
+    sharedMpScChannelReceiver,
+    sharedMpMcChannelReceiver,
+    sharedSpMcChannelReceiver,
+    sharedSpScChannelReceiver,
     agent,
     socket,
     channelSender,
@@ -28,7 +52,9 @@ namespace Agt {
     agency,
     localAsyncData,
     sharedAsyncData,
-    privateChannel
+    privateChannel,
+    localBlockingThread,
+    sharedBlockingThread
   };
 
   enum class ConnectAction : AgtUInt32 {
@@ -259,6 +285,19 @@ namespace Agt {
 
 
   };
+
+
+
+
+  template <typename Hdl>
+  inline Hdl*      allocHandle(AgtContext ctx) noexcept {
+    using HandleType = typename ObjectInfo<Hdl>::HandleType;
+    auto handle      = (HandleHeader*)ctxAllocHandle(ctx, sizeof(HandleType), alignof(HandleType));
+    handle->vptr     = &VTableInstance<Hdl>;
+    handle->type     = ObjectInfo<Hdl>::TypeValue;
+    handle->context  = ctx;
+    return static_cast<Hdl*>(handle);
+  }
 
 
 }

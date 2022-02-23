@@ -71,6 +71,8 @@ namespace Agt {
   template <typename T>
   struct ObjectInfo{
 
+    inline constexpr static ObjectType TypeValue = T::TypeValue;
+
     using HandleType = typename Impl::GetHandleType<T>::HandleType;
     using ObjectType = typename Impl::GetObjectType<T>::ObjectType;
 

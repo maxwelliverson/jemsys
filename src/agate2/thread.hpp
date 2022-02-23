@@ -23,11 +23,16 @@ namespace Agt {
   };
 
   struct LocalBlockingThread : HandleHeader {
-    LocalMpScChannel* channel;
+    LocalMpScChannel*  channel;
+    Impl::SystemThread sysThread;
+
+    inline constexpr static ObjectType TypeValue = ObjectType::localBlockingThread;
   };
 
   struct SharedBlockingThread : HandleHeader {
     SharedMpScChannelSender* channel;
+
+    inline constexpr static ObjectType TypeValue = ObjectType::sharedBlockingThread;
   };
 
   struct ThreadPool : HandleHeader {

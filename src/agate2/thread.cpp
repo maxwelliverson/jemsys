@@ -166,6 +166,9 @@ namespace {
 
 #if JEM_system_windows
 
+  using PFN_threadStartRoutine = LPTHREAD_START_ROUTINE;
+
+
   DWORD __stdcall localBlockingThreadInlineStartRoutine(LPVOID threadParam) {
     const auto threadData = static_cast<LocalBlockingThreadInlineData*>(threadParam);
     const auto threadHandle = threadData->threadHandle;
@@ -255,55 +258,128 @@ namespace {
   }
 
 
+  AgtStatus createSystemThread(PFN_threadStartRoutine startRoutine, void* data, Impl::SystemThread& sysThread) noexcept {
+    SECURITY_ATTRIBUTES securityAttributes;
+    securityAttributes.bInheritHandle = false;
+    securityAttributes.lpSecurityDescriptor = nullptr;
+    securityAttributes.nLength = sizeof(securityAttributes);
+    DWORD threadId;
+    HANDLE threadHandle = CreateThread(&securityAttributes, 0, startRoutine, data, 0, &threadId);
 
+    if (!threadHandle) {
+      // TODO: Error checking
+      return AGT_ERROR_UNKNOWN;
+    }
 
+    sysThread.handle_ = threadHandle;
+    sysThread.id_     = (int)threadId;
 
-  HANDLE CreateThread(
-    [in, optional]  LPSECURITY_ATTRIBUTES   lpThreadAttributes,
-    [in]            SIZE_T                  dwStackSize,
-    [in]            LPTHREAD_START_ROUTINE  lpStartAddress,
-    [in, optional]  __drv_aliasesMem LPVOID lpParameter,
-    [in]            DWORD                   dwCreationFlags,
-    [out, optional] LPDWORD                 lpThreadId
-  );
+    return AGT_SUCCESS;
+  }
+
 #else
+
+
+  using PFN_threadStartRoutine = void*(*)(void*);
+
+
+  AgtStatus createSystemThread(PFN_threadStartRoutine startRoutine, void* data, Impl::SystemThread& sysThread) noexcept {
+
+    return AGT_ERROR_NOT_YET_IMPLEMENTED;
+  }
+
 #endif
 }
 
 
 AgtStatus Agt::createInstance(LocalBlockingThread*& handle, AgtContext ctx, const AgtBlockingThreadCreateInfo& createInfo) noexcept {
+
   LocalBlockingThreadDataHeader* header;
-  LPTHREAD_START_ROUTINE startRoutine;
-  AgtStatus status;
+  LocalMpScChannel*              channel;
+  LocalBlockingThread*           threadHandle;
+
+  AgtChannelCreateInfo           channelCreateInfo;
+  PFN_threadStartRoutine         startRoutine;
+  NameToken                      nameToken;
+  AgtStatus                      status;
+  AgtSize                        structSize;
+  AgtSize                        structAlign;
+
+  if ((status = ctxClaimLocalName(ctx, createInfo.name, createInfo.nameLength, nameToken)) != AGT_SUCCESS)
+    return status;
+
+  header       = nullptr;
+  channel      = nullptr;
+  threadHandle = nullptr;
+
   if (createInfo.flags & AGT_BLOCKING_THREAD_COPY_USER_DATA) {
     AgtSize dataLength = (createInfo.flags & AGT_BLOCKING_THREAD_USER_DATA_STRING)
                            ? (strlen((const char*)createInfo.pUserData) + 1)
                            : createInfo.dataSize;
-    AgtSize structSize = dataLength + sizeof(LocalBlockingThreadInlineData);
-    auto data = (LocalBlockingThreadInlineData*)ctxLocalAlloc(ctx, structSize, alignof(LocalBlockingThreadInlineData));
-    data->structSize = structSize;
-    std::memcpy(data->userData, createInfo.pUserData, dataLength);
-    header = data;
-    startRoutine = &localBlockingThreadInlineStartRoutine;
-  } else {
-    auto data = (LocalBlockingThreadOutOfLineData*)ctxLocalAlloc(ctx, sizeof(LocalBlockingThreadOutOfLineData), alignof(LocalBlockingThreadOutOfLineData));
-    data->userData = createInfo.pUserData;
-    data->userDataDtor = createInfo.pfnUserDataDtor;
-    header = data;
-    startRoutine = &localBlockingThreadOutOfLineStartRoutine;
+    structSize = dataLength + sizeof(LocalBlockingThreadInlineData);
+    structAlign = alignof(LocalBlockingThreadInlineData);
+    if (auto data = (LocalBlockingThreadInlineData*)ctxLocalAlloc(ctx, structSize, structAlign)) {
+      data->structSize = structSize;
+      std::memcpy(data->userData, createInfo.pUserData, dataLength);
+      header = data;
+      startRoutine = &localBlockingThreadInlineStartRoutine;
+    }
   }
-  header->msgProc = createInfo.pfnMessageProc;
+  else {
+    structSize = sizeof(LocalBlockingThreadOutOfLineData);
+    structAlign = alignof(LocalBlockingThreadInlineData);
+    if (auto data = (LocalBlockingThreadOutOfLineData*)ctxLocalAlloc(ctx, structSize, structAlign)) {
+      data->userData = createInfo.pUserData;
+      data->userDataDtor = createInfo.pfnUserDataDtor;
+      header = data;
+      startRoutine = &localBlockingThreadOutOfLineStartRoutine;
+    }
+  }
+  if (!header) {
+    status = AGT_ERROR_BAD_ALLOC;
+    goto error;
+  }
 
-  AgtChannelCreateInfo channelCreateInfo;
+
+  if (!(threadHandle = allocHandle<LocalBlockingThread>(ctx)))
+    goto error;
+
+
   channelCreateInfo.scope = AGT_SCOPE_LOCAL;
   channelCreateInfo.maxReceivers = 1;
-  channelCreateInfo.maxSenders = 0;
-  //channelCreateInfo.name
+  channelCreateInfo.maxSenders = createInfo.maxSenders;
+  channelCreateInfo.minCapacity = createInfo.minCapacity;
+  channelCreateInfo.maxMessageSize = createInfo.maxMessageSize;
+  channelCreateInfo.asyncHandle = AGT_SYNCHRONIZE;
+  channelCreateInfo.name = nullptr;
+  channelCreateInfo.nameLength = 0;
 
 
-  status = createInstance(header->channel, ctx, );
+
+  if ((status = createInstance(channel, ctx, channelCreateInfo, nullptr, nullptr)) != AGT_SUCCESS)
+    goto error;
+
+  header->channel = channel;
+  header->threadHandle = threadHandle;
+  header->msgProc = createInfo.pfnMessageProc;
+
+  if ((status = createSystemThread(startRoutine, header, threadHandle->sysThread)) != AGT_SUCCESS)
+    goto error;
+
+
+  return AGT_SUCCESS;
+
+error:
+  ctxReleaseLocalName(ctx, nameToken);
+  if (header)
+    ctxLocalFree(ctx, header, structSize, structAlign);
+  if (channel)
+    handleReleaseRef(channel);
+  if (threadHandle)
+    handleReleaseRef(threadHandle);
+  return status;
 }
 
 AgtStatus Agt::createInstance(SharedBlockingThread*& handle, AgtContext ctx, const AgtBlockingThreadCreateInfo& createInfo) noexcept {
-
+  return AGT_ERROR_NOT_YET_IMPLEMENTED;
 }

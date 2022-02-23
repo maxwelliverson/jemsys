@@ -389,17 +389,126 @@ namespace {
 
 }
 
-
+/** ========= [ Creation/Destruction ] ========= */
 AgtStatus Agt::createCtx(AgtContext& pCtx) noexcept {
   return AGT_ERROR_NOT_YET_IMPLEMENTED;
 }
 void      Agt::destroyCtx(AgtContext ctx) noexcept { }
 
 
-
-void*     Agt::ctxAllocLocal(AgtContext ctx, AgtSize size, AgtSize alignment) noexcept {
+/** ========= [ Memory Management ] ========= */
+void*     Agt::ctxLocalAlloc(AgtContext ctx, AgtSize size, AgtSize alignment) noexcept {
   return _aligned_malloc(size, alignment);
 }
-void      Agt::ctxFreeLocal(AgtContext ctx, void* memory, AgtSize size, AgtSize alignment) noexcept {
+void      Agt::ctxLocalFree(AgtContext ctx, void* memory, AgtSize size, AgtSize alignment) noexcept {
   _aligned_free(memory);
 }
+
+
+
+/** ========= [ Object Name Management ] ========= */
+
+/**
+ * @section Object Name Management Examples
+ *
+ * Intended usage of the name management functions is as follows:
+ *
+ *      AgtStatus createLocalObject(Object*& object, AgtContext ctx, ...) {
+ *          NameToken nameToken;
+ *          AgtStatus status;
+ *          if ((status = ctxClaimLocalName(ctx, name, nameLength, nameToken)))
+ *              return status;
+ *
+ *          ... Allocate and initialize object ...
+ *
+ *          if (status != AGT_SUCCESS) {
+ *              ... Cleanup ...
+ *              ctxReleaseLocalName(ctx, nameToken);
+ *              return status;
+ *          }
+ *
+ *          ctxBindName(ctx, nameToken, object);
+ *
+ *          return AGT_SUCCESS;
+ *      }
+ *
+ *      AgtStatus createSharedObject(Object*& object, AgtContext ctx, ...) {
+*          NameToken nameToken;
+*          AgtStatus status;
+*          if ((status = ctxClaimSharedName(ctx, name, nameLength, nameToken)))
+*              return status;
+*
+*          ... Allocate and initialize object ...
+*
+*          if (status != AGT_SUCCESS) {
+*              ... Cleanup ...
+*              ctxReleaseSharedName(ctx, nameToken);
+*              return status;
+*          }
+*
+*          ctxBindName(ctx, nameToken, object);
+*
+*          return AGT_SUCCESS;
+*      }
+ *
+ * */
+
+using ay = struct lmao;
+/**
+ * @fn ctxClaimLocalName
+ * @brief Atomically acquires the specified name for use, and returns a token referring to the acquired name.
+ * @returns AGT_SUCCESS if successful;
+ *          AGT_ERROR_NAME_ALREADY_IN_USE if the specified name is already in use;
+ *          AGT_ERROR_NAME_TOO_LONG if the specified name is greater than the maximum name length for this context;
+ *          AGT_ERROR_BAD_ENCODING_IN_NAME if the specified name is not a valid string under the context's encoding;
+ * */
+AgtStatus     Agt::ctxClaimLocalName(AgtContext ctx, const char* pName, AgtSize nameLength, NameToken& token) noexcept {
+
+  // 1: if pName is null, set token to the "null token" and return AGT_SUCCESS
+  // 2: if nameLength is zero, set nameLength to strlen(pName)
+  // 3: checks if the desired nameLength is less than the maximum limit (default is 256). If not, return AGT_ERROR_NAME_TO_LONG
+  // 4: checks if the desired name has valid encoding *if* the context has been set up to validate encoding. If not, return AGT_ERROR_BAD_ENCODING_IN_NAME
+  // 5: checks if the desired name begins with a "shared prefix", if not return ... some error lmao
+  // 6: checks if the desired name is already in use, and if not, claim it so that other callers can't.
+  // 7: set token to the token corresponding to the acquired name block
+}
+/**
+ *
+ * */
+void          Agt::ctxReleaseLocalName(AgtContext ctx, NameToken nameToken) noexcept {
+  // 1: if nameToken is "null", do nothing and return
+  // 2: get the name block corresponding to nameToken
+  // 3: release the name block
+}
+/**
+ *
+ * */
+AgtStatus     Agt::ctxClaimSharedName(AgtContext ctx, const char* pName, AgtSize nameLength, NameToken& token) noexcept {
+  // TODO: Resolve: what should the local "shared-prefix" be? A prefix is needed on local entries to
+  //       avoid name clashes between local and shared objects (as the possibility of this occuring
+  //       would cause serious issue when importing shared objects).
+  //       Should it be "{shared}" or something of the like? Or "{<shared-ctx-id>}"?
+
+  // 1: if pName is null, set token to the "null token" and return AGT_SUCCESS
+  // 2: if nameLength is zero, set nameLength to strlen(pName)
+  // 3: checks if the desired nameLength is less than the maximum limit (default is 256). If not, return AGT_ERROR_NAME_TO_LONG
+  // 4: checks if the desired name has valid encoding *if* the context has been set up to validate encoding. If not, return AGT_ERROR_BAD_ENCODING_IN_NAME
+  // 5: checks if the desired name is already in use in the shared space, and if not, claim it in the shared space.
+  // 6: claim the name locally (guaranteed it's available, given the shared prefix)
+  // 7: set token to the token corresponding to the acquired name block
+}
+void          Agt::ctxReleaseSharedName(AgtContext ctx, NameToken nameToken) noexcept {
+  // 1: if nameToken is "null", do nothing and return
+  // 2: get the name block corresponding to nameToken
+  // 3: release the local name block
+  // 4: release the shared name block (must be done in this order to maintain guarantee of local availablity in ctxClaimSharedName)
+}
+void          Agt::ctxBindName(AgtContext ctx, NameToken nameToken, HandleHeader* handle) noexcept {
+  // TODO: workout algorithm here. Probably dependent on choice of implementation of AgtContext_st
+  // 1: idk
+}
+
+
+
+
+
