@@ -8,6 +8,8 @@
 #include "message.hpp"
 #include "async.hpp"
 
+#include <cstring>
+
 using namespace Agt;
 
 
