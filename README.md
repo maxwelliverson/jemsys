@@ -2,7 +2,7 @@
 Message passing subsystem/utilities for asynchronous computing (WIP)
 **Currently undergoing major project restructuring**
 
-Currently working on Agate2.
+Note: Abandonned as a cohesive project; has been redesigned as the branch off project [agate](https://github.com/maxwelliverson/agate), and I intend to do something with Silica at some point in the future as well.
 
 # Motivation
 WIP
